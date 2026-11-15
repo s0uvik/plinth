@@ -19,6 +19,7 @@ from b2m.builds import BuildService, Busy, product_version
 from b2m.compliance import evaluate, facts_after_build, facts_before_build, hard_failures
 from b2m.compliance.pdf import write_pdf
 from b2m.drawings import build_drawing_set
+from b2m.gateway import Gateway, GatewayError
 from b2m.engine import LayoutError, generate
 from b2m.plan import BuildPlan, RoomOp
 from b2m.revit import RevitClient
@@ -46,6 +47,37 @@ class SpecRequest(BaseModel):
     document_title: str | None = None
     brief_id: str | None = None
     override: bool = False  # build despite hard compliance failures (F5.1)
+
+
+class TargetRequest(BaseModel):
+    target: str = "auto"
+    verify: bool = True
+
+
+class CallRequest(BaseModel):
+    params: dict[str, Any] = {}
+    timeout_seconds: int | None = None
+
+
+class ChangeRequest(BaseModel):
+    call_ids: list[str]
+    reason: str
+
+
+class IdentityRequest(BaseModel):
+    old_title: str
+    new_title: str
+
+
+class ModuleRequest(BaseModel):
+    name: str
+    code: str
+    overwrite: bool = False
+
+
+class BakeRequest(BaseModel):
+    name: str
+    description: str
 
 
 def layout_summary(spec: BuildingSpec) -> dict[str, Any]:
@@ -201,6 +233,90 @@ def create_app(service: BuildService | None = None, brief_client: Callable[[], M
         if path is None or not path.exists():
             raise HTTPException(404, "No image yet.")
         return FileResponse(path, media_type="image/png")
+
+    # ---- gateway: direct catalog calls and the tools rvt-mcp kept in its own gateway (F11.2, F11.3)
+    gateway = Gateway(service._lock)
+    app.state.gateway = gateway
+
+    def gw(fn, *args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except GatewayError as e:
+            raise HTTPException(e.status, str(e)) from e
+        except ConnectionError as e:
+            raise HTTPException(503, str(e)) from e
+
+    @app.get("/revit/targets")
+    def revit_targets() -> list[dict[str, Any]]:
+        return gateway.list_targets()
+
+    @app.get("/revit/target")
+    def revit_target() -> dict[str, Any]:
+        return gateway.current_target()
+
+    @app.post("/revit/target")
+    def revit_switch(request: TargetRequest) -> dict[str, Any]:
+        return gw(gateway.switch_target, request.target, request.verify)
+
+    @app.get("/revit/commands")
+    def revit_commands(refresh: bool = False) -> list[dict[str, Any]]:
+        return gw(gateway.commands, refresh)
+
+    @app.post("/revit/call/{command}")
+    def revit_call(command: str, request: CallRequest) -> dict[str, Any]:
+        return gw(gateway.call, command, request.params, request.timeout_seconds)
+
+    @app.get("/revit/operations/{call_id}")
+    def revit_operation(call_id: str) -> dict[str, Any]:
+        return gw(gateway.operation_status, call_id)
+
+    @app.get("/revit/usage")
+    def revit_usage(last: int = 1000) -> dict[str, Any]:
+        return gateway.usage_patterns(last)
+
+    @app.get("/revit/failures")
+    def revit_failures(last: int = 100) -> list[dict[str, Any]]:
+        return gateway.failure_records(last)
+
+    @app.get("/revit/lookup")
+    def revit_lookup(text: str) -> dict[str, Any]:
+        return gateway.lookup_message(text)
+
+    @app.post("/revit/changes")
+    def revit_record_change(request: ChangeRequest) -> dict[str, Any]:
+        return gw(gateway.record_change, request.call_ids, request.reason)
+
+    @app.get("/revit/changes")
+    def revit_changes(document_title: str | None = None, since: str | None = None) -> list[dict[str, Any]]:
+        return gateway.change_records(document_title, since)
+
+    @app.post("/revit/history-identity")
+    def revit_identity(request: IdentityRequest) -> dict[str, Any]:
+        return gateway.resolve_history_identity(request.old_title, request.new_title)
+
+    @app.get("/revit/code-modules")
+    def code_modules() -> list[dict[str, Any]]:
+        return gateway.list_code_modules()
+
+    @app.post("/revit/code-modules")
+    def save_module(request: ModuleRequest) -> dict[str, Any]:
+        return gw(gateway.save_code_module, request.name, request.code, request.overwrite)
+
+    @app.delete("/revit/code-modules/{name}")
+    def delete_module(name: str) -> dict[str, Any]:
+        return gw(gateway.delete_code_module, name)
+
+    @app.get("/revit/bake-suggestions")
+    def bake_suggestions() -> list[dict[str, Any]]:
+        return gateway.bake_suggestions()
+
+    @app.post("/revit/bake-suggestions/{suggestion_id}/accept")
+    def accept_bake(suggestion_id: str, request: BakeRequest) -> dict[str, Any]:
+        return gw(gateway.accept_bake_suggestion, suggestion_id, request.name, request.description)
+
+    @app.post("/revit/bake-suggestions/{suggestion_id}/dismiss")
+    def dismiss_bake(suggestion_id: str) -> dict[str, Any]:
+        return gateway.dismiss_bake_suggestion(suggestion_id)
 
     @app.post("/check")
     def check(request: SpecRequest) -> dict[str, Any]:
