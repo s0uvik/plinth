@@ -16,6 +16,8 @@ namespace B2M.Revit.Commands.Modify
             dispatcher.Register(new ChangeElementTypeHandler());
             dispatcher.Register(new AssignElementsToWorksetHandler());
             dispatcher.Register(new SetWallTopHandler());
+            dispatcher.Register(new CopyElementsHandler());
+            dispatcher.Register(new MirrorElementsHandler());
         }
     }
 }
