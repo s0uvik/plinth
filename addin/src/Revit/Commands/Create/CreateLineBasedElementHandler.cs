@@ -8,6 +8,7 @@
 // - locationLine places the chosen reference line (finish face, core face...) on the given line;
 // - baseOffset, topLevel and topOffset; zero-length lines are rejected with a clear message;
 // - the response reads the wall back from Revit.
+// - a curtain wall type makes a curtain wall; locationLine other than the centreline and structural are refused for it.
 
 using System;
 using System.Collections.Generic;
@@ -33,7 +34,8 @@ namespace B2M.Revit.Commands.Create
         public string Name => "create_line_based_element";
         public string Description =>
             "Create a wall from a start and end point in mm on a named level. Optional: typeName or typeId, height (mm, default 3000) "
-            + "or topLevel with topOffset, baseOffset, locationLine (which line of the wall lies on the given points), structural.";
+            + "or topLevel with topOffset, baseOffset, locationLine (which line of the wall lies on the given points), structural. "
+            + "A curtain wall type makes a curtain wall (centreline only, not structural).";
         public string ParametersSchema => @"{""type"":""object"",""properties"":{
             ""elementType"":{""type"":""string"",""enum"":[""wall""]},
             ""startX"":{""type"":""number""},""startY"":{""type"":""number""},
@@ -68,6 +70,15 @@ namespace B2M.Revit.Commands.Create
             var topOffsetMm = p.Value<double?>("topOffset") ?? 0;
             var locationKey = p.Value<string>("locationLine") ?? "wall_centerline";
             var structural = p.Value<bool?>("structural") ?? false;
+
+            // A curtain wall type makes a curtain wall through the same Wall.Create call (B2M). Curtain walls have no
+            // core or finish faces to align and are never structural, so refuse those options instead of failing inside Revit.
+            var curtain = wallType.Kind == WallKind.Curtain;
+            if (curtain && locationKey != "wall_centerline")
+                return CommandResult.Fail("INVALID_PARAMS: '" + wallType.Name + "' is a curtain wall type; curtain walls are placed on their "
+                    + "centreline, so locationLine must be wall_centerline or left out.");
+            if (curtain && structural)
+                return CommandResult.Fail("INVALID_PARAMS: '" + wallType.Name + "' is a curtain wall type; curtain walls cannot be structural.");
 
             if (topLevel == null && heightMm <= 0)
                 return CommandResult.Fail("INVALID_HEIGHT: height must be more than 0 mm.");
@@ -115,6 +126,7 @@ namespace B2M.Revit.Commands.Create
                     {
                         elementId = RevitCompat.GetId(wall.Id),
                         elementType = "wall",
+                        curtain,
                         typeId = RevitCompat.GetId(wall.WallType.Id),
                         typeName = wall.WallType.Name,
                         widthMm = Mm.FromFeet(wall.Width),

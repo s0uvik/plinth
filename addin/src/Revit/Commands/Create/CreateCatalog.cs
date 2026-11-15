@@ -8,6 +8,10 @@ namespace B2M.Revit.Commands.Create
         public static void Register(CommandDispatcher dispatcher)
         {
             dispatcher.Register(new CreateGroupFromElementsHandler());
+            // New in B2M: stairs, railings and roofs.
+            dispatcher.Register(new CreateStairHandler());
+            dispatcher.Register(new CreateRailingHandler());
+            dispatcher.Register(new CreateRoofHandler());
         }
     }
 }
