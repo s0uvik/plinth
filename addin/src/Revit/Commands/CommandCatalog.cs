@@ -18,6 +18,8 @@ namespace B2M.Revit.Commands
             dispatcher.Register(new GetCurrentViewInfoHandler());
             dispatcher.Register(new GetAvailableFamilyTypesHandler());
             dispatcher.Register(new AnalyzeModelStatisticsHandler());
+            dispatcher.Register(new ListLevelsHandler());
+            dispatcher.Register(new ListGridsHandler());
             // create
             dispatcher.Register(new CreateLevelHandler());
             dispatcher.Register(new CreateGridHandler());
@@ -25,6 +27,7 @@ namespace B2M.Revit.Commands
             dispatcher.Register(new CreateSurfaceBasedElementHandler());
             dispatcher.Register(new CreatePointBasedElementHandler());
             dispatcher.Register(new CreateRoomHandler());
+            dispatcher.Register(new CreateFloorOpeningHandler());
             // delete
             dispatcher.Register(new DeleteElementHandler());
             // rooms
