@@ -52,7 +52,7 @@ One JSON object per line each way over the named pipe (Revit 2025+) or loopback 
 ## Packaging and install (Step 6)
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File installeruild.ps1        # dist\B2M-<version>\ and .zip
+powershell -ExecutionPolicy Bypass -File installer\build.ps1        # dist\B2M-<version>\ and .zip
 # on a user's PC, from the unzipped package, with Revit closed:
 powershell -ExecutionPolicy Bypass -File install.ps1                # add-in for each installed Revit 2024-2027 + service
 powershell -ExecutionPolicy Bypass -File uninstall.ps1 [-Purge]

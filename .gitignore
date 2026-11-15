@@ -18,3 +18,4 @@ logs/
 
 # Distribution builds
 dist/
+service/build/
