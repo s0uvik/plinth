@@ -55,10 +55,9 @@ namespace B2M.Revit.Commands.Create
             var doc = app.ActiveUIDocument?.Document;
             if (doc == null) return CommandResult.Fail("NO_DOCUMENT: no document is open in Revit.");
 
-            if (p.Value<long?>("typeId").HasValue && !string.IsNullOrEmpty(p.Value<string>("typeName")))
-                return CommandResult.Fail("INVALID_PARAMS: pass typeId or typeName, not both.");
             if (!Lookup.TryLevel(doc, p.Value<string>("level"), out var level, out var failure)) return failure;
-            if (!Lookup.TryWallType(doc, p.Value<long?>("typeId"), p.Value<string>("typeName"), out var wallType, out failure)) return failure;
+            if (!Lookup.TryElementType<WallType>(doc, p.Value<long?>("typeId"), p.Value<string>("typeName"),
+                    ElementTypeGroup.WallType, "wall", out var wallType, out failure)) return failure;
 
             Level topLevel = null;
             var topLevelName = p.Value<string>("topLevel");

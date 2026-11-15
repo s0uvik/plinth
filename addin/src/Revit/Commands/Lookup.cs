@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using B2M.Revit.Bridge;
@@ -8,7 +9,7 @@ namespace B2M.Revit.Commands
 {
     /// <summary>
     /// Name and ID lookups shared by commands. A miss returns an error carrying the valid options,
-    /// never a silent fallback (rvt-mcp used the first level when a name did not match).
+    /// never a silent fallback (rvt-mcp used the first level or type when a name did not match).
     /// </summary>
     internal static class Lookup
     {
@@ -23,39 +24,108 @@ namespace B2M.Revit.Commands
             return level != null;
         }
 
-        /// <summary>By ID, else by exact name, else the document's default wall type.</summary>
-        public static bool TryWallType(Document doc, long? typeId, string typeName, out WallType wallType, out CommandResult failure)
+        /// <summary>A system type (wall, floor) by ID, else by exact name, else the document's default for the group.</summary>
+        public static bool TryElementType<T>(Document doc, long? typeId, string typeName, ElementTypeGroup defaultGroup, string what,
+            out T type, out CommandResult failure) where T : ElementType
         {
+            failure = null;
+            if (typeId.HasValue && !string.IsNullOrEmpty(typeName))
+            {
+                type = null;
+                failure = CommandResult.Fail("INVALID_PARAMS: pass typeId or typeName, not both.");
+                return false;
+            }
+            if (typeId.HasValue)
+            {
+                type = doc.GetElement(RevitCompat.ToElementId(typeId.Value)) as T;
+                if (type == null) failure = TypeMiss<T>(doc, what, "no " + what + " type has id " + typeId.Value + ".");
+            }
+            else if (!string.IsNullOrEmpty(typeName))
+            {
+                type = TypesOf<T>(doc).FirstOrDefault(t => string.Equals(t.Name, typeName, StringComparison.OrdinalIgnoreCase));
+                if (type == null) failure = TypeMiss<T>(doc, what, "no " + what + " type named '" + typeName + "'.");
+            }
+            else
+            {
+                type = doc.GetElement(doc.GetDefaultElementTypeId(defaultGroup)) as T;
+                if (type == null) failure = TypeMiss<T>(doc, what, "the project has no default " + what + " type; pass typeName.");
+            }
+            return type != null;
+        }
+
+        /// <summary>A loadable family type by ID, or by type name (plus family name and category to disambiguate).</summary>
+        public static bool TryFamilySymbol(Document doc, long? typeId, string familyName, string typeName, BuiltInCategory? category,
+            out FamilySymbol symbol, out CommandResult failure)
+        {
+            symbol = null;
             failure = null;
             if (typeId.HasValue)
             {
-                wallType = doc.GetElement(RevitCompat.ToElementId(typeId.Value)) as WallType;
-                if (wallType == null) failure = WallTypeMiss(doc, "no wall type has id " + typeId.Value + ".");
-                return wallType != null;
+                symbol = doc.GetElement(RevitCompat.ToElementId(typeId.Value)) as FamilySymbol;
+                if (symbol == null) failure = CommandResult.Fail("TYPE_NOT_FOUND: no family type has id " + typeId.Value + ".");
+                return symbol != null;
             }
-            if (!string.IsNullOrEmpty(typeName))
+            if (string.IsNullOrEmpty(typeName))
             {
-                wallType = WallTypes(doc).FirstOrDefault(t => string.Equals(t.Name, typeName, StringComparison.OrdinalIgnoreCase));
-                if (wallType == null) failure = WallTypeMiss(doc, "no wall type named '" + typeName + "'.");
-                return wallType != null;
+                failure = CommandResult.Fail("INVALID_PARAMS: pass typeId, or typeName (with familyName if names repeat).");
+                return false;
             }
-            wallType = doc.GetElement(doc.GetDefaultElementTypeId(ElementTypeGroup.WallType)) as WallType;
-            if (wallType == null) failure = WallTypeMiss(doc, "the project has no default wall type; pass typeName.");
-            return wallType != null;
+            var candidates = new FilteredElementCollector(doc).OfClass(typeof(FamilySymbol)).Cast<FamilySymbol>()
+                .Where(s => category == null || (s.Category != null && s.Category.BuiltInCategory == category.Value))
+                .ToList();
+            var matches = candidates.Where(s => string.Equals(s.Name, typeName, StringComparison.OrdinalIgnoreCase)
+                && (string.IsNullOrEmpty(familyName) || string.Equals(s.FamilyName, familyName, StringComparison.OrdinalIgnoreCase))).ToList();
+            if (matches.Count == 1)
+            {
+                symbol = matches[0];
+                return true;
+            }
+            failure = CommandResult.Fail(
+                (matches.Count == 0 ? "TYPE_NOT_FOUND: no family type named '" : "TYPE_AMBIGUOUS: several families have a type named '")
+                + typeName + "'" + (string.IsNullOrEmpty(familyName) ? "" : " in family '" + familyName + "'") + ".",
+                new JObject { ["valid_types"] = Describe(matches.Count > 1 ? matches : candidates) });
+            return false;
         }
 
-        private static IOrderedEnumerable<WallType> WallTypes(Document doc) =>
-            new FilteredElementCollector(doc).OfClass(typeof(WallType)).Cast<WallType>().OrderBy(t => t.Name);
+        public static bool TryBuiltInCategory(string name, out BuiltInCategory category, out CommandResult failure)
+        {
+            failure = null;
+            if (Enum.TryParse(name, false, out category) && Enum.IsDefined(typeof(BuiltInCategory), category)) return true;
+            failure = CommandResult.Fail("INVALID_PARAMS: '" + name + "' is not a built-in category name such as OST_Doors, OST_Windows, OST_Walls, OST_Floors.");
+            return false;
+        }
 
-        private static CommandResult WallTypeMiss(Document doc, string message) =>
+        /// <summary>The language-independent category name, e.g. OST_Walls, or null.</summary>
+        public static string BuiltInName(Category category) =>
+            category == null || category.BuiltInCategory == BuiltInCategory.INVALID ? null : category.BuiltInCategory.ToString();
+
+        public static bool TryElement<T>(Document doc, long id, string what, out T element, out CommandResult failure) where T : Element
+        {
+            element = doc.GetElement(RevitCompat.ToElementId(id)) as T;
+            failure = element != null ? null : CommandResult.Fail("ELEMENT_NOT_FOUND: element " + id + " is not a " + what + " in this document.");
+            return element != null;
+        }
+
+        private static IEnumerable<T> TypesOf<T>(Document doc) where T : ElementType =>
+            new FilteredElementCollector(doc).OfClass(typeof(T)).Cast<T>().OrderBy(t => t.Name);
+
+        private static CommandResult TypeMiss<T>(Document doc, string what, string message) where T : ElementType =>
             CommandResult.Fail("TYPE_NOT_FOUND: " + message, new JObject
             {
-                ["valid_wall_types"] = new JArray(WallTypes(doc).Take(MaxOptions).Select(t => new JObject
+                ["valid_" + what + "_types"] = new JArray(TypesOf<T>(doc).Take(MaxOptions).Select(t => new JObject
                 {
                     ["id"] = RevitCompat.GetId(t.Id),
-                    ["name"] = t.Name,
-                    ["kind"] = t.Kind.ToString()
+                    ["name"] = t.Name
                 }))
             });
+
+        private static JArray Describe(IEnumerable<FamilySymbol> symbols) =>
+            new JArray(symbols.OrderBy(s => s.FamilyName).ThenBy(s => s.Name).Take(MaxOptions).Select(s => new JObject
+            {
+                ["id"] = RevitCompat.GetId(s.Id),
+                ["familyName"] = s.FamilyName,
+                ["typeName"] = s.Name,
+                ["builtInCategory"] = BuiltInName(s.Category)
+            }));
     }
 }
