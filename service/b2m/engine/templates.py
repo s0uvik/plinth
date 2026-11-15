@@ -165,7 +165,8 @@ def plan_plate(spec: BuildingSpec, env: Envelope, variant: int) -> PlateLayout:
         try:
             depths = column_depths("L", width_l) | column_depths("R", width_r)
         except FlatError as e:
-            errors.append(str(e))
+            if width_l == flat_w:  # Report the even split, not a lopsided trial.
+                errors.append(str(e))
             continue
         depth = max(sum(depths[letter] for letter, _ in slots) for slots in columns.values())
         key = (depth, abs(width_l - flat_w), width_l)
