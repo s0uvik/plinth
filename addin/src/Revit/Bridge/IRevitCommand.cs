@@ -25,6 +25,14 @@ namespace B2M.Revit.Bridge
         CommandResult Execute(UIApplication app, JObject parameters);
     }
 
+    /// <summary>
+    /// A write command that does not act on the active document (open_model opens another file), so the
+    /// confirmed-document check does not apply and it works with no document open. It still counts as a write.
+    /// </summary>
+    public interface IOpensDocument
+    {
+    }
+
     public sealed class CommandResult
     {
         public bool Success { get; private set; }

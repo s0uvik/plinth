@@ -97,7 +97,7 @@ namespace B2M.Revit.Bridge
                 {
                     var validation = SchemaValidator.Validate(command.ParametersSchema, request.ParamsJson);
                     var rejection = !validation.IsValid ? null
-                        : command.ReadOnly ? null
+                        : command.ReadOnly || command is IOpensDocument ? null
                         : DocumentTargetGuard.WriteRejection(request.ExpectedDocumentId, target.Value<string>("document_id"));
                     if (!validation.IsValid)
                     {

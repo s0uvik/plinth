@@ -4,7 +4,8 @@
 // full path. A workshared central model, a file whose header cannot be read, or a workshared model from another Revit
 // year is refused instead of creating a new local copy (rvt-mcp's Create New Local, Revit.ini ProjectPath lookup and
 // local-file renaming are not ported; the user opens or creates the local in Revit). The worksets option is not ported.
-// Cannot run inside batch_execute (BatchExecutor). Opening never saves the model.
+// Cannot run inside batch_execute (BatchExecutor). Opening never saves the model. Needs no confirmed document
+// (IOpensDocument), so it also works when Revit has nothing open.
 
 using System;
 using System.IO;
@@ -16,7 +17,7 @@ using Newtonsoft.Json.Linq;
 
 namespace B2M.Revit.Commands.Meta
 {
-    public sealed class OpenModelHandler : IRevitCommand
+    public sealed class OpenModelHandler : IRevitCommand, IOpensDocument
     {
         private static readonly Regex Absolute = new Regex(@"^(?:[A-Za-z]:\\|\\\\[^\\]+\\[^\\]+\\)", RegexOptions.CultureInvariant);
 
