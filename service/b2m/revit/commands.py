@@ -10,6 +10,9 @@ from __future__ import annotations
 from typing import Any
 
 from b2m.plan import DoorOp, FloorOp, GridOp, LevelOp, Op, RoomOp, ShaftOp, WallOp, WindowOp
+from b2m.revit.types import TypeMap
+
+NO_MAPPING = TypeMap()
 
 # Every command the build flow needs; checked against the add-in at startup (F6.1).
 REQUIRED_COMMANDS = [
@@ -29,8 +32,9 @@ def _points(points: list[tuple[float, float]]) -> list[dict[str, float]]:
     return [{"x": x, "y": y} for x, y in points]
 
 
-def to_command(op: Op, plan: dict[str, Op], ids: dict[str, int]) -> dict[str, Any]:
-    """One batch_execute sub-command for an op. ``ids`` maps already-built keys to element ids."""
+def to_command(op: Op, plan: dict[str, Op], ids: dict[str, int], types: TypeMap = NO_MAPPING) -> dict[str, Any]:
+    """One batch_execute sub-command for an op. ``ids`` maps already-built keys to element ids;
+    ``types`` converts logical type names to the project's own."""
     match op:
         case LevelOp():
             return {"command": "create_level", "params": {"elevation": op.elevation_mm, "name": op.name}}
@@ -44,7 +48,7 @@ def to_command(op: Op, plan: dict[str, Op], ids: dict[str, int]) -> dict[str, An
                 "locationLine": op.location_line, "baseOffset": op.base_offset_mm,
             }
             if op.type:
-                params["typeName"] = op.type
+                params["typeName"] = types.wall(op.type)
             if op.top_level:
                 params.update(topLevel=op.top_level, topOffset=op.top_offset_mm)
             else:
@@ -53,7 +57,7 @@ def to_command(op: Op, plan: dict[str, Op], ids: dict[str, int]) -> dict[str, An
         case FloorOp():
             params = {"elementType": "floor", "level": op.level, "points": _points(op.points)}
             if op.type:
-                params["typeName"] = op.type
+                params["typeName"] = types.floor(op.type)
             return {"command": "create_surface_based_element", "params": params}
         case ShaftOp():
             return {"command": "create_floor_opening", "params": {
@@ -61,13 +65,14 @@ def to_command(op: Op, plan: dict[str, Op], ids: dict[str, int]) -> dict[str, An
                 "baseOffset": op.base_offset_mm, "topOffset": op.top_offset_mm}}
         case DoorOp() | WindowOp():
             host = plan[op.host_key]
+            mapped = types.door(op.type, op.family) if isinstance(op, DoorOp) else types.window(op.type, op.family)
             params = {
                 "level": host.level, "host_id": ids[op.host_key], "hostOffset": op.offset_mm,
-                "typeName": op.type, "builtInCategory": CATEGORY[op.op],
+                "typeName": mapped.type, "builtInCategory": CATEGORY[op.op],
                 "flipFacing": op.flip_facing, "flipHand": op.flip_hand,
             }
-            if op.family:
-                params["familyName"] = op.family
+            if mapped.family:
+                params["familyName"] = mapped.family
             if isinstance(op, WindowOp) and op.sill_mm is not None:
                 params["sillHeight"] = op.sill_mm
             return {"command": "create_point_based_element", "params": params}

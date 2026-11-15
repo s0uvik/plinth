@@ -17,6 +17,7 @@ from typing import Any, Callable, Protocol
 from b2m.plan import PHASE_OF, BuildPlan, Op
 from b2m.revit import commands
 from b2m.revit.client import RevitError, RevitTimeout
+from b2m.revit.types import TypeMap
 
 MAX_BATCH = 20
 BATCH_TIMEOUT_SECONDS = 300
@@ -54,9 +55,10 @@ def plan_batches(plan: BuildPlan) -> list[list[Op]]:
 
 
 class Runner:
-    def __init__(self, revit: Revit, progress: Callable[[int, int], None] | None = None):
+    def __init__(self, revit: Revit, progress: Callable[[int, int], None] | None = None, types: TypeMap | None = None):
         self.revit = revit
         self.progress = progress or (lambda done, total: None)
+        self.types = types or TypeMap()
 
     def build(self, plan: BuildPlan) -> BuildResult:
         by_key = plan.by_key()
@@ -64,7 +66,7 @@ class Runner:
         result = BuildResult(status="built", batches_total=len(batches), batches_succeeded=0)
         self.progress(0, len(batches))
         for index, batch in enumerate(batches):
-            subcommands = [commands.to_command(op, by_key, result.created) for op in batch]
+            subcommands = [commands.to_command(op, by_key, result.created, self.types) for op in batch]
             log.info("batch %d of %d: %d ops (%s)", index + 1, len(batches), len(batch), batch[0].op)
             try:
                 data = self.revit.call("batch_execute", {"commands": subcommands}, timeout_seconds=BATCH_TIMEOUT_SECONDS)

@@ -12,6 +12,7 @@ from typing import Any, Callable
 from b2m.plan import BuildPlan
 from b2m.revit import RevitClient
 from b2m.revit.commands import REQUIRED_COMMANDS
+from b2m.revit.types import TypeMap
 from b2m.runner import Runner
 from b2m.runs import Run, RunStore
 
@@ -34,8 +35,9 @@ class Busy(Exception):
 
 
 class BuildService:
-    def __init__(self, store: RunStore, connect: Callable[[], RevitClient] | None = None):
+    def __init__(self, store: RunStore, connect: Callable[[], RevitClient] | None = None, types: TypeMap | None = None):
         self.store = store
+        self.types = types if types is not None else TypeMap.load()
         self._connect = connect or (lambda: RevitClient.connect(required_commands=REQUIRED_COMMANDS))
         self._lock = threading.Lock()
 
@@ -65,7 +67,8 @@ class BuildService:
             with self._open(run) as revit:
                 title = revit.confirm_document(document_title)
                 run.update(status="building", document_title=title, versions=self._versions(revit, plan))
-                runner = Runner(revit, progress=lambda done, total: run.update(batches={"total": total, "succeeded": done}))
+                runner = Runner(revit, progress=lambda done, total: run.update(batches={"total": total, "succeeded": done}),
+                                types=self.types)
                 result = runner.build(plan)
                 run.update(
                     status=result.status,

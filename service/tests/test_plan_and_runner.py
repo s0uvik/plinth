@@ -166,3 +166,25 @@ def test_remove_deletes_newest_first_in_one_call():
     revit = FakeRevit()
     Runner(revit).remove({"a": 1, "b": 2, "c": 3})
     assert revit.calls == [("delete_element", {"elementIds": [3, 2, 1]})]
+
+
+def test_type_map_converts_logical_names_and_passes_unknown_ones_through():
+    from b2m.revit.types import TypeMap
+    types = TypeMap.from_dict({"walls": {"Brick 230": "Muro de 25cm"},
+                               "doors": {"Door 900": {"family": "Puerta", "type": "0.90 x 2.10"}}})
+    by_key = HOUSE.by_key()
+    door = commands.to_command(by_key["F1-DI"], by_key, {"F1-WI": 1}, types)
+    assert door["params"]["typeName"] == "0.90 x 2.10" and door["params"]["familyName"] == "Puerta"
+    window = commands.to_command(by_key["F0-WN1"], by_key, {"F0-WN": 7}, types)
+    assert window["params"]["typeName"] == "Window 1200" and "familyName" not in window["params"]
+    assert types.wall("Brick 230") == "Muro de 25cm" and types.wall("Brick 115") == "Brick 115"
+    with pytest.raises(ValueError):
+        TypeMap.from_dict({"roofs": {}})
+
+
+def test_type_map_loads_the_users_standards_file(tmp_path, monkeypatch):
+    from b2m.revit.types import TypeMap
+    monkeypatch.setenv("B2M_HOME", str(tmp_path))
+    assert TypeMap.load() == TypeMap()
+    (tmp_path / "standards.json").write_text('{"floors": {"RCC 150": "Losa 15"}}', encoding="utf-8")
+    assert TypeMap.load().floor("RCC 150") == "Losa 15"

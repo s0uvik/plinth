@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from b2m.api import create_app
 from b2m.builds import BuildService
 from b2m.examples import two_storey_house
+from b2m.revit.types import TypeMap
 from b2m.runs import RunStore
 from tests.test_plan_and_runner import HOUSE, FakeRevit, _stats_for
 
@@ -43,7 +44,7 @@ class FakeClient(FakeRevit):
 def make_service(tmp_path, client):
     def connect():
         return client
-    return BuildService(RunStore(tmp_path), connect)
+    return BuildService(RunStore(tmp_path), connect, types=TypeMap())
 
 
 def test_build_records_run_versions_tool_calls_and_readback(tmp_path):
