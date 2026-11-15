@@ -21,6 +21,8 @@
     <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="$(RevitApiVersion)" PrivateAssets="all" />
     <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="$(RevitApiVersion)" PrivateAssets="all" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <!-- C# compiler for send_code_to_revit and run_baked_tool (developer mode only); same version as rvt-mcp. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
   </ItemGroup>
 
   <!--
@@ -34,6 +36,8 @@
     </PropertyGroup>
     <ItemGroup>
       <DeployFiles Include="$(OutDir)B2M.Revit.dll;$(OutDir)B2M.Revit.pdb;$(OutDir)Newtonsoft.Json.dll" />
+      <!-- Roslyn and, on net48, its System.* support assemblies (wildcards: whatever this framework copies). -->
+      <DeployFiles Include="$(OutDir)Microsoft.CodeAnalysis*.dll;$(OutDir)System.*.dll" />
     </ItemGroup>
     <MakeDir Directories="$(DeployDir)" />
     <Copy SourceFiles="@(DeployFiles)" DestinationFolder="$(DeployDir)" />
