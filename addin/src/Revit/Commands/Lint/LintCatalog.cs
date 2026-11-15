@@ -7,6 +7,9 @@ namespace B2M.Revit.Commands.Lint
     {
         public static void Register(CommandDispatcher dispatcher)
         {
+            dispatcher.Register(new AnalyzeViewNamingPatternsHandler());
+            dispatcher.Register(new SuggestViewNameCorrectionsHandler());
+            dispatcher.Register(new DetectFirmProfileHandler());
         }
     }
 }

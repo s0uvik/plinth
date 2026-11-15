@@ -7,6 +7,20 @@ namespace B2M.Revit.Commands.Query
     {
         public static void Register(CommandDispatcher dispatcher)
         {
+            dispatcher.Register(new GetSelectedElementsHandler());
+            dispatcher.Register(new AiElementFilterHandler());
+            dispatcher.Register(new GetMaterialQuantitiesHandler());
+            dispatcher.Register(new GetElementDetailsHandler());
+            dispatcher.Register(new GetElementParametersHandler());
+            dispatcher.Register(new GetTypeParametersHandler());
+            dispatcher.Register(new ListProjectParametersHandler());
+            dispatcher.Register(new GetElementRelationshipsHandler());
+            dispatcher.Register(new SurveyChangeImpactHandler());
+            dispatcher.Register(new ListGroupsHandler());
+            dispatcher.Register(new GetGroupMembersHandler());
+            dispatcher.Register(new ListAssembliesHandler());
+            dispatcher.Register(new GetAssemblyMembersHandler());
+            dispatcher.Register(new ListWorksetsHandler());
         }
     }
 }

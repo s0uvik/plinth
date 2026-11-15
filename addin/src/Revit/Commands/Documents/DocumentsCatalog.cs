@@ -7,6 +7,9 @@ namespace B2M.Revit.Commands.Documents
     {
         public static void Register(CommandDispatcher dispatcher)
         {
+            dispatcher.Register(new SaveDocumentHandler());
+            dispatcher.Register(new SaveCheckpointHandler());
+            dispatcher.Register(new ManageCheckpointsHandler());
         }
     }
 }

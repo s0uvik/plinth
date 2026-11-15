@@ -7,6 +7,7 @@ namespace B2M.Revit.Commands.Create
     {
         public static void Register(CommandDispatcher dispatcher)
         {
+            dispatcher.Register(new CreateGroupFromElementsHandler());
         }
     }
 }
