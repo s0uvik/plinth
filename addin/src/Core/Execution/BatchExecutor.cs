@@ -30,6 +30,9 @@ namespace B2M.Revit.Core.Execution
             ["save_document"] = "save_document cannot run inside batch_execute; call it directly.",
             ["save_checkpoint"] = "save_checkpoint cannot run inside batch_execute; call it directly.",
             ["manage_checkpoints"] = "manage_checkpoints cannot run inside batch_execute; call it directly.",
+            // Revit's StairsEditScope cannot start inside a transaction or close while a transaction group is open.
+            ["create_stair"] = "create_stair cannot run inside batch_execute (Revit's stair edit mode cannot run inside the batch's "
+                + "transaction group); call it directly.",
         };
 
         public sealed class Outcome
