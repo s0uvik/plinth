@@ -67,3 +67,25 @@ With Revit 2026 open on a **scratch** project and the add-in deployed:
 ```
 
 Then press Ctrl+Z once in Revit: the two levels and four walls it created should disappear together.
+
+### Local API
+
+```sh
+.venv\Scripts\python -m b2m.api      # http://127.0.0.1:8765
+```
+
+`POST /builds {"plan": ..., "document_title": "..."}` starts a build and returns a `run_id`;
+`GET /runs/{id}` shows progress (`batches`), created ids, read-back and errors;
+`POST /runs/{id}/remove` deletes exactly what that run created. Runs are kept in
+`%LOCALAPPDATA%\B2M\runs\<run_id>\` (plan, run record, every tool call).
+
+### Command tests and Step 1 gate
+
+Revit must be closed while deploying a new add-in build (Revit locks the loaded DLL).
+
+```sh
+set B2M_LIVE=1
+set B2M_TITLE=<scratch project title>
+.venv\Scripts\python -m pytest tests/live -v
+.venv\Scripts\python scripts\step1_gate.py --title "<scratch project title>"
+```
