@@ -7,6 +7,15 @@ namespace B2M.Revit.Commands.Modify
     {
         public static void Register(CommandDispatcher dispatcher)
         {
+            dispatcher.Register(new MoveElementsHandler());
+            dispatcher.Register(new RotateElementsHandler());
+            dispatcher.Register(new OperateElementHandler());
+            dispatcher.Register(new ColorElementsHandler());
+            dispatcher.Register(new SetElementParameterValuesHandler());
+            dispatcher.Register(new SetTypeParameterValuesHandler());
+            dispatcher.Register(new ChangeElementTypeHandler());
+            dispatcher.Register(new AssignElementsToWorksetHandler());
+            dispatcher.Register(new SetWallTopHandler());
         }
     }
 }
