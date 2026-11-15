@@ -10,14 +10,16 @@ from importlib.resources import files
 from typing import Any, Callable
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
 from b2m import logs
 from b2m.brief.agent import BriefFailed, BriefSession, MessagesClient, Questions, SpecReady, anthropic_client
 from b2m.builds import BuildService, Busy, product_version
+from b2m.compliance import evaluate, facts_after_build, facts_before_build, hard_failures
+from b2m.compliance.pdf import write_pdf
 from b2m.engine import LayoutError, generate
-from b2m.plan import BuildPlan
+from b2m.plan import BuildPlan, RoomOp
 from b2m.revit import RevitClient
 from b2m.runs import RunStore
 from b2m.spec import BuildingSpec, parse_spec
@@ -42,20 +44,35 @@ class SpecRequest(BaseModel):
     spec: dict[str, Any]
     document_title: str | None = None
     brief_id: str | None = None
+    override: bool = False  # build despite hard compliance failures (F5.1)
 
 
 def layout_summary(spec: BuildingSpec) -> dict[str, Any]:
-    """What the user should see before building: the layout the engine would make, or why it cannot."""
+    """What the user should see before building: the layout and its compliance check, or why it cannot be laid out."""
     try:
         report = generate(spec).report
     except LayoutError as e:
         return {"ok": False, "error": str(e)}
+    checks = evaluate(facts_before_build(spec, report))
     keep = ("template", "variant", "height_mm", "footprint_m2", "plot_area_m2", "ground_coverage", "far",
             "setbacks_mm", "notes", "levels", "lift")
     summary = {k: report[k] for k in keep}
     summary["flats_per_floor"] = [{k: f[k] for k in ("letter", "type", "target_carpet_m2", "carpet_m2", "width_mm", "depth_mm")}
                                   for f in report["flats_per_floor"]]
-    return {"ok": True, **summary}
+    return {"ok": True, **summary, "checks": checks}
+
+
+def after_build_checks(spec: BuildingSpec, report: dict[str, Any], plan: BuildPlan):
+    """Re-run the room rules on rooms read back from Revit and save the report with the run (F8.1)."""
+    room_keys = {op.key for op in plan.ops if isinstance(op, RoomOp)}
+
+    def check(revit, run, created: dict[str, int]) -> dict[str, Any]:
+        result = evaluate(facts_after_build(spec, report, revit, [i for k, i in created.items() if k in room_keys]))
+        run.save("check_after", result)
+        pdf = write_pdf(result, run.dir / "report.pdf", "Compliance report (after build)")
+        return {**{k: result["summary"][k] for k in ("hard_fail", "soft_fail", "provisional")}, "report_pdf": str(pdf)}
+
+    return check
 
 
 def brief_json(session: BriefSession) -> dict[str, Any]:
@@ -130,15 +147,47 @@ def create_app(service: BuildService | None = None, brief_client: Callable[[], M
             result = generate(spec)
         except LayoutError as e:
             raise HTTPException(422, {"errors": [str(e)]}) from e
-        attachments: dict[str, Any] = {"spec": spec.model_dump(mode="json"), "layout_report": result.report}
+        before = evaluate(facts_before_build(spec, result.report))
+        blocking = hard_failures(before)
+        if blocking and not request.override:
+            raise HTTPException(409, {"errors": ["Hard compliance failures; build with override to proceed anyway:"] + blocking,
+                                      "checks": before})
+        attachments: dict[str, Any] = {"spec": spec.model_dump(mode="json"), "layout_report": result.report,
+                                       "check_before": before}
+        if blocking:
+            attachments["override"] = {"overridden": blocking}
         if request.brief_id:
             with briefs_lock:
                 session = briefs.get(request.brief_id)
             attachments["brief"] = {"id": request.brief_id, "text": session.brief if session else None}
         try:
-            return {"run_id": service.start(result.plan, request.document_title, attachments)}
+            run_id = service.start(result.plan, request.document_title, attachments,
+                                   after_build=after_build_checks(spec, result.report, result.plan))
         except Busy as e:
             raise HTTPException(409, str(e)) from e
+        write_pdf(before, service.store.root / run_id / "report_before.pdf", "Compliance report (before build)")
+        return {"run_id": run_id}
+
+    @app.post("/check")
+    def check(request: SpecRequest) -> dict[str, Any]:
+        spec, errors = parse_spec(request.spec)
+        if spec is None:
+            raise HTTPException(422, {"errors": errors})
+        try:
+            report = generate(spec).report
+        except LayoutError as e:
+            raise HTTPException(422, {"errors": [str(e)]}) from e
+        return evaluate(facts_before_build(spec, report))
+
+    @app.get("/runs/{run_id}/{name}.pdf")
+    def run_pdf(run_id: str, name: str) -> FileResponse:
+        run = service.store.get(run_id)
+        if run is None or name not in ("report", "report_before", "set"):
+            raise HTTPException(404, "No such file.")
+        path = run.dir / f"{name}.pdf"
+        if not path.exists():
+            raise HTTPException(404, "Not produced yet.")
+        return FileResponse(path, media_type="application/pdf", filename=f"{run_id}-{name}.pdf")
 
     @app.post("/builds", status_code=202)
     def start_build(request: BuildRequest) -> dict[str, str]:

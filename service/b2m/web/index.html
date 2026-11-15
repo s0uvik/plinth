@@ -107,6 +107,9 @@
         <input type="text" id="title" placeholder="Title of the open project, e.g. scratch-01">
         <p class="hint">Nothing is built unless this document is the one open in Revit.</p>
       </div>
+      <label class="hidden small" id="override-row" style="font-weight:400; margin-top: var(--s4)">
+        <input type="checkbox" id="override"> Build anyway, despite the hard compliance failures above
+      </label>
       <div class="actions"><button class="primary" id="build">Build in Revit</button></div>
     </section>
   </div>
@@ -189,7 +192,24 @@ function showLayout(layout) {
       el("td", {}, f.letter), el("td", {}, f.type),
       el("td", {class: "num"}, `${f.carpet_m2.toFixed(1)} m²`), el("td", {class: "num muted"}, `${f.target_carpet_m2.toFixed(0)} m²`))));
   const notes = layout.notes.map(n => el("div", {class: "note warn small"}, n));
-  box.replaceChildren(facts, el("h3", {}, "Flats on each floor"), table, ...notes);
+  box.replaceChildren(facts, el("h3", {}, "Flats on each floor"), table, ...notes, ...checksView(layout.checks));
+  $("override-row").classList.toggle("hidden", !(layout.checks && layout.checks.summary.hard_fail));
+  $("override").checked = false;
+}
+
+function checksView(checks) {
+  if (!checks) return [];
+  const s = checks.summary;
+  const provisional = checks.rule_sets.filter(r => !r.verified).map(r => r.name);
+  const fails = checks.findings.filter(f => f.status === "fail");
+  const head = el("div", {class: `note ${s.hard_fail ? "error" : s.soft_fail ? "warn" : "ok"}`},
+    `${s.hard_fail} hard and ${s.soft_fail} soft compliance failures; ${s.passed} checks passed.`);
+  const list = el("ul", {class: "plain small"}, ...fails.map(f => el("li", {},
+    el("strong", {}, `${f.severity === "hard" ? "" : "(soft) "}${f.title}`), ` — ${f.subject}: ${f.measured}, required ${f.required}`,
+    el("div", {class: "muted"}, `${f.rule_set}: ${f.clause}`))));
+  const warn = provisional.length ? [el("div", {class: "note warn small"},
+    `Rule values for ${provisional.join(" and ")} are provisional and not yet checked against the official texts.`)] : [];
+  return [el("h3", {}, "Compliance (advisory)"), head, ...warn, list];
 }
 
 $("read").onclick = () => busy($("read"), $("read-status"), async () => {
@@ -212,7 +232,8 @@ $("update").onclick = () => busy($("update"), null, async () => {
 
 $("build").onclick = () => busy($("build"), null, async () => {
   if (!$("title").value.trim()) throw new Error("Enter the title of the Revit document to build in.");
-  const data = await call("/builds/from-spec", {spec: JSON.parse($("spec").value), document_title: $("title").value.trim(), brief_id: briefId});
+  const data = await call("/builds/from-spec", {spec: JSON.parse($("spec").value), document_title: $("title").value.trim(),
+                                                brief_id: briefId, override: $("override").checked});
   runId = data.run_id;
   clearInterval(poll);
   poll = setInterval(refreshRun, 1000);
@@ -238,6 +259,11 @@ async function refreshRun() {
       `${r.elements} elements, ${r.warnings_total} Revit warnings` + (r.mismatches.length ? `, ${r.mismatches.length} count mismatches` : "")));
   }
   if (run.error) parts.push(el("div", {class: "note error small"}, run.error + (run.failed_key ? ` (at ${run.failed_key})` : "")));
+  if (run.checks && !run.checks.error) parts.push(el("div", {class: `note ${run.checks.hard_fail ? "error" : "ok"} small`},
+    `After build: ${run.checks.hard_fail} hard and ${run.checks.soft_fail} soft compliance failures.`));
+  const links = [["report_before", "Compliance before build"], ["report", "Compliance after build"]]
+    .map(([n, label]) => Object.assign(el("a", {href: `/runs/${runId}/${n}.pdf`, target: "_blank"}, label), {className: "small"}));
+  parts.push(el("div", {class: "actions"}, ...links));
   if (run.created && Object.keys(run.created).length && !["removed", "removing", "building", "queued"].includes(run.status)) {
     const remove = el("button", {class: "secondary"}, "Remove generated model");
     remove.onclick = () => busy(remove, null, async () => { await call(`/runs/${runId}/remove`, {}); refreshRun(); });

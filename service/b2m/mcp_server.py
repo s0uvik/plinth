@@ -6,7 +6,7 @@ Claude Desktop config (claude_desktop_config.json):
     {"mcpServers": {"b2m": {"command": "<path>\\service\\.venv\\Scripts\\python.exe", "args": ["-m", "b2m.mcp_server"]}}}
 
 The service must be running: python -m b2m.api
-b2m_check and b2m_drawing_set join when compliance checks (Step 4) and drawings (Step 5) exist.
+b2m_drawing_set joins when the drawing set (Step 5) exists.
 """
 
 from __future__ import annotations
@@ -68,9 +68,17 @@ def build_server(api: Api | None = None) -> MCPServer:
         return api.call("POST", "/preview", {"spec": spec})
 
     @server.tool()
-    def b2m_build(spec: dict[str, Any], document_title: str, brief_id: str = "") -> dict[str, Any]:
-        """Build the spec in the open Revit document with this title. Returns a run_id; follow it with b2m_run_status."""
-        return api.call("POST", "/builds/from-spec", {"spec": spec, "document_title": document_title, "brief_id": brief_id or None})
+    def b2m_check(spec: dict[str, Any]) -> dict[str, Any]:
+        """Check a building spec against the NBC 2016 and Kolkata rules (advisory). Lists every failure with the
+        measured value, the requirement and the clause; rule values marked provisional are not yet verified."""
+        return api.call("POST", "/check", {"spec": spec})
+
+    @server.tool()
+    def b2m_build(spec: dict[str, Any], document_title: str, brief_id: str = "", override: bool = False) -> dict[str, Any]:
+        """Build the spec in the open Revit document with this title. Hard compliance failures block the build unless
+        the user explicitly chooses override. Returns a run_id; follow it with b2m_run_status."""
+        return api.call("POST", "/builds/from-spec", {"spec": spec, "document_title": document_title,
+                                                       "brief_id": brief_id or None, "override": override})
 
     @server.tool()
     def b2m_run_status(run_id: str) -> dict[str, Any]:

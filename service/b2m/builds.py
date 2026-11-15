@@ -41,7 +41,8 @@ class BuildService:
         self._connect = connect or (lambda: RevitClient.connect(required_commands=REQUIRED_COMMANDS))
         self._lock = threading.Lock()
 
-    def start(self, plan: BuildPlan, document_title: str | None = None, attachments: dict[str, Any] | None = None) -> str:
+    def start(self, plan: BuildPlan, document_title: str | None = None, attachments: dict[str, Any] | None = None,
+              after_build: Callable[[RevitClient, Run, dict[str, int]], dict[str, Any]] | None = None) -> str:
         """Start a build in the background and return its run id. Attachments (spec, layout report, brief)
         are saved in the run beside the plan."""
         if not self._lock.acquire(blocking=False):
@@ -55,7 +56,8 @@ class BuildService:
         except Exception:
             self._lock.release()
             raise
-        threading.Thread(target=self._build, args=(run, plan, document_title), name=f"build-{run.id}", daemon=True).start()
+        threading.Thread(target=self._build, args=(run, plan, document_title, after_build), name=f"build-{run.id}",
+                         daemon=True).start()
         return run.id
 
     def build_now(self, plan: BuildPlan, document_title: str | None = None) -> dict[str, Any]:
@@ -65,7 +67,7 @@ class BuildService:
             pass
         return self.store.get(run_id).load("run")
 
-    def _build(self, run: Run, plan: BuildPlan, document_title: str | None) -> None:
+    def _build(self, run: Run, plan: BuildPlan, document_title: str | None, after_build=None) -> None:
         try:
             with self._open(run) as revit:
                 title = revit.confirm_document(document_title)
@@ -83,6 +85,12 @@ class BuildService:
                 if result.status == "built":
                     readback = runner.verify(plan, result.created)
                     run.update(readback=readback, status="built" if readback["ok"] else "built_with_issues")
+                    if after_build is not None:  # e.g. compliance checks on rooms read back from Revit (F8.1)
+                        try:
+                            run.update(checks=after_build(revit, run, result.created))
+                        except Exception as e:  # The model is built; a failed check must not hide that.
+                            log.exception("after-build step failed for run %s", run.id)
+                            run.update(checks={"error": f"{type(e).__name__}: {e}"})
         except Exception as e:  # Connection or protocol problems: record them, never lose the run.
             log.exception("run %s failed", run.id)
             run.update(status="failed", error=f"{type(e).__name__}: {e}")
