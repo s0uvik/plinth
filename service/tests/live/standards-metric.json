@@ -1,0 +1,35 @@
+{
+  "walls": {
+    "Brick 230": "Generic - 200mm Masonry",
+    "Brick 115": "Generic - 125mm"
+  },
+  "floors": {
+    "RCC 150": "Concrete 150mm",
+    "Chajja 100": "Concrete 100mm"
+  },
+  "doors": {
+    "Door 1000x2100": {"family": "M_Door-Exterior-Single-Two_Lite", "type": "900 x 2100mm"},
+    "Door 1200x2100": {"family": "M_Door-Exterior-Single-Two_Lite", "type": "900 x 2100mm"},
+    "Door 900x2100": {"family": "M_Door-Passage-Single-Flush", "type": "900 x 2100mm"},
+    "Door 750x2100": {"family": "M_Door-Passage-Single-Flush", "type": "750 x 2100mm"}
+  },
+  "windows": {
+    "Window 2400x1500": {"family": "M_Window-Casement-Double", "type": "1200 x 1500mm"},
+    "Window 1800x1500": {"family": "M_Window-Casement-Double", "type": "1200 x 1500mm"},
+    "Window 1500x1200": {"family": "M_Window-Fixed", "type": "900 x 1200mm"},
+    "Window 1200x1200": {"family": "M_Window-Fixed", "type": "900 x 1200mm"},
+    "Window 600x600": {"family": "M_Window-Fixed", "type": "600 x 900mm"}
+  },
+  "columns": {
+    "RCC Column 230x450": {"family": "M_Concrete-Rectangular-Column", "type": "230 x 450mm"}
+  },
+  "beams": {
+    "RCC Beam 230x450": {"family": "M_Concrete-Rectangular Beam", "type": "230 x 450mm"}
+  },
+  "stairs": {
+    "RCC Stair": "190mm max riser 250mm going"
+  },
+  "railings": {
+    "Railing 900": "900mm"
+  }
+}
