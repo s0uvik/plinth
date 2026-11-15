@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "site": {
+    "plot_mm": [
+      15000,
+      28000
+    ],
+    "road_side": "front",
+    "city": "kolkata",
+    "road_width_mm": 9000
+  },
+  "building": {
+    "ground": "flats",
+    "upper_floors": 3,
+    "floor_to_floor_mm": 3000,
+    "template": "auto"
+  },
+  "units": [
+    {
+      "type": "1BHK",
+      "per_floor": 3
+    }
+  ],
+  "core": {
+    "stair": "dog_leg",
+    "stair_width_mm": 1200,
+    "lift": false
+  }
+}

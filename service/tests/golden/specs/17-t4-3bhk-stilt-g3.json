@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "site": {
+    "plot_mm": [
+      22000,
+      44000
+    ],
+    "road_side": "front",
+    "city": "kolkata",
+    "road_width_mm": 9000
+  },
+  "building": {
+    "ground": "stilt_parking",
+    "upper_floors": 3,
+    "floor_to_floor_mm": 3000,
+    "template": "auto"
+  },
+  "units": [
+    {
+      "type": "3BHK",
+      "per_floor": 4
+    }
+  ],
+  "core": {
+    "stair": "dog_leg",
+    "stair_width_mm": 1200,
+    "lift": false
+  }
+}
