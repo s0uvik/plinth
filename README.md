@@ -79,6 +79,31 @@ Then press Ctrl+Z once in Revit: the two levels and four walls it created should
 `POST /runs/{id}/remove` deletes exactly what that run created. Runs are kept in
 `%LOCALAPPDATA%\B2M\runs\<run_id>\` (plan, run record, every tool call).
 
+### Layout engine (Step 2)
+
+`b2m.spec` validates a building spec (PRD format); `b2m.engine.generate(spec)` returns a build plan and a
+report, or a `LayoutError` saying why nothing fits.
+
+- Envelope: plot minus setbacks from `b2m/rules/kolkata_setbacks.yaml`. **The setback values are
+  provisional placeholders** (`verified: false`) until Step 4 transcribes the official KMC rules.
+- Templates: T2 (two flats), T3 (two front flats plus one full-depth flat), T4 (four flats), each around a
+  stair-and-lobby column with the stair at the front and an optional lift at the rear.
+- Flats: one deep layout for 1/2/3BHK (living room at the outer end, a passage, one row of rooms on the
+  outer wall), sized to the target carpet area, never below the room minimums in `engine/catalog.py`.
+- Walls are derived from the boundaries between spaces, so they cannot overlap; doors and windows stay
+  clear of wall ends and junctions; every floor is validated before a plan is emitted.
+- The engine names logical types (`Brick 230`, `RCC 150`, `Door 900x2100`...). A project not made from the
+  B2M template needs `%LOCALAPPDATA%\B2M\standards.json` mapping them to its own types (see
+  `b2m/revit/types.py`).
+
+```sh
+.venv\Scripts\python scripts\render_floor.py tests\golden\specs\14-t4-2bhk-stilt-g4-lift.json plan.png
+.venv\Scripts\python scripts\update_golden.py      # after an intended engine change; review the diff
+```
+
+Golden tests (`tests/golden`) hold 20 specs covering every template and flat type; each must give exactly
+its stored plan.
+
 ### Command tests and Step 1 gate
 
 Revit must be closed while deploying a new add-in build (Revit locks the loaded DLL).
@@ -88,4 +113,5 @@ set B2M_LIVE=1
 set B2M_TITLE=<scratch project title>
 .venv\Scripts\python -m pytest tests/live -v
 .venv\Scripts\python scripts\step1_gate.py --title "<scratch project title>"
+.venv\Scripts\python scripts\step2_gate.py --title "<scratch project title>" [--types standards.json]
 ```
