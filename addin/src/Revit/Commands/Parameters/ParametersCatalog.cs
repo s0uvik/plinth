@@ -7,6 +7,14 @@ namespace B2M.Revit.Commands.Parameters
     {
         public static void Register(CommandDispatcher dispatcher)
         {
+            dispatcher.Register(new ListSharedParametersHandler());
+            dispatcher.Register(new CreateSharedParameterHandler());
+            dispatcher.Register(new BindSharedParameterHandler());
+            dispatcher.Register(new CreateProjectParameterHandler());
+            dispatcher.Register(new ListProjectParameterBindingsHandler());
+            dispatcher.Register(new RemoveParameterBindingHandler());
+            dispatcher.Register(new ExportSharedParameterFileHandler());
+            dispatcher.Register(new SetParameterValueByGuidHandler());
         }
     }
 }

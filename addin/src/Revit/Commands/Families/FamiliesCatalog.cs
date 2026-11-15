@@ -7,6 +7,16 @@ namespace B2M.Revit.Commands.Families
     {
         public static void Register(CommandDispatcher dispatcher)
         {
+            dispatcher.Register(new ListLoadedFamiliesHandler());
+            dispatcher.Register(new LoadFamilyFromPathHandler());
+            dispatcher.Register(new UnloadFamilyHandler());
+            dispatcher.Register(new DuplicateFamilyTypeHandler());
+            dispatcher.Register(new RenameFamilyTypeHandler());
+            dispatcher.Register(new AuditFamiliesHandler());
+            dispatcher.Register(new ReplaceFamilyTypeHandler());
+            dispatcher.Register(new GetFamilyInstancesHandler());
+            dispatcher.Register(new ListFamilyTypesInFamilyHandler());
+            dispatcher.Register(new ExportFamilyToPathHandler());
         }
     }
 }
