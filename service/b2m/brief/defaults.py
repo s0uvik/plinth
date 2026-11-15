@@ -22,6 +22,9 @@ DEFAULTS: list[tuple[str, object, str]] = [
     ("template", "auto", "Chosen from the number of flats per floor"),
     ("target_carpet_m2", None, "Per flat type: " + ", ".join(f"{t} {a:.0f} m²" for t, a in DEFAULT_CARPET_M2.items())
      + "; left empty so the engine applies and reports them"),
+    ("structure", "rcc_frame", "RCC columns and beams with brick infill walls, the usual Kolkata construction"),
+    ("chajja_mm", 600, "A 600 mm sunshade (chajja) over every outside window and door"),
+    ("roof_parapet_mm", 1000, "A 1 m brick parapet around the roof"),
 ]
 
 

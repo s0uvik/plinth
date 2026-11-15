@@ -64,6 +64,15 @@ class Standards(_Model):
     slab: Literal["RCC 150"] = "RCC 150"
     door_types: Literal["default"] = "default"
     window_types: Literal["default"] = "default"
+    structure: Literal["rcc_frame", "load_bearing"] = Field(
+        default="rcc_frame", description="rcc_frame: RCC columns and beams with brick infill; load_bearing: brick walls only")
+    chajja_mm: int = Field(default=600, ge=0, le=1200, description="Sunshade depth over external windows and doors; 0 for none")
+    roof_parapet_mm: int = Field(default=1000, ge=0, le=1500, description="Roof parapet height; 0 for none")
+
+
+# Standards fields added after specs were first hashed: left out of the canonical JSON while they hold their
+# default, so a spec written before they existed keeps its hash.
+_LATER_STANDARDS = {"structure": "rcc_frame", "chajja_mm": 600, "roof_parapet_mm": 1000}
 
 
 class BuildingSpec(_Model):
@@ -93,7 +102,11 @@ class BuildingSpec(_Model):
         return sum(u.per_floor for u in self.units)
 
     def canonical_json(self) -> str:
-        return json.dumps(self.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
+        data = self.model_dump(mode="json")
+        for name, default in _LATER_STANDARDS.items():
+            if data["standards"][name] == default:
+                del data["standards"][name]
+        return json.dumps(data, sort_keys=True, separators=(",", ":"))
 
     def hash(self) -> str:
         return "sha256:" + hashlib.sha256(self.canonical_json().encode("utf-8")).hexdigest()

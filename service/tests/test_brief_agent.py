@@ -134,3 +134,15 @@ def test_gate_briefs_are_well_formed_and_their_expected_specs_lay_out():
             "core": {"lift": e["lift"]},
         })
         generate(spec)  # raises LayoutError if the brief's building cannot be laid out
+
+
+def test_structure_sunshades_and_parapet_pass_through_and_default_when_left_out():
+    spec, errors = check_submission({**GOOD, "structure": "load_bearing", "chajja_mm": 0, "roof_parapet_mm": 1200})
+    assert errors == []
+    assert (spec.standards.structure, spec.standards.chajja_mm, spec.standards.roof_parapet_mm) == ("load_bearing", 0, 1200)
+    spec, errors = check_submission(GOOD)
+    assert errors == [] and spec.standards.structure == "rcc_frame" and spec.standards.chajja_mm == 600
+    from b2m.brief.agent import SYSTEM, TOOLS
+    schema = TOOLS[0]["input_schema"]
+    assert {"structure", "chajja_mm", "roof_parapet_mm"} <= set(schema["required"]) == set(schema["properties"])
+    assert "roof_parapet_mm" in SYSTEM and "chajja_mm" in SYSTEM

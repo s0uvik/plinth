@@ -57,3 +57,16 @@ def test_hash_is_stable_and_order_independent():
     b = BuildingSpec.model_validate(reordered)
     assert a.hash() == b.hash()
     assert a.hash() != BuildingSpec.model_validate({**PRD_EXAMPLE, "assumptions": []}).hash()
+
+
+def test_structure_options_default_and_keep_old_hashes():
+    spec = BuildingSpec.model_validate(PRD_EXAMPLE)
+    assert (spec.standards.structure, spec.standards.chajja_mm, spec.standards.roof_parapet_mm) == ("rcc_frame", 600, 1000)
+    # A spec written before these options existed hashes as it did then; changing one changes the hash.
+    assert "structure" not in spec.canonical_json() and "chajja_mm" not in spec.canonical_json()
+    explicit = {**PRD_EXAMPLE, "standards": {**PRD_EXAMPLE["standards"], "structure": "rcc_frame", "chajja_mm": 600}}
+    assert BuildingSpec.model_validate(explicit).hash() == spec.hash()
+    changed = {**PRD_EXAMPLE, "standards": {**PRD_EXAMPLE["standards"], "structure": "load_bearing"}}
+    assert BuildingSpec.model_validate(changed).hash() != spec.hash()
+    _, errors = parse_spec({**PRD_EXAMPLE, "standards": {**PRD_EXAMPLE["standards"], "chajja_mm": -1, "structure": "steel"}})
+    assert any(e.startswith("standards.chajja_mm") for e in errors) and any(e.startswith("standards.structure") for e in errors)
