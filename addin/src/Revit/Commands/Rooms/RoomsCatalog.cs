@@ -7,6 +7,13 @@ namespace B2M.Revit.Commands.Rooms
     {
         public static void Register(CommandDispatcher dispatcher)
         {
+            dispatcher.Register(new GetRoomOpeningsHandler());
+            dispatcher.Register(new CreateRoomSeparatorHandler());
+            dispatcher.Register(new CreateAreaHandler());
+            dispatcher.Register(new CreateSpaceHandler());
+            dispatcher.Register(new ListAreasHandler());
+            dispatcher.Register(new ComputeRoomFinishesHandler());
+            dispatcher.Register(new TagAllAreasHandler());
         }
     }
 }
