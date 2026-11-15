@@ -11,6 +11,7 @@ dependencies = [
     "anthropic>=2.8",
     "mcp>=2.3",
     "reportlab>=4",
+    "pypdf>=5",
 ]
 
 [project.optional-dependencies]

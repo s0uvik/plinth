@@ -18,7 +18,7 @@ def run(coro):
 
 def test_tools_are_listed():
     names = {t.name for t in run(build_server(FakeApi()).list_tools())}
-    assert names == {"b2m_plan_from_brief", "b2m_preview", "b2m_check", "b2m_build", "b2m_run_status", "b2m_remove"}
+    assert names == {"b2m_plan_from_brief", "b2m_preview", "b2m_check", "b2m_build", "b2m_run_status", "b2m_drawing_set", "b2m_remove"}
 
 
 def test_tools_forward_to_the_local_service():

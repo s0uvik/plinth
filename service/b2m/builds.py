@@ -121,6 +121,25 @@ class BuildService:
         finally:
             self._lock.release()
 
+    def run_on(self, run_id: str, work: Callable[[RevitClient, Run], dict[str, Any]], status: str) -> dict[str, Any]:
+        """Run work against a run's own document (confirmed by its title), one Revit operation at a time."""
+        run = self.store.get(run_id)
+        if run is None:
+            raise KeyError(run_id)
+        record = run.load("run")
+        if not self._lock.acquire(blocking=False):
+            raise Busy("A build or removal is already running.")
+        try:
+            with self._open(run) as revit:
+                revit.confirm_document(record.get("document_title"))
+                run.update(activity=status)
+                return run.update(**{status: work(revit, run)}, activity=None)
+        except Exception as e:
+            log.exception("%s failed for run %s", status, run_id)
+            return run.update(activity=None, **{status: {"error": f"{type(e).__name__}: {e}", "hint": hint(str(e))}})
+        finally:
+            self._lock.release()
+
     def _open(self, run: Run) -> RevitClient:
         revit = self._connect()
         revit.observer = lambda request, response: run.append("tool_calls", {"at": _now(), "request": request, "response": response})

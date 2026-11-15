@@ -18,6 +18,7 @@ from b2m.brief.agent import BriefFailed, BriefSession, MessagesClient, Questions
 from b2m.builds import BuildService, Busy, product_version
 from b2m.compliance import evaluate, facts_after_build, facts_before_build, hard_failures
 from b2m.compliance.pdf import write_pdf
+from b2m.drawings import build_drawing_set
 from b2m.engine import LayoutError, generate
 from b2m.plan import BuildPlan, RoomOp
 from b2m.revit import RevitClient
@@ -167,6 +168,39 @@ def create_app(service: BuildService | None = None, brief_client: Callable[[], M
             raise HTTPException(409, str(e)) from e
         write_pdf(before, service.store.root / run_id / "report_before.pdf", "Compliance report (before build)")
         return {"run_id": run_id}
+
+    @app.post("/runs/{run_id}/drawings")
+    def drawings(run_id: str) -> dict[str, Any]:
+        run = service.store.get(run_id)
+        if run is None:
+            raise HTTPException(404, "No such run.")
+        record = run.load("run")
+        if record.get("status") not in ("built", "built_with_issues"):
+            raise HTTPException(409, "Build the model before making its drawing set.")
+        if (record.get("drawings") or {}).get("sheets"):
+            raise HTTPException(409, "This run already has a drawing set; remove the run and build again to redo it.")
+        plan = BuildPlan.model_validate(run.load("plan"))
+
+        def make(revit, run) -> dict[str, Any]:
+            def remember(key: str, element_id: int) -> None:
+                current = run.load("run").get("created") or {}
+                run.update(created={**current, key: element_id})
+            report = run.dir / "report.pdf"
+            return build_drawing_set(revit, plan, run.dir, report if report.exists() else run.dir / "report_before.pdf",
+                                     record=remember)
+
+        try:
+            return service.run_on(run_id, make, "drawings")
+        except Busy as e:
+            raise HTTPException(409, str(e)) from e
+
+    @app.get("/runs/{run_id}/3d.png")
+    def run_image(run_id: str) -> FileResponse:
+        run = service.store.get(run_id)
+        path = run.dir / "3d.png" if run else None
+        if path is None or not path.exists():
+            raise HTTPException(404, "No image yet.")
+        return FileResponse(path, media_type="image/png")
 
     @app.post("/check")
     def check(request: SpecRequest) -> dict[str, Any]:

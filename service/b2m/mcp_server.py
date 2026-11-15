@@ -6,7 +6,6 @@ Claude Desktop config (claude_desktop_config.json):
     {"mcpServers": {"b2m": {"command": "<path>\\service\\.venv\\Scripts\\python.exe", "args": ["-m", "b2m.mcp_server"]}}}
 
 The service must be running: python -m b2m.api
-b2m_drawing_set joins when the drawing set (Step 5) exists.
 """
 
 from __future__ import annotations
@@ -84,6 +83,12 @@ def build_server(api: Api | None = None) -> MCPServer:
     def b2m_run_status(run_id: str) -> dict[str, Any]:
         """Progress and result of a build: batches done, created elements, read-back counts and Revit warnings."""
         return api.call("GET", f"/runs/{run_id}")
+
+    @server.tool()
+    def b2m_drawing_set(run_id: str) -> dict[str, Any]:
+        """Make the drawing set for a built run: plans, elevation, section, 3D, door/window schedules and the per-flat
+        area statement on sheets, exported to one PDF with the compliance report merged in."""
+        return api.call("POST", f"/runs/{run_id}/drawings", {})
 
     @server.tool()
     def b2m_remove(run_id: str) -> dict[str, Any]:

@@ -262,7 +262,18 @@ async function refreshRun() {
     el("div", {}, run.error + (run.failed_key ? ` (at ${run.failed_key})` : ""))));
   if (run.checks && !run.checks.error) parts.push(el("div", {class: `note ${run.checks.hard_fail ? "error" : "ok"} small`},
     `After build: ${run.checks.hard_fail} hard and ${run.checks.soft_fail} soft compliance failures.`));
-  const links = [["report_before", "Compliance before build"], ["report", "Compliance after build"]]
+  if (["built", "built_with_issues"].includes(run.status) && !(run.drawings && run.drawings.sheets)) {
+    const make = el("button", {class: "primary"}, "Make drawing set");
+    make.onclick = () => busy(make, null, async () => { await call(`/runs/${runId}/drawings`, {}); refreshRun(); });
+    parts.push(el("div", {class: "actions"}, make));
+  }
+  if (run.activity === "drawings") parts.push(el("p", {class: "muted small"}, "Making the drawing set in Revit…"));
+  if (run.drawings && run.drawings.error) parts.push(el("div", {class: "note error small"}, run.drawings.hint || "", el("div", {}, run.drawings.error)));
+  if (run.drawings && run.drawings.sheets) {
+    parts.push(Object.assign(el("img", {src: `/runs/${runId}/3d.png`, alt: "3D view of the generated model"}),
+      {style: "width:100%; border-radius: var(--radius); margin-top: var(--s3)"}));
+  }
+  const links = [["set", "Drawing set (PDF)"], ["report_before", "Compliance before build"], ["report", "Compliance after build"]]
     .map(([n, label]) => Object.assign(el("a", {href: `/runs/${runId}/${n}.pdf`, target: "_blank"}, label), {className: "small"}));
   parts.push(el("div", {class: "actions"}, ...links));
   if (run.created && Object.keys(run.created).length && !["removed", "removing", "building", "queued"].includes(run.status)) {
