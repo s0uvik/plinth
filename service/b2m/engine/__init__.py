@@ -80,8 +80,8 @@ def _report(spec: BuildingSpec, env: Envelope, plate: PlateLayout, floors: list[
                       "width_mm": flat.w, "depth_mm": flat.d, "rooms": rooms})
     for f in flats:
         if f["carpet_m2"] > f["target_carpet_m2"] * 1.15:
-            notes.append(f"Flat {f['letter']} ({f['type']}) has {f['carpet_m2']:.0f} m² carpet against a "
-                         f"{f['target_carpet_m2']:.0f} m² target: room minimums and the shared plate depth set its size.")
+            notes.append(f"Flat {f['letter']} ({f['type']}) has {f['carpet_m2']:.0f} mÂ² carpet against a "
+                         f"{f['target_carpet_m2']:.0f} mÂ² target: room minimums and the shared plate depth set its size.")
     floors_with_flats = spec.building.upper_floors + (1 if spec.building.ground == "flats" else 0)
     if not env.setbacks.verified:
         notes.append("Setbacks come from a provisional table that has not been checked against the official rules.")
