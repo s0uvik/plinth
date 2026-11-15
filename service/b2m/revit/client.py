@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import itertools
 import json
-from typing import Any
+from typing import Any, Callable
 
 from b2m.revit.connection import Connection, open_connection
 from b2m.revit.discovery import Target, find_targets
@@ -36,6 +36,8 @@ class RevitTimeout(RevitError):
 class RevitClient:
     def __init__(self, target: Target, connection: Connection | None = None):
         self.target = target
+        # Called with (request without token, final response) for every call, e.g. to keep tool results.
+        self.observer: Callable[[dict[str, Any], dict[str, Any]], None] | None = None
         self._connection = connection or open_connection(target)
         self._ids = itertools.count(1)
         self.health: dict[str, Any] = {}
@@ -117,11 +119,17 @@ class RevitClient:
                 raise ConnectionError("The add-in closed the connection.")
             response = json.loads(line)
             if response.get("id") is None and not response.get("success"):
+                self._observe(message, response)
                 raise RevitError(response)  # Connection-level error, e.g. UNAUTHORIZED.
             if response.get("id") != request_id:
                 continue  # A late result of an earlier timed-out request.
+            self._observe(message, response)
             if response.get("pending"):
                 raise RevitTimeout(response)
             if not response.get("success"):
                 raise RevitError(response)
             return response
+
+    def _observe(self, message: dict[str, Any], response: dict[str, Any]) -> None:
+        if self.observer is not None:
+            self.observer({k: v for k, v in message.items() if k != "token"}, response)

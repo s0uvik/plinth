@@ -8,16 +8,13 @@ from __future__ import annotations
 
 import ctypes
 import json
-import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from b2m import paths
+
 SCHEMA_VERSION = 1
-
-
-def default_directory() -> Path:
-    return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "B2M" / "discovery"
 
 
 @dataclass(frozen=True)
@@ -91,7 +88,7 @@ def process_alive(pid: int) -> bool:
 
 def find_targets(directory: Path | None = None, *, remove_stale: bool = True) -> list[Target]:
     """All live targets, newest Revit year first. Files of dead processes are deleted."""
-    directory = directory or default_directory()
+    directory = directory or paths.discovery()
     targets: list[Target] = []
     if not directory.is_dir():
         return targets
