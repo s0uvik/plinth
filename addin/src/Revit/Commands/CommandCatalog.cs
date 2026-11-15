@@ -58,6 +58,32 @@ namespace B2M.Revit.Commands
             dispatcher.Register(new GetModelWarningsSummaryHandler());
             // meta
             dispatcher.Register(new BatchExecuteHandler(dispatcher));
+            dispatcher.Register(new ListCommandsHandler(dispatcher));
+
+            // Step 8: the rest of the catalog, one registration file per toolset.
+            global::B2M.Revit.Commands.Query.QueryCatalog.Register(dispatcher);
+            global::B2M.Revit.Commands.Modify.ModifyCatalog.Register(dispatcher);
+            global::B2M.Revit.Commands.Create.CreateCatalog.Register(dispatcher);
+            global::B2M.Revit.Commands.Lint.LintCatalog.Register(dispatcher);
+            global::B2M.Revit.Commands.Documents.DocumentsCatalog.Register(dispatcher);
+            global::B2M.Revit.Commands.Families.FamiliesCatalog.Register(dispatcher);
+            global::B2M.Revit.Commands.Materials.MaterialsCatalog.Register(dispatcher);
+            global::B2M.Revit.Commands.Parameters.ParametersCatalog.Register(dispatcher);
+            global::B2M.Revit.Commands.View.ViewCatalog.Register(dispatcher);
+            global::B2M.Revit.Commands.Sheets.SheetsCatalog.Register(dispatcher);
+            global::B2M.Revit.Commands.Schedule.ScheduleCatalog.Register(dispatcher);
+            global::B2M.Revit.Commands.Annotation.AnnotationCatalog.Register(dispatcher);
+            global::B2M.Revit.Commands.Export.ExportCatalog.Register(dispatcher);
+            global::B2M.Revit.Commands.Links.LinksCatalog.Register(dispatcher);
+            global::B2M.Revit.Commands.Organization.OrganizationCatalog.Register(dispatcher);
+            global::B2M.Revit.Commands.Geometry.GeometryCatalog.Register(dispatcher);
+            global::B2M.Revit.Commands.Graphics.GraphicsCatalog.Register(dispatcher);
+            global::B2M.Revit.Commands.Rooms.RoomsCatalog.Register(dispatcher);
+            global::B2M.Revit.Commands.Workflows.WorkflowsCatalog.Register(dispatcher);
+            global::B2M.Revit.Commands.Mep.MepCatalog.Register(dispatcher);
+            global::B2M.Revit.Commands.Structural.StructuralCatalog.Register(dispatcher);
+            global::B2M.Revit.Commands.Meta.MetaCatalog.Register(dispatcher);
+            global::B2M.Revit.Commands.ToolBaker.ToolBakerCatalog.Register(dispatcher);
             return dispatcher;
         }
     }
