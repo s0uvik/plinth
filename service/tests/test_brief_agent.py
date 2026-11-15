@@ -111,3 +111,26 @@ def test_free_text_is_nudged_once_then_fails():
 def test_refusal_and_truncation_fail_cleanly():
     assert isinstance(BriefSession.start(FakeClaude(reply(stop="refusal")), "brief").outcome, BriefFailed)
     assert isinstance(BriefSession.start(FakeClaude(reply(stop="max_tokens")), "brief").outcome, BriefFailed)
+
+
+def test_gate_briefs_are_well_formed_and_their_expected_specs_lay_out():
+    """Every gate brief's expected essentials must describe a building the engine can lay out."""
+    from pathlib import Path
+
+    import yaml
+
+    from b2m.engine import generate
+    from b2m.spec import BuildingSpec
+
+    briefs = yaml.safe_load((Path(__file__).parent / "briefs" / "briefs.yaml").read_text(encoding="utf-8"))
+    assert len(briefs) == 20 and len({b["id"] for b in briefs}) == 20
+    assert sum("answers" in b for b in briefs) == 4
+    for b in briefs:
+        e = b["expect"]
+        spec = BuildingSpec.model_validate({
+            "site": {"plot_mm": e["plot"], "road_width_mm": 9000},
+            "building": {"ground": e["ground"], "upper_floors": e["upper_floors"]},
+            "units": [{"type": t, "per_floor": n} for t, n in e["units"].items()],
+            "core": {"lift": e["lift"]},
+        })
+        generate(spec)  # raises LayoutError if the brief's building cannot be laid out
