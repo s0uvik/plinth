@@ -1,10 +1,15 @@
 using B2M.Revit.Bridge;
+using B2M.Revit.Commands.Annotation;
 using B2M.Revit.Commands.Create;
 using B2M.Revit.Commands.Delete;
+using B2M.Revit.Commands.Export;
 using B2M.Revit.Commands.Lint;
 using B2M.Revit.Commands.Meta;
 using B2M.Revit.Commands.Query;
 using B2M.Revit.Commands.Rooms;
+using B2M.Revit.Commands.Schedule;
+using B2M.Revit.Commands.Sheets;
+using B2M.Revit.Commands.View;
 
 namespace B2M.Revit.Commands
 {
@@ -34,6 +39,21 @@ namespace B2M.Revit.Commands
             dispatcher.Register(new AutoCreateRoomsFromWallsHandler());
             dispatcher.Register(new ListRoomsHandler());
             dispatcher.Register(new GetRoomBoundariesHandler());
+            // view
+            dispatcher.Register(new ListViewsHandler());
+            dispatcher.Register(new CreateViewHandler());
+            dispatcher.Register(new CaptureViewImageHandler());
+            // annotation
+            dispatcher.Register(new TagAllRoomsHandler());
+            // sheets
+            dispatcher.Register(new CreateSheetHandler());
+            dispatcher.Register(new PlaceViewOnSheetHandler());
+            dispatcher.Register(new PlaceScheduleOnSheetHandler());
+            dispatcher.Register(new AlignViewportsHandler());
+            // schedule
+            dispatcher.Register(new CreateScheduleHandler());
+            // export
+            dispatcher.Register(new ExportPdfHandler());
             // lint
             dispatcher.Register(new GetModelWarningsSummaryHandler());
             // meta

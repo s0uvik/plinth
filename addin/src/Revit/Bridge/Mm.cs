@@ -13,5 +13,8 @@ namespace B2M.Revit.Bridge
         public static double ToFeet(double mm) => mm / MmPerFoot;
 
         public static double FromFeet(double feet) => Math.Round(feet * MmPerFoot, 1);
+
+        /// <summary>Finer rounding for sheet-space geometry, where tenths of a millimetre are too coarse.</summary>
+        public static double FromFeet(double feet, int decimals) => Math.Round(feet * MmPerFoot, decimals);
     }
 }

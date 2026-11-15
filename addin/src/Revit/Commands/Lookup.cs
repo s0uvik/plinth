@@ -106,6 +106,133 @@ namespace B2M.Revit.Commands
             return element != null;
         }
 
+        /// <summary>A view family type of the given family by exact name, else the project default for the group, else the first one.</summary>
+        public static bool TryViewFamilyType(Document doc, ViewFamily family, ElementTypeGroup defaultGroup, string typeName,
+            out ViewFamilyType type, out CommandResult failure)
+        {
+            failure = null;
+            var types = new FilteredElementCollector(doc).OfClass(typeof(ViewFamilyType)).Cast<ViewFamilyType>()
+                .Where(t => t.ViewFamily == family).OrderBy(t => t.Name).ToList();
+            if (!string.IsNullOrEmpty(typeName))
+                type = types.FirstOrDefault(t => string.Equals(t.Name, typeName, StringComparison.OrdinalIgnoreCase));
+            else
+                type = doc.GetElement(doc.GetDefaultElementTypeId(defaultGroup)) as ViewFamilyType ?? types.FirstOrDefault();
+            if (type != null && type.ViewFamily == family) return true;
+            type = null;
+            failure = CommandResult.Fail("TYPE_NOT_FOUND: " + (string.IsNullOrEmpty(typeName)
+                    ? "the project has no " + family + " view type."
+                    : "no " + family + " view type named '" + typeName + "'."),
+                new JObject { ["valid_view_types"] = new JArray(types.Take(MaxOptions).Select(t => t.Name)) });
+            return false;
+        }
+
+        /// <summary>A view (not a template) by element ID. Fully qualified: B2M.Revit.Commands.View is a namespace.</summary>
+        public static bool TryView(Document doc, long id, out Autodesk.Revit.DB.View view, out CommandResult failure)
+        {
+            if (!TryElement(doc, id, "view", out view, out failure)) return false;
+            if (!view.IsTemplate) return true;
+            failure = CommandResult.Fail("VIEW_IS_TEMPLATE: view " + id + " ('" + view.Name + "') is a view template.");
+            view = null;
+            return false;
+        }
+
+        /// <summary>A sheet by ID, else by sheet number, else the active view when that is a sheet. Placeholder sheets are refused.</summary>
+        public static bool TrySheet(Document doc, long? sheetId, string sheetNumber, out ViewSheet sheet, out CommandResult failure)
+        {
+            failure = null;
+            var sheets = new FilteredElementCollector(doc).OfClass(typeof(ViewSheet)).Cast<ViewSheet>()
+                .OrderBy(s => s.SheetNumber).ToList();
+            string miss;
+            if (sheetId.HasValue)
+            {
+                sheet = doc.GetElement(RevitCompat.ToElementId(sheetId.Value)) as ViewSheet;
+                miss = "no sheet has id " + sheetId.Value + ".";
+            }
+            else if (!string.IsNullOrEmpty(sheetNumber))
+            {
+                sheet = sheets.FirstOrDefault(s => string.Equals(s.SheetNumber, sheetNumber, StringComparison.OrdinalIgnoreCase));
+                miss = "no sheet numbered '" + sheetNumber + "'.";
+            }
+            else
+            {
+                sheet = doc.ActiveView as ViewSheet;
+                miss = "give sheet_id or sheet_number (the active view is not a sheet).";
+            }
+            if (sheet != null && sheet.IsPlaceholder)
+            {
+                failure = CommandResult.Fail("SHEET_IS_PLACEHOLDER: sheet " + sheet.SheetNumber + " is a placeholder sheet and holds no views.");
+                sheet = null;
+                return false;
+            }
+            if (sheet != null) return true;
+            failure = CommandResult.Fail("SHEET_NOT_FOUND: " + miss, new JObject
+            {
+                ["valid_sheets"] = new JArray(sheets.Where(s => !s.IsPlaceholder).Take(MaxOptions).Select(s => new JObject
+                {
+                    ["id"] = RevitCompat.GetId(s.Id),
+                    ["number"] = s.SheetNumber,
+                    ["name"] = s.Name
+                }))
+            });
+            return false;
+        }
+
+        /// <summary>A title block type by ID, or by "Type" or "Family: Type" name.</summary>
+        public static bool TryTitleBlock(Document doc, long? typeId, string name, out FamilySymbol symbol, out CommandResult failure)
+        {
+            failure = null;
+            var all = new FilteredElementCollector(doc).OfCategory(BuiltInCategory.OST_TitleBlocks).WhereElementIsElementType()
+                .OfType<FamilySymbol>().OrderBy(s => s.FamilyName).ThenBy(s => s.Name).ToList();
+            List<FamilySymbol> matches;
+            if (typeId.HasValue)
+                matches = all.Where(s => RevitCompat.GetId(s.Id) == typeId.Value).ToList();
+            else
+                matches = all.Where(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(s.FamilyName + ": " + s.Name, name, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (matches.Count == 1)
+            {
+                symbol = matches[0];
+                return true;
+            }
+            symbol = null;
+            failure = CommandResult.Fail(matches.Count == 0
+                    ? "TITLEBLOCK_NOT_FOUND: no title block type " + (typeId.HasValue ? "has id " + typeId.Value : "named '" + name + "'") + "."
+                    : "TITLEBLOCK_AMBIGUOUS: several title block families have a type named '" + name + "'; use 'Family: Type' or the id.",
+                new JObject { ["valid_title_blocks"] = TitleBlocks(all) });
+            return false;
+        }
+
+        public static JArray TitleBlocks(IEnumerable<FamilySymbol> symbols) =>
+            new JArray(symbols.Take(MaxOptions).Select(s => new JObject
+            {
+                ["id"] = RevitCompat.GetId(s.Id),
+                ["name"] = s.FamilyName + ": " + s.Name
+            }));
+
+        /// <summary>A schedule (not a template or a title block revision schedule) by ID or by exact name.</summary>
+        public static bool TrySchedule(Document doc, long? id, string name, out ViewSchedule schedule, out CommandResult failure)
+        {
+            failure = null;
+            var all = new FilteredElementCollector(doc).OfClass(typeof(ViewSchedule)).Cast<ViewSchedule>()
+                .Where(s => !s.IsTemplate && !s.IsTitleblockRevisionSchedule).OrderBy(s => s.Name).ToList();
+            schedule = id.HasValue
+                ? all.FirstOrDefault(s => RevitCompat.GetId(s.Id) == id.Value)
+                : all.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
+            if (schedule != null) return true;
+            failure = CommandResult.Fail("SCHEDULE_NOT_FOUND: " + (id.HasValue
+                    ? "no placeable schedule has id " + id.Value + "."
+                    : string.IsNullOrEmpty(name) ? "give schedule_id or schedule_name." : "no schedule named '" + name + "'."),
+                new JObject
+                {
+                    ["valid_schedules"] = new JArray(all.Take(MaxOptions).Select(s => new JObject
+                    {
+                        ["id"] = RevitCompat.GetId(s.Id),
+                        ["name"] = s.Name
+                    }))
+                });
+            return false;
+        }
+
         private static IEnumerable<T> TypesOf<T>(Document doc) where T : ElementType =>
             new FilteredElementCollector(doc).OfClass(typeof(T)).Cast<T>().OrderBy(t => t.Name);
 
