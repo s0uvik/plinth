@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import socket
+import time
 from typing import Protocol
 
 from b2m.revit.discovery import Target
 
 MAX_LINE_BYTES = 1024 * 1024 + 4096  # The add-in caps responses at 1 MiB of JSON.
+
+# The add-in serves one client at a time and re-creates its pipe after each one disconnects. Opening in that
+# gap fails with "pipe busy" (EINVAL) or "not found" (ENOENT), so keep trying briefly before giving up.
+PIPE_OPEN_SECONDS = 5.0
 
 
 class Connection(Protocol):
@@ -21,7 +26,7 @@ class Connection(Protocol):
 class PipeConnection:
     def __init__(self, pipe_name: str):
         # Byte-mode duplex pipe opened like a file; requests and responses alternate on one handle.
-        self._file = open(rf"\\.\pipe\{pipe_name}", "r+b", buffering=0)
+        self._file = _open_pipe(rf"\\.\pipe\{pipe_name}")
         self._buffer = bytearray()
 
     def send_line(self, line: str) -> None:
@@ -41,6 +46,17 @@ class PipeConnection:
 
     def close(self) -> None:
         self._file.close()
+
+
+def _open_pipe(path: str, seconds: float = PIPE_OPEN_SECONDS):
+    deadline = time.monotonic() + seconds
+    while True:
+        try:
+            return open(path, "r+b", buffering=0)
+        except OSError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.05)
 
 
 class TcpConnection:

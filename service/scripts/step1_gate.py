@@ -16,14 +16,17 @@ from b2m import logs
 from b2m.builds import BuildService
 from b2m.examples import two_storey_house
 from b2m.revit import RevitClient
+from b2m.revit.types import FamilyType, TypeMap
 from b2m.runs import RunStore
 
 
-def first_type(revit: RevitClient, category: str) -> str:
+def first_type(revit: RevitClient, category: str) -> FamilyType:
+    """The first loaded type with its family, so a type name shared by several families is not ambiguous."""
     data = revit.call("get_available_family_types", {"builtInCategory": category})
     if not data["totalTypes"]:
         sys.exit(f"The project has no {category} types loaded.")
-    return data["categories"][0]["types"][0]["typeName"]
+    first = data["categories"][0]["types"][0]
+    return FamilyType(first["typeName"], first["familyName"])
 
 
 def main() -> int:
@@ -35,10 +38,10 @@ def main() -> int:
 
     with RevitClient.connect() as revit:
         door, window = first_type(revit, "OST_Doors"), first_type(revit, "OST_Windows")
-    print(f"door type: {door}\nwindow type: {window}")
+    print(f"door type: {door.family}: {door.type}\nwindow type: {window.family}: {window.type}")
 
-    plan = two_storey_house(door, window, origin=(150000, 0), prefix=f"TH{time.strftime('%H%M%S')}")
-    service = BuildService(RunStore())
+    plan = two_storey_house("Test door", "Test window", origin=(150000, 0), prefix=f"TH{time.strftime('%H%M%S')}")
+    service = BuildService(RunStore(), types=TypeMap(doors={"Test door": door}, windows={"Test window": window}))
     started = time.monotonic()
     record = service.build_now(plan, args.title)
     print(f"\nrun {record['run_id']}: {record['status']} in {time.monotonic() - started:.1f} s")
