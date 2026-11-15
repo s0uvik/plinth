@@ -7,6 +7,14 @@ namespace B2M.Revit.Commands.View
     {
         public static void Register(CommandDispatcher dispatcher)
         {
+            dispatcher.Register(new AnalyzeSheetLayoutHandler());
+            dispatcher.Register(new SetViewCropHandler());
+            dispatcher.Register(new SetViewScaleHandler());
+            dispatcher.Register(new ActivateViewHandler());
+            dispatcher.Register(new ShowElementInViewHandler());
+            dispatcher.Register(new SetViewStyleHandler());
+            dispatcher.Register(new SetViewOrientationHandler());
+            dispatcher.Register(new CreateCameraViewHandler());
         }
     }
 }
