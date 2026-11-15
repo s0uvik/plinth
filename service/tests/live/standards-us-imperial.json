@@ -1,0 +1,22 @@
+{
+  "walls": {
+    "Brick 230": "Generic - 8\" Masonry",
+    "Brick 115": "Generic - 4\" Brick"
+  },
+  "floors": {
+    "RCC 150": "Concrete 6\""
+  },
+  "doors": {
+    "Door 1000x2100": {"family": "Door-Exterior-Single-Two_Lite", "type": "36\" x 84\""},
+    "Door 1200x2100": {"family": "Door-Exterior-Single-Two_Lite", "type": "36\" x 84\""},
+    "Door 900x2100": {"family": "Door-Passage-Single-Flush", "type": "36\" x 84\""},
+    "Door 750x2100": {"family": "Door-Passage-Single-Flush", "type": "30\" x 84\""}
+  },
+  "windows": {
+    "Window 2400x1500": {"family": "Window-Casement-Double", "type": "57\" x 72\""},
+    "Window 1800x1500": {"family": "Window-Casement-Double", "type": "57\" x 72\""},
+    "Window 1500x1200": {"family": "Window-Casement-Double", "type": "48\" x 60\""},
+    "Window 1200x1200": {"family": "Window-Casement-Double", "type": "41\" x 53\""},
+    "Window 600x600": {"family": "Window-Fixed", "type": "24\" x 36\""}
+  }
+}
