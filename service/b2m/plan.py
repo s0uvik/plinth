@@ -139,3 +139,23 @@ class BuildPlan(BaseModel):
 
     def by_key(self) -> dict[str, Op]:
         return {op.key: op for op in self.ops}
+
+
+def translate(plan: BuildPlan, dx: float, dy: float) -> BuildPlan:
+    """The same plan moved by (dx, dy) mm, e.g. to build a test clear of an existing model."""
+
+    def move(value):
+        if isinstance(value, tuple) and len(value) == 2 and all(isinstance(v, (int, float)) for v in value):
+            return (value[0] + dx, value[1] + dy)
+        if isinstance(value, list):
+            return [move(v) for v in value]
+        return value
+
+    ops = []
+    for op in plan.ops:
+        data = op.model_dump()
+        for name in ("start", "end", "point", "points"):
+            if name in data:
+                data[name] = move(data[name])
+        ops.append(data)
+    return BuildPlan.model_validate({"plan_version": plan.plan_version, "spec_hash": plan.spec_hash, "ops": ops})

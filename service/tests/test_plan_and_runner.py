@@ -188,3 +188,13 @@ def test_type_map_loads_the_users_standards_file(tmp_path, monkeypatch):
     assert TypeMap.load() == TypeMap()
     (tmp_path / "standards.json").write_text('{"floors": {"RCC 150": "Losa 15"}}', encoding="utf-8")
     assert TypeMap.load().floor("RCC 150") == "Losa 15"
+
+
+def test_translate_moves_every_coordinate_and_nothing_else():
+    from b2m.plan import translate
+    moved = translate(HOUSE, 1000, -500)
+    a, b = HOUSE.by_key(), moved.by_key()
+    assert b["F0-WS"].start == (a["F0-WS"].start[0] + 1000, a["F0-WS"].start[1] - 500)
+    assert b["STAIR"].points[0] == (a["STAIR"].points[0][0] + 1000, a["STAIR"].points[0][1] - 500)
+    assert b["F0-R1"].point == (a["F0-R1"].point[0] + 1000, a["F0-R1"].point[1] - 500)
+    assert b["F0-DI"] == a["F0-DI"] and b["L1"] == a["L1"]
