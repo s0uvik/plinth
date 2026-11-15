@@ -68,6 +68,22 @@ With Revit 2026 open on a **scratch** project and the add-in deployed:
 
 Then press Ctrl+Z once in Revit: the two levels and four walls it created should disappear together.
 
+### Brief agent, web page and Claude Desktop (Step 3)
+
+Claude (Claude Sonnet 5.5, as the PRD names) reads a brief and answers only by asking for missing essentials
+or submitting a spec; defaults it applies are listed for review. It needs `ANTHROPIC_API_KEY` (or an
+`ant auth login` profile) in the service's environment.
+
+- Web page: start the service and open http://127.0.0.1:8765 — brief, questions, assumptions and layout
+  preview, editable spec, Revit document title, build with per-batch progress, remove.
+- Claude Desktop: add to `claude_desktop_config.json` (the service must be running):
+
+  ```json
+  {"mcpServers": {"b2m": {"command": "C:\\...\\plinth\\service\\.venv\\Scripts\\python.exe", "args": ["-m", "b2m.mcp_server"]}}}
+  ```
+
+- Gate (calls Claude, small cost): `.venv\Scripts\python scripts\step3_gate.py`
+
 ### Local API
 
 ```sh
