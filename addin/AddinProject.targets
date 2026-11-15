@@ -1,0 +1,43 @@
+<Project>
+  <!--
+    Common body of every year project (B2M.Revit.R24 to R27). Each year project sets
+    TargetFramework, RevitYear and RevitApiVersion, then imports this file.
+    Pattern follows rvt-mcp's per-year projects compiling one shared source tree.
+  -->
+  <PropertyGroup>
+    <RootNamespace>B2M.Revit</RootNamespace>
+    <AssemblyName>B2M.Revit</AssemblyName>
+    <UseWPF>false</UseWPF>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <DefineConstants>$(DefineConstants);REVIT$(RevitYear)</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="$(AddinSrc)**\*.cs" LinkBase="src" />
+    <None Include="$(MSBuildThisFileDirectory)B2M.Revit.addin" Link="B2M.Revit.addin" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="$(RevitApiVersion)" PrivateAssets="all" />
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="$(RevitApiVersion)" PrivateAssets="all" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+
+  <!--
+    Opt-in deploy: dotnet build -p:Deploy=true copies the add-in into the current user's
+    Revit add-ins folder for this year. Never runs on a plain build.
+  -->
+  <Target Name="DeployAddin" AfterTargets="Build" Condition="'$(Deploy)' == 'true'">
+    <PropertyGroup>
+      <AddinsDir>$(APPDATA)\Autodesk\Revit\Addins\$(RevitYear)\</AddinsDir>
+      <DeployDir>$(AddinsDir)B2M\</DeployDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <DeployFiles Include="$(OutDir)B2M.Revit.dll;$(OutDir)B2M.Revit.pdb;$(OutDir)Newtonsoft.Json.dll" />
+    </ItemGroup>
+    <MakeDir Directories="$(DeployDir)" />
+    <Copy SourceFiles="@(DeployFiles)" DestinationFolder="$(DeployDir)" />
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)B2M.Revit.addin" DestinationFolder="$(AddinsDir)" />
+    <Message Importance="high" Text="B2M.Revit deployed to $(DeployDir)" />
+  </Target>
+</Project>

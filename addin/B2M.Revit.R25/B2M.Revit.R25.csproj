@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows7.0</TargetFramework>
+    <RevitYear>2025</RevitYear>
+    <RevitApiVersion>2025.1.0</RevitApiVersion>
+  </PropertyGroup>
+  <Import Project="..\AddinProject.targets" />
+</Project>
