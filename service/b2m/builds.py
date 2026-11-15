@@ -12,6 +12,7 @@ from typing import Any, Callable
 from b2m.plan import BuildPlan
 from b2m.revit import RevitClient
 from b2m.revit.commands import REQUIRED_COMMANDS
+from b2m.revit.errors import hint
 from b2m.revit.types import TypeMap
 from b2m.runner import Runner
 from b2m.runs import Run, RunStore
@@ -79,7 +80,7 @@ class BuildService:
                     status=result.status,
                     batches={"total": result.batches_total, "succeeded": result.batches_succeeded},
                     created=result.created,
-                    error=result.error, error_code=result.error_code, failed_key=result.failed_key,
+                    error=result.error, error_code=result.error_code, failed_key=result.failed_key, hint=hint(result.error),
                     error_data=result.error_data, failures=result.failures,
                 )
                 if result.status == "built":
@@ -93,7 +94,7 @@ class BuildService:
                             run.update(checks={"error": f"{type(e).__name__}: {e}"})
         except Exception as e:  # Connection or protocol problems: record them, never lose the run.
             log.exception("run %s failed", run.id)
-            run.update(status="failed", error=f"{type(e).__name__}: {e}")
+            run.update(status="failed", error=f"{type(e).__name__}: {e}", hint=hint(str(e)) or getattr(e, "hint", None))
         finally:
             run.update(finished_utc=_now())
             self._lock.release()

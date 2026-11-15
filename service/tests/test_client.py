@@ -91,3 +91,32 @@ def test_closed_connection_raises():
     conn = FakeConnection([])
     with pytest.raises(ConnectionError):
         RevitClient(TARGET, conn).call("health")
+
+
+def test_busy_revit_is_retried_because_nothing_ran():
+    busy = {"id": "{id}", "success": False, "error": "REVIT_REQUEST_NOT_STARTED: Revit was busy"}
+    conn = FakeConnection([busy], [busy], [ok({"done": True})])
+    client = RevitClient(TARGET, conn)
+    waits = []
+    client.sleep = waits.append
+    assert client.call("create_level", {"elevation": 0}) == {"done": True}
+    assert waits == [2, 5] and len(conn.sent) == 3
+
+
+def test_other_errors_are_not_retried_and_carry_a_hint():
+    conn = FakeConnection([{"id": "{id}", "success": False, "error": "DOCUMENT_CHANGED: the active document differs"}])
+    client = RevitClient(TARGET, conn)
+    client.sleep = lambda s: (_ for _ in ()).throw(AssertionError("should not wait"))
+    with pytest.raises(RevitError) as e:
+        client.call("create_level", {})
+    assert "Switch back" in e.value.hint
+
+
+def test_closed_idle_connection_is_reopened_before_sending(monkeypatch):
+    class Broken(FakeConnection):
+        def send_line(self, line):
+            raise BrokenPipeError()
+    fresh = FakeConnection([ok({"v": 1})])
+    monkeypatch.setattr("b2m.revit.client.open_connection", lambda target: fresh)
+    client = RevitClient(TARGET, Broken())
+    assert client.call("health") == {"v": 1}

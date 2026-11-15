@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import itertools
 import json
+import time
 from typing import Any, Callable
 
 from b2m.revit.connection import Connection, open_connection
+from b2m.revit.errors import hint
 from b2m.revit.discovery import Target, find_targets
 
 PROTOCOL_VERSION = 1
+NOT_STARTED_RETRY_DELAYS = (2, 5, 10)  # seconds
 CONFIRM_COMMAND = "get_current_view_info"
 
 
@@ -26,6 +29,7 @@ class RevitError(Exception):
         self.error = str(response.get("error") or "UNKNOWN: no error text")
         self.code = self.error.split(":", 1)[0]
         self.data = response.get("data")
+        self.hint = hint(self.error)
         super().__init__(self.error)
 
 
@@ -42,6 +46,7 @@ class RevitClient:
         self._ids = itertools.count(1)
         self.health: dict[str, Any] = {}
         self.document_id: str | None = None
+        self.sleep = time.sleep
         self.document_title: str | None = None
 
     @classmethod
@@ -102,7 +107,27 @@ class RevitClient:
         return self.request(command, params, timeout_seconds=timeout_seconds).get("data")
 
     def request(self, command: str, params: dict[str, Any] | None = None, *, timeout_seconds: int | None = None) -> dict[str, Any]:
-        """Run a command and return the whole response, raising RevitError on failure."""
+        """Run a command and return the whole response, raising RevitError on failure. A request Revit was too busy
+        to start is retried with backoff: the add-in guarantees it did not run."""
+        for delay in NOT_STARTED_RETRY_DELAYS:
+            try:
+                return self._request_once(command, params, timeout_seconds)
+            except RevitError as e:
+                if e.code != "REVIT_REQUEST_NOT_STARTED" or isinstance(e, RevitTimeout):
+                    raise
+            self.sleep(delay)
+        return self._request_once(command, params, timeout_seconds)
+
+    def _send(self, line: str) -> None:
+        """Send a line, reopening the connection once if the add-in closed it while idle (nothing was sent)."""
+        try:
+            self._connection.send_line(line)
+        except OSError:
+            self._connection.close()
+            self._connection = open_connection(self.target)
+            self._connection.send_line(line)
+
+    def _request_once(self, command: str, params: dict[str, Any] | None, timeout_seconds: int | None) -> dict[str, Any]:
         request_id = f"{self.target.pid}-{next(self._ids)}"
         message: dict[str, Any] = {"id": request_id, "token": self.target.token, "command": command}
         if params:
@@ -111,7 +136,7 @@ class RevitClient:
             message["expected_document_id"] = self.document_id
         if timeout_seconds:
             message["timeout_seconds"] = timeout_seconds
-        self._connection.send_line(json.dumps(message, separators=(",", ":")))
+        self._send(json.dumps(message, separators=(",", ":")))
 
         while True:
             line = self._connection.read_line()

@@ -258,7 +258,8 @@ async function refreshRun() {
     parts.push(el("div", {class: `note ${r.ok ? "ok" : "warn"}`},
       `${r.elements} elements, ${r.warnings_total} Revit warnings` + (r.mismatches.length ? `, ${r.mismatches.length} count mismatches` : "")));
   }
-  if (run.error) parts.push(el("div", {class: "note error small"}, run.error + (run.failed_key ? ` (at ${run.failed_key})` : "")));
+  if (run.error) parts.push(el("div", {class: "note error small"}, run.hint ? el("strong", {}, run.hint) : "",
+    el("div", {}, run.error + (run.failed_key ? ` (at ${run.failed_key})` : ""))));
   if (run.checks && !run.checks.error) parts.push(el("div", {class: `note ${run.checks.hard_fail ? "error" : "ok"} small`},
     `After build: ${run.checks.hard_fail} hard and ${run.checks.soft_fail} soft compliance failures.`));
   const links = [["report_before", "Compliance before build"], ["report", "Compliance after build"]]
