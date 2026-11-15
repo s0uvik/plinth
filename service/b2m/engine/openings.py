@@ -117,5 +117,6 @@ class Placer:
         return self._place_on(self._spans(spec.a, spec.b, door=True, b_cell=spec.b_cell), catalog.DOORS[spec.kind], "door",
                               (spec.a, spec.b))
 
-    def window(self, spec: WindowSpec) -> PlacedOpening | None:
-        return self._place_on(self._spans(spec.space, None, door=False), catalog.WINDOWS[spec.kind], "window", (spec.space, None))
+    def window(self, spec: WindowSpec, otype: OpeningType | None = None) -> PlacedOpening | None:
+        return self._place_on(self._spans(spec.space, None, door=False), otype or catalog.WINDOWS[spec.kind], "window",
+                              (spec.space, None))

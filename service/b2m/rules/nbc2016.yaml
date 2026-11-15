@@ -1,0 +1,36 @@
+# National Building Code of India 2016: residential values the engine designs to and the checker tests.
+#
+# NOT VERIFIED against the official BIS text. Values follow a secondary summary of NBC 2016 Part 3
+# (infralens.in, "NBC 2016 Part 3 explained", read 2026-11-15), which gives no clause numbers; the clause
+# fields below say where in the code each value is expected to sit. Transcribe from an official copy and
+# set verified: true before the pilot (PRD risk: rule values from secondary sources).
+name: NBC 2016
+verified: false
+source: "Secondary summary (infralens.in NBC 2016 Part 3 explained); to be checked against the official BIS text."
+
+# Net room minimums. Every habitable room 2.4 m wide; one habitable room of each flat 9.5 m² (the engine
+# gives this to the living room and the master bedroom), the others 7.5 m². Toilets are combined bath + WC.
+room_minimums:
+  living: {width_mm: 2400, area_m2: 9.5, clause: "Part 3, habitable room sizes (single room)"}
+  bedroom_master: {width_mm: 2400, area_m2: 9.5, clause: "Part 3, habitable room sizes"}
+  bedroom: {width_mm: 2400, area_m2: 7.5, clause: "Part 3, habitable room sizes (other rooms)"}
+  kitchen: {width_mm: 1800, area_m2: 5.0, clause: "Part 3, kitchen (separate)"}
+  toilet: {width_mm: 1200, area_m2: 2.8, clause: "Part 3, combined bath and WC"}
+
+rules:
+  - {id: NBC-HEIGHT-HABITABLE, type: clear_height, kinds: [living, bedroom_master, bedroom, kitchen], min_mm: 2750,
+     severity: hard, title: "Clear height of habitable rooms and kitchens", clause: "Part 3, heights of rooms"}
+  - {id: NBC-HEIGHT-TOILET, type: clear_height, kinds: [toilet], min_mm: 2100,
+     severity: hard, title: "Clear height of bathrooms and WCs", clause: "Part 3, heights of rooms"}
+  - {id: NBC-VENT-HABITABLE, type: window_ratio, kinds: [living, bedroom_master, bedroom], min_ratio: 0.10,
+     severity: hard, title: "Window area at least 1/10 of floor area", clause: "Part 3, lighting and ventilation"}
+  - {id: NBC-VENT-KITCHEN, type: window_ratio, kinds: [kitchen], min_ratio: 0.10,
+     severity: soft, title: "Kitchen window area at least 1/10 of floor area", clause: "Part 3, lighting and ventilation"}
+  - {id: NBC-STAIR-WIDTH, type: stair, field: width_mm, min: 1000, severity: hard,
+     title: "Residential stair width", clause: "Part 4, staircases for residential buildings"}
+  - {id: NBC-STAIR-RISER, type: stair, field: riser_mm, max: 190, severity: hard,
+     title: "Stair riser height", clause: "Part 4, staircases for residential buildings"}
+  - {id: NBC-STAIR-TREAD, type: stair, field: tread_mm, min: 250, severity: hard,
+     title: "Stair tread depth", clause: "Part 4, staircases for residential buildings"}
+  - {id: NBC-HEIGHT-CLASS, type: height_notice, above_mm: 15000, severity: soft,
+     title: "Above 15 m the building is no longer low-rise; further fire provisions apply", clause: "Part 3/Part 4, building height classes"}

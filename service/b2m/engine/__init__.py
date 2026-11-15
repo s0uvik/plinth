@@ -15,7 +15,7 @@ from typing import Any
 
 from b2m.engine import catalog
 from b2m.engine.emit import emit, level_names
-from b2m.engine.floors import BuiltFloor, build_floor
+from b2m.engine.floors import BuiltFloor, build_floor, ventilated_area_mm2
 from b2m.engine.geometry import net_area_mm2, net_rect
 from b2m.engine.site import Envelope, LayoutError, envelope
 from b2m.engine.templates import PlateLayout, plan_plate
@@ -68,13 +68,18 @@ def _report(spec: BuildingSpec, env: Envelope, plate: PlateLayout, floors: list[
     typical = floors[1]
     notes = list(plate.notes)
     flats = []
+    glazing: dict[str, float] = {}
+    for w in typical.windows:
+        glazing[w.spaces[0]] = glazing.get(w.spaces[0], 0) + w.type.width * w.type.height / 1e6
     for flat in typical.layout.flats:
         rooms = []
         for s in flat.spaces:
             r = net_rect(s, s.anchor, typical.edges, typical.thickness)
             rooms.append({"name": s.name, "kind": s.kind, "net_width_mm": min(r.width, r.height),
                           "net_length_mm": max(r.width, r.height),
-                          "net_area_m2": round(net_area_mm2(s, typical.edges, typical.thickness) / 1e6, 2)})
+                          "net_area_m2": round(net_area_mm2(s, typical.edges, typical.thickness) / 1e6, 2),
+                          "window_m2": round(glazing.get(s.id, 0.0), 2),
+                          "ventilated_area_m2": round(ventilated_area_mm2(s, typical) / 1e6, 2)})
         flats.append({"letter": flat.letter, "type": flat.type, "target_carpet_m2": plate.targets[flat.type],
                       "carpet_m2": round(sum(r["net_area_m2"] for r in rooms), 2),
                       "width_mm": flat.w, "depth_mm": flat.d, "rooms": rooms})

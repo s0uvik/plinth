@@ -1,14 +1,14 @@
 """Types and minimum sizes the layout engine designs to.
 
 Type names are logical: the Revit client maps them to the project's own types (PRD F6.2). Room minimums
-are design targets so the engine never emits an obviously undersized room; they follow the NBC 2016
-Part 3 values commonly cited for dwellings, but the compliance rule set (Step 4) is the authority and is
-checked against the official text, not these numbers.
+come from b2m/rules/nbc2016.yaml, the file the compliance checker uses.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+
+from b2m.rules import rule_set
 
 WALL_THICKNESS = {"Brick 230": 230, "Brick 115": 115}
 SLAB_THICKNESS = {"RCC 150": 150}
@@ -29,11 +29,16 @@ DOORS = {
     "building": OpeningType("Door 1200x2100", 1200, 2100),
 }
 
-WINDOWS = {
-    "living": OpeningType("Window 1500x1200", 1500, 1200, 900),
-    "room": OpeningType("Window 1200x1200", 1200, 1200, 900),
-    "toilet": OpeningType("Window 600x600", 600, 600, 1500),
+# Window sizes per room kind, smallest first. The engine uses the smallest that meets the room's
+# ventilation ratio, a larger one if not, and more than one window only when no single size is enough.
+WINDOW_OPTIONS = {
+    "living": [OpeningType("Window 1500x1200", 1500, 1200, 900), OpeningType("Window 1800x1500", 1800, 1500, 900),
+               OpeningType("Window 2400x1500", 2400, 1500, 900)],
+    "room": [OpeningType("Window 1200x1200", 1200, 1200, 900), OpeningType("Window 1500x1200", 1500, 1200, 900),
+             OpeningType("Window 1800x1500", 1800, 1500, 900)],
+    "toilet": [OpeningType("Window 600x600", 600, 600, 1500)],
 }
+WINDOWS = {kind: options[0] for kind, options in WINDOW_OPTIONS.items()}
 
 
 @dataclass(frozen=True)
@@ -42,13 +47,8 @@ class RoomMin:
     area_m2: float  # net
 
 
-ROOM_MIN = {
-    "living": RoomMin(2400, 9.5),
-    "bedroom_master": RoomMin(2400, 9.5),
-    "bedroom": RoomMin(2100, 7.5),
-    "kitchen": RoomMin(1800, 5.0),
-    "toilet": RoomMin(1200, 2.8),
-}
+# Design minimums come from the same rule file the compliance checker tests, so the two cannot drift.
+ROOM_MIN = {kind: RoomMin(int(v["width_mm"]), float(v["area_m2"])) for kind, v in rule_set("nbc2016")["room_minimums"].items()}
 
 # Clear distance kept between an opening's edge and a wall end or a wall junction.
 OPENING_CLEARANCE = 300

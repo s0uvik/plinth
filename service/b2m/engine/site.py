@@ -7,11 +7,7 @@ Plot frame: x runs along the road frontage from the plot's left corner, y runs f
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import lru_cache
-from importlib.resources import files
-
-import yaml
-
+from b2m.rules import rule_set
 from b2m.spec import BuildingSpec
 
 
@@ -47,9 +43,8 @@ class Envelope:
         return self.y1 - self.y0
 
 
-@lru_cache(maxsize=None)
 def _table(city: str) -> dict:
-    return yaml.safe_load(files("b2m.rules").joinpath(f"{city}_setbacks.yaml").read_text(encoding="utf-8"))
+    return rule_set(city)
 
 
 def building_height(spec: BuildingSpec) -> int:
@@ -60,11 +55,11 @@ def building_height(spec: BuildingSpec) -> int:
 def setbacks(spec: BuildingSpec) -> Setbacks:
     table = _table(spec.site.city)
     height = building_height(spec)
-    for row in table["residential"]:
+    for row in table["setbacks"]:
         if height <= row["max_height"]:
             return Setbacks(row["front"], row["rear"], row["side_left"], row["side_right"],
                             bool(table.get("verified")), str(table.get("source", "")))
-    tallest = table["residential"][-1]["max_height"]
+    tallest = table["setbacks"][-1]["max_height"]
     raise LayoutError(f"Building height {height / 1000:.1f} m is above the {tallest / 1000:.1f} m the {spec.site.city} "
                       "setback table covers; lower the floor height or the number of floors.")
 

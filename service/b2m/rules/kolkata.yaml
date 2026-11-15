@@ -1,0 +1,42 @@
+# Kolkata Municipal Corporation Building Rules, 2009: residential excerpts.
+#
+# PROVISIONAL PLACEHOLDERS. None of these numbers has been checked against the official rules; they are
+# shaped like the KMC tables so the engine and checker work end to end. Transcribe the open-space,
+# ground-coverage, FAR and height tables (with their road-width and plot-size conditions) from an official
+# copy, then set verified: true. The layout engine reads the setbacks from this file too.
+name: KMC Building Rules 2009
+verified: false
+source: "Provisional placeholders shaped like the KMC Building Rules 2009 tables; not checked against the official text."
+units: mm
+
+# Open spaces by building height (layout engine and checker).
+setbacks:
+  - {max_height: 7000, front: 1200, rear: 2000, side_left: 1200, side_right: 1200}
+  - {max_height: 10000, front: 2000, rear: 2500, side_left: 1200, side_right: 1500}
+  - {max_height: 12500, front: 2500, rear: 3000, side_left: 1500, side_right: 2000}
+  - {max_height: 15500, front: 3000, rear: 4000, side_left: 2000, side_right: 2000}
+
+rules:
+  - {id: KMC-SETBACKS, type: setbacks, severity: hard, title: "Open spaces around the building", clause: "Open space requirements (residential)"}
+  - id: KMC-COVERAGE
+    type: ground_coverage
+    severity: hard
+    title: "Ground coverage"
+    clause: "Permissible ground coverage (residential)"
+    bands: [{max_plot_m2: 200, max: 0.60}, {max_plot_m2: 500, max: 0.55}, {max_plot_m2: null, max: 0.50}]
+  - id: KMC-FAR
+    type: far
+    severity: hard
+    title: "Floor area ratio"
+    clause: "Permissible FAR by road width (residential)"
+    bands: [{max_road_mm: 2400, max: 1.25}, {max_road_mm: 3500, max: 1.50}, {max_road_mm: 5000, max: 1.75},
+            {max_road_mm: 7000, max: 2.00}, {max_road_mm: null, max: 2.25}]
+  - id: KMC-HEIGHT
+    type: height
+    severity: hard
+    title: "Building height for the road width"
+    clause: "Height of buildings by road width"
+    bands: [{max_road_mm: 2400, max: 7000}, {max_road_mm: 3500, max: 10000}, {max_road_mm: 5000, max: 12500},
+            {max_road_mm: null, max: 15500}]
+  - {id: KMC-LIFT, type: lift, above_mm: 13000, severity: soft, title: "Lift for taller residential buildings",
+     clause: "Lift requirements (residential)"}

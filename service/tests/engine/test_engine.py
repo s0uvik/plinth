@@ -8,7 +8,7 @@ from b2m.engine import catalog
 from b2m.plan import DoorOp, FloorOp, LevelOp, RoomOp, ShaftOp, WallOp, WindowOp
 from b2m.spec import BuildingSpec
 
-OPENING_WIDTH = {t.name: t.width for t in list(catalog.DOORS.values()) + list(catalog.WINDOWS.values())}
+OPENING_WIDTH = {t.name: t.width for t in list(catalog.DOORS.values()) + [o for opts in catalog.WINDOW_OPTIONS.values() for o in opts]}
 
 
 def make(plot, ground="stilt_parking", floors=3, units=(("2BHK", 2),), lift=False, targets=None, ftf=3000):
