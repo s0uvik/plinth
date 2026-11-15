@@ -1,0 +1,13 @@
+<Project>
+  <!-- Shared settings for every B2M.Revit year project and the test project. -->
+  <PropertyGroup>
+    <Version>0.1.0</Version>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <GenerateTargetPlatformAttribute>false</GenerateTargetPlatformAttribute>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <AddinSrc>$(MSBuildThisFileDirectory)src\</AddinSrc>
+  </PropertyGroup>
+</Project>
