@@ -168,6 +168,16 @@ def test_remove_deletes_newest_first_in_one_call():
     assert revit.calls == [("delete_element", {"elementIds": [3, 2, 1]})]
 
 
+def test_remove_counts_elements_the_user_already_undid_as_gone_not_failed():
+    revit = FakeRevit()
+    revit.call = lambda command, params, **kw: (
+        {"deleted": 1, "failedCount": 2, "total": 3, "failedIds": [3, 2], "errors": ["3: not found", "2: locked"]}
+        if command == "delete_element" else {"missingIds": [3]})
+    result = Runner(revit).remove({"a": 1, "b": 2, "c": 3})
+    assert result["alreadyGoneIds"] == [3]
+    assert result["failedIds"] == [2] and result["failedCount"] == 1 and result["errors"] == ["2: locked"]
+
+
 def test_type_map_converts_logical_names_and_passes_unknown_ones_through():
     from b2m.revit.types import TypeMap
     types = TypeMap.from_dict({"walls": {"Brick 230": "Muro de 25cm"},

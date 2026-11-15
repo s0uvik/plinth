@@ -130,7 +130,16 @@ class Runner:
         if not created:
             return {"deleted": 0, "failedCount": 0}
         ids = list(reversed(list(created.values())))
-        return self.revit.call("delete_element", {"elementIds": ids}, timeout_seconds=BATCH_TIMEOUT_SECONDS)
+        result = self.revit.call("delete_element", {"elementIds": ids}, timeout_seconds=BATCH_TIMEOUT_SECONDS)
+        if result.get("failedIds"):
+            # Elements the user already removed (Ctrl+Z on a batch, or deleted by hand) are not failures.
+            missing = set(self.revit.call("analyze_model_statistics", {"elementIds": result["failedIds"]}).get("missingIds") or [])
+            if missing:
+                result["alreadyGoneIds"] = [i for i in result["failedIds"] if i in missing]
+                result["failedIds"] = [i for i in result["failedIds"] if i not in missing]
+                result["failedCount"] = len(result["failedIds"])
+                result["errors"] = [e for e in result.get("errors") or [] if int(e.split(":", 1)[0]) not in missing]
+        return result
 
 
 def _failed_index(data: Any) -> int | None:
