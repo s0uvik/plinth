@@ -4,6 +4,8 @@
 // Modified for B2M: level is required and an unknown level or type is an error with the valid
 // options (rvt-mcp fell back to the first level and the first type); typeName as well as typeId;
 // the outline sits at the level's elevation; degenerate edges are rejected; area is read back.
+// New in B2M: optional heightOffset (mm) sets Height Offset From Level on the floor or ceiling, for chajjas
+// (window sunshades) and false ceilings; without it the element keeps Revit's default offset as before.
 
 using System;
 using System.Collections.Generic;
@@ -17,13 +19,15 @@ namespace B2M.Revit.Commands.Create
     public sealed class CreateSurfaceBasedElementHandler : IRevitCommand
     {
         public string Name => "create_surface_based_element";
-        public string Description => "Create a floor or ceiling from a closed outline of {x, y} points in mm on a named level. Optional typeName or typeId.";
+        public string Description => "Create a floor or ceiling from a closed outline of {x, y} points in mm on a named level. "
+            + "Optional typeName or typeId, and heightOffset (mm, Height Offset From Level).";
         public string ParametersSchema => @"{""type"":""object"",""properties"":{
             ""elementType"":{""type"":""string"",""enum"":[""floor"",""ceiling""]},
             ""points"":{""type"":""array"",""items"":{""type"":""object""}},
             ""level"":{""type"":""string""},
             ""typeId"":{""type"":""integer""},
-            ""typeName"":{""type"":""string""}},
+            ""typeName"":{""type"":""string""},
+            ""heightOffset"":{""type"":""number"",""description"":""Height Offset From Level in mm""}},
             ""required"":[""elementType"",""points"",""level""]}";
         public bool ReadOnly => false;
 
@@ -36,6 +40,10 @@ namespace B2M.Revit.Commands.Create
             if (!Lookup.TryLevel(doc, p.Value<string>("level"), out var level, out var failure)) return failure;
             if (!Outline.TryLoop((JArray)p["points"], level.ProjectElevation, app.Application.ShortCurveTolerance, out var loop, out failure))
                 return failure;
+            var heightOffsetMm = p.Value<double?>("heightOffset");
+            if (heightOffsetMm.HasValue && (double.IsNaN(heightOffsetMm.Value) || double.IsInfinity(heightOffsetMm.Value)))
+                return CommandResult.Fail("INVALID_PARAMS: heightOffset must be a finite number of mm.");
+            var offsetParameter = elementType == "floor" ? BuiltInParameter.FLOOR_HEIGHTABOVELEVEL_PARAM : BuiltInParameter.CEILING_HEIGHTABOVELEVEL_PARAM;
 
             ElementType type;
             if (elementType == "floor")
@@ -60,9 +68,20 @@ namespace B2M.Revit.Commands.Create
                     Element created = elementType == "floor"
                         ? (Element)Floor.Create(doc, loops, type.Id, level.Id)
                         : Ceiling.Create(doc, loops, type.Id, level.Id);
+                    if (heightOffsetMm.HasValue)
+                    {
+                        var offset = created.get_Parameter(offsetParameter);
+                        if (offset == null || offset.IsReadOnly)
+                        {
+                            tx.RollBack();
+                            return CommandResult.Fail("CREATE_FAILED: the " + elementType + "'s Height Offset From Level cannot be set. Nothing was changed.");
+                        }
+                        offset.Set(Mm.ToFeet(heightOffsetMm.Value));
+                    }
                     if (tx.Commit() != TransactionStatus.Committed)
                         return CommandResult.Fail("NOT_COMMITTED: Revit rolled the transaction back; see failures.");
                     var area = created.get_Parameter(BuiltInParameter.HOST_AREA_COMPUTED)?.AsDouble() ?? 0;
+                    var heightOffset = created.get_Parameter(offsetParameter)?.AsDouble();
                     return CommandResult.Ok(new
                     {
                         elementId = RevitCompat.GetId(created.Id),
@@ -70,7 +89,8 @@ namespace B2M.Revit.Commands.Create
                         typeId = RevitCompat.GetId(type.Id),
                         typeName = type.Name,
                         level = level.Name,
-                        areaM2 = Math.Round(area * 0.09290304, 3)
+                        areaM2 = Math.Round(area * 0.09290304, 3),
+                        heightOffsetMm = heightOffset.HasValue ? Mm.FromFeet(heightOffset.Value) : (double?)null
                     });
                 }
                 catch (Exception ex)
