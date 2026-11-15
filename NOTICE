@@ -1,0 +1,11 @@
+B2M Brief-to-Model
+Copyright 2026 Souvik
+
+This product includes software derived from rvt-mcp by bimwright
+(https://github.com/bimwright/rvt-mcp), licensed under the Apache License,
+Version 2.0. Copyright 2026 Khoa Le.
+
+Source commit: b44ee0b8032f0603f8e52656bc05ab43aa599263 (12 Nov 2026)
+
+Files derived from rvt-mcp carry a header naming the original file and stating
+that they were modified. The rvt-mcp licence is in third_party/rvt-mcp/LICENSE.
