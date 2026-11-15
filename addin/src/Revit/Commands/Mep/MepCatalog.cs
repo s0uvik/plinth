@@ -7,6 +7,22 @@ namespace B2M.Revit.Commands.Mep
     {
         public static void Register(CommandDispatcher dispatcher)
         {
+            dispatcher.Register(new DetectSystemElementsHandler());
+            dispatcher.Register(new CreateDuctHandler());
+            dispatcher.Register(new CreatePipeHandler());
+            dispatcher.Register(new CreateCableTrayHandler());
+            dispatcher.Register(new CreateConduitHandler());
+            dispatcher.Register(new CreateAirTerminalHandler());
+            dispatcher.Register(new CreateLightingFixtureHandler());
+            dispatcher.Register(new ListMepSystemsHandler());
+            dispatcher.Register(new GetSystemInventoryHandler());
+            dispatcher.Register(new GetMepElementConnectorsHandler());
+            dispatcher.Register(new ConnectMepElementsHandler());
+            dispatcher.Register(new CreateMepFittingHandler());
+            dispatcher.Register(new SetSystemClassificationHandler());
+            dispatcher.Register(new GetPanelScheduleHandler());
+            dispatcher.Register(new FindMepDisconnectsHandler());
+            dispatcher.Register(new AnalyzeMepNetworkHandler());
         }
     }
 }
