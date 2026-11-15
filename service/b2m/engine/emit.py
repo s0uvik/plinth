@@ -1,11 +1,17 @@
 """Turn validated floors into a build plan (PRD: Data contracts). Keys are stable and derived only from
-the layout, so the same spec always produces the same plan."""
+the layout, so the same spec always produces the same plan.
+
+Ops for the frame, stairs, chajjas and parapet come after the walls, slabs, openings, rooms and shafts in the
+op list (the runner orders by phase anyway), so a plan diff shows them as additions."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from string import ascii_uppercase
 
+from b2m.engine import structure
 from b2m.engine.floors import BuiltFloor
+from b2m.engine.stair import StairDesign
 from b2m.engine.templates import PlateLayout
 from b2m.plan import BuildPlan
 
@@ -22,15 +28,25 @@ def _rect_points(r) -> list[tuple[int, int]]:
     return [(r.x0, r.y0), (r.x1, r.y0), (r.x1, r.y1), (r.x0, r.y1)]
 
 
+@dataclass(frozen=True)
+class Extras:
+    """What goes around the floor plans: the RCC frame (None for load-bearing walls), the stair of each storey,
+    sunshade depth and parapet height (0: none)."""
+
+    frame: structure.Frame | None
+    stair: StairDesign
+    chajja_mm: int
+    parapet_mm: int
+
+
 def emit(plate: PlateLayout, floors: list[BuiltFloor], floor_to_floor: int, wall_types: tuple[str, str], slab: str,
-         prefix: str, spec_hash: str) -> BuildPlan:
+         prefix: str, spec_hash: str, extras: Extras | None = None) -> BuildPlan:
     levels = level_names(len(floors) - 1, prefix)
     ops: list[dict] = [{"op": "level", "key": f"L{i}", "name": name, "elevation_mm": i * floor_to_floor}
                        for i, name in enumerate(levels)]
 
     p, core = plate.plate, plate.core
-    xs = sorted({p.x0, core.x0, core.x1, p.x1})
-    ys = sorted({p.y0, p.y1} | {p.y0 + d for _, _, row, _, _, d in plate.slots if row == "front"})
+    xs, ys = structure.grid_lines(plate)
     for i, x in enumerate(xs, 1):
         ops.append({"op": "grid", "key": f"G{i}", "name": f"{prefix}{i}",
                     "start": (x, p.y0 - GRID_OVERRUN), "end": (x, p.y1 + GRID_OVERRUN)})
@@ -74,4 +90,43 @@ def emit(plate: PlateLayout, floors: list[BuiltFloor], floor_to_floor: int, wall
         ops.append({"op": "shaft", "key": "SHAFT-LIFT", "base_level": levels[0], "top_level": top_floor,
                     "base_offset_mm": SHAFT_BASE_OFFSET, "top_offset_mm": SHAFT_TOP_OFFSET,
                     "points": _rect_points(type(lift)(lift.x0 + EXT_HALF, lift.y0 + EXT_HALF, lift.x1 - EXT_HALF, lift.y1 - EXT_HALF))})
+    if extras is not None:
+        ops += _extras(extras, p, floors, levels)
     return BuildPlan.model_validate({"spec_hash": spec_hash, "ops": ops})
+
+
+def _extras(extras: Extras, plate_rect, floors: list[BuiltFloor], levels: list[str]) -> list[dict]:
+    ops: list[dict] = []
+    top_storey = len(floors) - 1
+    tag = [f"F{i}" for i in range(len(levels) - 1)] + ["ROOF"]  # beams at a level share its slab's prefix
+    if extras.frame is not None:
+        for i in range(len(floors)):
+            for k, col in enumerate(extras.frame.columns, 1):
+                column = {"op": "column", "key": f"F{i}-C{k:03d}", "level": levels[i], "top_level": levels[i + 1],
+                          "point": col.point, "type": structure.COLUMN}
+                if col.rotation:
+                    column["rotation_deg"] = col.rotation
+                ops.append(column)
+        for i in range(1, len(levels)):
+            for k, (start, end) in enumerate(extras.frame.beams, 1):
+                ops.append({"op": "beam", "key": f"{tag[i]}-B{k:03d}", "level": levels[i], "start": start, "end": end,
+                            "type": structure.BEAM})
+            if i <= top_storey and extras.frame.landing_beam:  # The roof slab has no stair opening.
+                start, end = extras.frame.landing_beam
+                ops.append({"op": "beam", "key": f"{tag[i]}-BL", "level": levels[i], "start": start, "end": end,
+                            "type": structure.BEAM})
+    # The stair climbs every storey up to the top floor; the shaft stops there and the roof is not reached.
+    for i in range(top_storey):
+        d = extras.stair
+        ops.append({"op": "stair", "key": f"F{i}-STAIR", "base_level": levels[i], "top_level": levels[i + 1],
+                    "type": structure.STAIR, "width_mm": d.width, "tread_mm": d.tread,
+                    "runs": [{"start": f.start, "end": f.end, "risers": f.risers} for f in d.flights]})
+        ops.append({"op": "railing", "key": f"F{i}-RAIL", "type": structure.RAILING, "stair_key": f"F{i}-STAIR"})
+    for floor in floors:
+        for k, c in enumerate(structure.chajjas(floor, extras.chajja_mm), 1):
+            ops.append({"op": "floor", "key": f"F{floor.level}-H{k:03d}", "level": levels[floor.level],
+                        "type": structure.CHAJJA, "points": list(c.points), "offset_mm": c.offset})
+    for k, (start, end) in enumerate(structure.parapet(plate_rect, extras.parapet_mm), 1):
+        ops.append({"op": "wall", "key": f"ROOF-P{k}", "level": levels[-1], "type": structure.PARAPET,
+                    "start": start, "end": end, "height_mm": extras.parapet_mm})
+    return ops

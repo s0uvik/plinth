@@ -4,7 +4,8 @@
     "Brick 115": "Generic - 125mm"
   },
   "floors": {
-    "RCC 150": "Generic 150mm"
+    "RCC 150": "Generic 150mm",
+    "Chajja 100": "Generic 100mm"
   },
   "doors": {
     "Door 1000x2100": {
@@ -45,5 +46,23 @@
       "family": "M_Fixed",
       "type": "0600 x 0600mm"
     }
+  },
+  "columns": {
+    "RCC Column 230x450": {
+      "family": "M_Concrete-Rectangular-Column",
+      "type": "230 x 450mm"
+    }
+  },
+  "beams": {
+    "RCC Beam 230x450": {
+      "family": "M_Concrete-Rectangular Beam",
+      "type": "230 x 450mm"
+    }
+  },
+  "stairs": {
+    "RCC Stair": "190mm max riser 250mm going"
+  },
+  "railings": {
+    "Railing 900": "900mm"
   }
 }

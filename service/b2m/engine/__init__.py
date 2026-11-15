@@ -13,18 +13,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from b2m.engine import catalog
-from b2m.engine.emit import emit, level_names
+from b2m.engine import catalog, structure
+from b2m.engine.emit import Extras, emit, level_names
 from b2m.engine.floors import BuiltFloor, build_floor, ventilated_area_mm2
 from b2m.engine.geometry import net_area_mm2, net_rect
 from b2m.engine.site import Envelope, LayoutError, envelope
+from b2m.engine.stair import design_stair
 from b2m.engine.templates import PlateLayout, plan_plate
 from b2m.engine.units import SEQUENCES
 from b2m.engine.validate import validate_floor
 from b2m.plan import BuildPlan
 from b2m.spec import BuildingSpec
 
-ENGINE_VERSION = "0.1.0"
+ENGINE_VERSION = "0.2.0"  # 0.2: RCC frame, stairs and railings, chajjas, roof parapet
 VARIANTS = max(len(v) for v in SEQUENCES.values())
 
 __all__ = ["ENGINE_VERSION", "EngineResult", "LayoutError", "generate"]
@@ -48,18 +49,27 @@ def generate(spec: BuildingSpec, name_prefix: str = "") -> EngineResult:
         floors = [build_floor(plate, level) for level in range(spec.building.upper_floors + 1)]
         slab = catalog.SLAB_THICKNESS[spec.standards.slab]
         problems = [p for f in floors for p in validate_floor(plate, f, spec.building.floor_to_floor_mm, slab)]
+        rcc = spec.standards.structure == "rcc_frame"
+        head = structure.opening_heads(floors)
+        if rcc and head > spec.building.floor_to_floor_mm - structure.BEAM_DEPTH:
+            problems.append(f"openings reach {head} mm above the floor; the {structure.BEAM_DEPTH} mm beams start at "
+                            f"{spec.building.floor_to_floor_mm - structure.BEAM_DEPTH} mm")
         if problems:
             reasons.append(f"variant {variant + 1}: " + "; ".join(problems[:5]) + (" ..." if len(problems) > 5 else ""))
             continue
+        # The stair zone does not depend on the variant: a stair that does not fit is reported straight away.
+        stair = design_stair(plate.core.stair, spec.building.floor_to_floor_mm, spec.core.stair_width_mm)
+        rcc_frame = structure.frame(plate, floors[1], floors) if rcc else None
+        extras = Extras(rcc_frame, stair, spec.standards.chajja_mm, spec.standards.roof_parapet_mm)
         plan = emit(plate, floors, spec.building.floor_to_floor_mm,
                     (spec.standards.external_wall, spec.standards.internal_wall), spec.standards.slab,
-                    name_prefix, spec.hash())
-        return EngineResult(plan, _report(spec, env, plate, floors, reasons, name_prefix))
+                    name_prefix, spec.hash(), extras)
+        return EngineResult(plan, _report(spec, env, plate, floors, reasons, name_prefix, extras))
     raise LayoutError("No layout fits this spec. " + " | ".join(reasons))
 
 
 def _report(spec: BuildingSpec, env: Envelope, plate: PlateLayout, floors: list[BuiltFloor], tried: list[str],
-            prefix: str) -> dict[str, Any]:
+            prefix: str, extras: Extras) -> dict[str, Any]:
     p = plate.plate
     outer_w, outer_d = p.width + 230, p.height + 230
     footprint = outer_w * outer_d / 1e6
@@ -90,8 +100,12 @@ def _report(spec: BuildingSpec, env: Envelope, plate: PlateLayout, floors: list[
     floors_with_flats = spec.building.upper_floors + (1 if spec.building.ground == "flats" else 0)
     if not env.setbacks.verified:
         notes.append("Setbacks come from a provisional table that has not been checked against the official rules.")
-    notes.append("The stair flights and lift landing doors are not modelled; the stair core and shafts are.")
+    notes.append("Lift landing doors are not modelled. The stair runs from the ground floor to the top floor; "
+                 "roof access (a stair cover) is not modelled.")
+    if extras.frame is not None:
+        notes += extras.frame.notes
     sc = plate.core.stair_core
+    stair = extras.stair
     return {
         "engine_version": ENGINE_VERSION,
         "spec_hash": spec.hash(),
@@ -108,9 +122,23 @@ def _report(spec: BuildingSpec, env: Envelope, plate: PlateLayout, floors: list[
         "plot_area_m2": round(plot_area, 2),
         "ground_coverage": round(footprint / plot_area, 4),
         "far": round(footprint * floors_with_flats / plot_area, 3),
-        "stair": {"width_mm": sc.width, "risers": sc.risers, "riser_mm": round(sc.riser, 1), "tread_mm": 250,
-                  "inner_width_mm": sc.inner_width, "inner_depth_mm": sc.inner_depth},
+        "stair": {"width_mm": sc.width, "risers": sc.risers, "riser_mm": round(sc.riser, 1), "tread_mm": stair.tread,
+                  "inner_width_mm": sc.inner_width, "inner_depth_mm": sc.inner_depth,
+                  "risers_per_flight": sc.risers_per_flight, "flight_going_mm": sc.flight_length,
+                  "mid_landing_depth_mm": stair.landing_depth, "storeys": spec.building.upper_floors,
+                  "railing": structure.RAILING},
+        "structure": _structure(extras),
         "lift": spec.core.lift,
         "flats_per_floor": flats,
         "notes": notes,
     }
+
+
+def _structure(extras: Extras) -> dict[str, Any]:
+    f = extras.frame
+    out: dict[str, Any] = {"system": "load_bearing" if f is None else "rcc_frame",
+                           "chajja_mm": extras.chajja_mm, "roof_parapet_mm": extras.parapet_mm}
+    if f is not None:
+        out.update(column_type=structure.COLUMN, beam_type=structure.BEAM, columns_per_storey=len(f.columns),
+                   beams_per_floor=len(f.beams), longest_beam_mm=max(abs(b[0] - a[0]) + abs(b[1] - a[1]) for a, b in f.beams))
+    return out

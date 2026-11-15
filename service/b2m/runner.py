@@ -2,7 +2,10 @@
 
 Splits a build plan into batch_execute calls of at most 20 ops, one build phase per batch, in
 dependency order. Each batch is one Revit undo step and either builds completely or not at all.
-Keys are swapped for element ids as batches return. The first failed batch stops the run; what was
+Stairs and railings are the exception: the add-in will not run create_stair inside a batch, so each of
+those ops is its own direct call (and undo step). Keys are swapped for element ids as batches return;
+an op that creates several elements (a stair and the railings Revit gives it) records them as key,
+key#2, key#3... The first failed batch stops the run; what was
 built so far is reported and can be removed. After a build, element counts and warnings are read back
 and compared with the plan.
 """
@@ -14,7 +17,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
-from b2m.plan import PHASE_OF, BuildPlan, Op
+from b2m.plan import KEY_SEPARATOR, PHASE_OF, BuildPlan, Op, RailingOp
 from b2m.revit import commands
 from b2m.revit.client import RevitError, RevitTimeout
 from b2m.revit.types import TypeMap
@@ -43,11 +46,12 @@ class BuildResult:
 
 
 def plan_batches(plan: BuildPlan) -> list[list[Op]]:
-    """Ops in build order, cut at every phase change and every 20 ops."""
+    """Ops in build order, cut at every phase change and every 20 ops. Ops called directly stand alone."""
     batches: list[list[Op]] = []
     for op in plan.ordered():
         last = batches[-1] if batches else None
-        if last is None or len(last) >= MAX_BATCH or PHASE_OF[last[-1].op] != PHASE_OF[op.op]:
+        if (last is None or len(last) >= MAX_BATCH or PHASE_OF[last[-1].op] != PHASE_OF[op.op]
+                or op.op in commands.DIRECT_OPS):
             batches.append([op])
         else:
             last.append(op)
@@ -66,6 +70,13 @@ class Runner:
         result = BuildResult(status="built", batches_total=len(batches), batches_succeeded=0)
         self.progress(0, len(batches))
         for index, batch in enumerate(batches):
+            if batch[0].op in commands.DIRECT_OPS:
+                stopped = self._direct(batch[0], by_key, result)
+                if stopped is not None:
+                    return stopped
+                result.batches_succeeded += 1
+                self.progress(index + 1, len(batches))
+                continue
             subcommands = [commands.to_command(op, by_key, result.created, self.types) for op in batch]
             log.info("batch %d of %d: %d ops (%s)", index + 1, len(batches), len(batch), batch[0].op)
             try:
@@ -76,10 +87,27 @@ class Runner:
                 failed = _failed_index(e.data)
                 return self._stop(result, "failed", e, batch[failed].key if failed is not None and 0 <= failed < len(batch) else None)
             for op, entry in zip(batch, data["results"]):
-                result.created[op.key] = entry["data"]["elementId"]
+                result.created.update(commands.created_keys(op, commands.created_ids(op, entry["data"])))
             result.batches_succeeded += 1
             self.progress(index + 1, len(batches))
         return result
+
+    def _direct(self, op: Op, by_key: dict[str, Op], result: BuildResult) -> BuildResult | None:
+        """One op as its own command. Returns the stopped result on failure, else None."""
+        if isinstance(op, RailingOp) and op.stair_key is not None and f"{op.stair_key}{KEY_SEPARATOR}2" in result.created:
+            # Revit already gave the stair its railings (the add-in refuses a second set): they stand for this op.
+            log.info("%s: stair %s came with its own railings; not adding more", op.key, op.stair_key)
+            return None
+        command = commands.to_command(op, by_key, result.created, self.types)
+        log.info("direct call: %s (%s)", command["command"], op.key)
+        try:
+            data = self.revit.call(command["command"], command["params"], timeout_seconds=BATCH_TIMEOUT_SECONDS)
+        except RevitTimeout as e:
+            return self._stop(result, "unknown", e, op.key)
+        except RevitError as e:
+            return self._stop(result, "failed", e, op.key)
+        result.created.update(commands.created_keys(op, commands.created_ids(op, data)))
+        return None
 
     def _stop(self, result: BuildResult, status: str, error: RevitError, failed_key: str | None) -> BuildResult:
         result.status = status
@@ -99,11 +127,12 @@ class Runner:
         expected: Counter[tuple[str, str | None]] = Counter()
         level_checked: set[str] = set()
         for key in created:
-            op = by_key[key]
-            level = commands.expected_level(op, by_key)
+            op = by_key[commands.op_key(key)]
+            category = commands.category_of(key, op)
+            level = commands.expected_level(op, by_key) if key == op.key else None
             if level is not None:
-                level_checked.add(commands.CATEGORY[op.op])
-            expected[(commands.CATEGORY[op.op], level)] += 1
+                level_checked.add(category)
+            expected[(category, level)] += 1
 
         actual: Counter[tuple[str, str | None]] = Counter()
         for row in stats["categories"]:

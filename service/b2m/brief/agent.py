@@ -78,6 +78,9 @@ TOOLS = [
                 "units": {"type": "array", "items": _UNIT},
                 "stair_width_mm": {"type": "integer"},
                 "lift": {"type": "boolean"},
+                "structure": {"type": "string", "enum": ["rcc_frame", "load_bearing"]},
+                "chajja_mm": {"type": "integer", "description": "Sunshade depth over outside windows and doors; 0 for none"},
+                "roof_parapet_mm": {"type": "integer", "description": "Roof parapet height; 0 for none"},
                 "defaults_applied": {"type": "array", "items": {
                     "type": "object",
                     "properties": {"field": {"type": "string"}, "value": {"type": "string"}, "reason": {"type": "string"}},
@@ -85,7 +88,8 @@ TOOLS = [
                 "assumptions": {"type": "array", "items": {"type": "string"}},
             },
             "required": ["plot_width_mm", "plot_depth_mm", "road_width_mm", "ground", "upper_floors", "floor_to_floor_mm",
-                         "template", "units", "stair_width_mm", "lift", "defaults_applied", "assumptions"],
+                         "template", "units", "stair_width_mm", "lift", "structure", "chajja_mm", "roof_parapet_mm",
+                         "defaults_applied", "assumptions"],
             "additionalProperties": False,
         },
     },
@@ -142,6 +146,8 @@ def to_spec_dict(tool_input: dict[str, Any]) -> dict[str, Any]:
                      "floor_to_floor_mm": tool_input.get("floor_to_floor_mm"), "template": tool_input.get("template")},
         "units": tool_input.get("units"),
         "core": {"stair": "dog_leg", "stair_width_mm": tool_input.get("stair_width_mm"), "lift": tool_input.get("lift")},
+        # Fields a submission may leave out (older transcripts, tests) keep the spec's own defaults.
+        "standards": {k: tool_input[k] for k in ("structure", "chajja_mm", "roof_parapet_mm") if tool_input.get(k) is not None},
         "assumptions": list(tool_input.get("assumptions") or [])
                        + [f"{d['field']} defaulted to {d['value']}: {d['reason']}" for d in tool_input.get("defaults_applied") or []],
     }

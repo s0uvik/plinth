@@ -12,6 +12,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 Point = tuple[float, float]
 PLAN_VERSION = "1.0"
+# Separates an op's key from the number of an extra element it created (a stair op's second railing: "RAIL#2").
+KEY_SEPARATOR = "#"
 
 
 class _Op(BaseModel):
@@ -59,6 +61,88 @@ class FloorOp(_Op):
     level: str
     type: str | None = None
     points: list[Point] = Field(min_length=3)
+    # Top of the floor above its level (a chajja at lintel height); left out of dumps when 0, so plans without
+    # offsets serialise exactly as before.
+    offset_mm: float = Field(default=0, exclude_if=lambda v: v == 0)
+
+
+class ColumnOp(_Op):
+    """A structural column standing on ``level`` (+ base offset) up to ``top_level`` (+ top offset)."""
+
+    op: Literal["column"]
+    level: str
+    top_level: str
+    point: Point
+    type: str
+    family: str | None = None
+    rotation_deg: float = 0
+    base_offset_mm: float = 0
+    top_offset_mm: float = 0
+
+
+class BeamOp(_Op):
+    """A structural beam between two plan points, top at its level."""
+
+    op: Literal["beam"]
+    level: str
+    start: Point
+    end: Point
+    type: str
+    family: str | None = None
+
+    @model_validator(mode="after")
+    def _length(self) -> "BeamOp":
+        if self.start == self.end:
+            raise ValueError("a beam needs distinct start and end points")
+        return self
+
+
+class StairRun(BaseModel):
+    """One straight flight: ``start`` is on its centreline at the first riser; ``end`` gives the direction only."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    start: Point
+    end: Point
+    risers: int = Field(ge=2)
+
+    @model_validator(mode="after")
+    def _direction(self) -> "StairRun":
+        if self.start == self.end:
+            raise ValueError("a stair run needs distinct start and end points")
+        return self
+
+
+class StairOp(_Op):
+    """A stair from one level to the next; consecutive runs are joined by landings."""
+
+    op: Literal["stair"]
+    base_level: str
+    top_level: str
+    type: str | None = None
+    width_mm: float = Field(gt=0)
+    tread_mm: float = Field(gt=0)
+    base_offset_mm: float = 0
+    runs: list[StairRun] = Field(min_length=1)
+
+
+class RailingOp(_Op):
+    """A railing on a stair (``stair_key``) or along a sketched path on a level."""
+
+    op: Literal["railing"]
+    type: str | None = None
+    stair_key: str | None = None
+    placement: Literal["treads", "stringer"] = "treads"
+    path: list[Point] | None = Field(default=None, min_length=2)
+    level: str | None = None
+    base_offset_mm: float = 0
+
+    @model_validator(mode="after")
+    def _host(self) -> "RailingOp":
+        if (self.stair_key is None) == (self.path is None):
+            raise ValueError("a railing needs exactly one of stair_key or path")
+        if self.path is not None and self.level is None:
+            raise ValueError("a railing along a path needs a level")
+        return self
 
 
 class ShaftOp(_Op):
@@ -99,10 +183,14 @@ class RoomOp(_Op):
     flat: str | None = None
 
 
-Op = Annotated[Union[LevelOp, GridOp, WallOp, FloorOp, ShaftOp, DoorOp, WindowOp, RoomOp], Field(discriminator="op")]
+Op = Annotated[Union[LevelOp, GridOp, ColumnOp, WallOp, FloorOp, ShaftOp, BeamOp, StairOp, RailingOp, DoorOp, WindowOp,
+                     RoomOp], Field(discriminator="op")]
 
-# Build order (PRD): levels, grids, walls, floors, openings, doors and windows, rooms.
-PHASES: tuple[tuple[str, ...], ...] = (("level",), ("grid",), ("wall",), ("floor",), ("shaft",), ("door", "window"), ("room",))
+# Build order (PRD): levels, grids, columns, walls (which then join the columns), floors, shaft openings (which cut
+# the floors), beams (onto columns, under the slabs), stairs (inside the cut shafts), railings (on their stairs),
+# doors and windows (into their walls), rooms (once every bounding element exists).
+PHASES: tuple[tuple[str, ...], ...] = (("level",), ("grid",), ("column",), ("wall",), ("floor",), ("shaft",), ("beam",),
+                                       ("stair",), ("railing",), ("door", "window"), ("room",))
 PHASE_OF = {name: i for i, names in enumerate(PHASES) for name in names}
 
 
@@ -116,10 +204,13 @@ class BuildPlan(BaseModel):
     def _references(self) -> "BuildPlan":
         keys: dict[str, _Op] = {}
         for op in self.ops:
+            if KEY_SEPARATOR in op.key:
+                raise ValueError(f"{op.key}: keys may not contain {KEY_SEPARATOR!r}")
             if op.key in keys:
                 raise ValueError(f"duplicate key {op.key!r}")
             keys[op.key] = op
         levels = {op.name for op in self.ops if isinstance(op, LevelOp)}
+        elevation = {op.name: op.elevation_mm for op in self.ops if isinstance(op, LevelOp)}
         if len(levels) != sum(isinstance(op, LevelOp) for op in self.ops):
             raise ValueError("level names must be unique")
         for op in self.ops:
@@ -131,6 +222,12 @@ class BuildPlan(BaseModel):
                 host = keys.get(op.host_key)
                 if not isinstance(host, WallOp):
                     raise ValueError(f"{op.key}: host_key {op.host_key!r} is not a wall in this plan")
+            if isinstance(op, RailingOp) and op.stair_key is not None and not isinstance(keys.get(op.stair_key), StairOp):
+                raise ValueError(f"{op.key}: stair_key {op.stair_key!r} is not a stair in this plan")
+            if isinstance(op, (ColumnOp, StairOp)):
+                base = op.level if isinstance(op, ColumnOp) else op.base_level
+                if elevation[op.top_level] <= elevation[base]:
+                    raise ValueError(f"{op.key}: top_level {op.top_level!r} is not above {base!r}")
         return self
 
     def ordered(self) -> list[Op]:
@@ -154,8 +251,10 @@ def translate(plan: BuildPlan, dx: float, dy: float) -> BuildPlan:
     ops = []
     for op in plan.ops:
         data = op.model_dump()
-        for name in ("start", "end", "point", "points"):
-            if name in data:
+        for name in ("start", "end", "point", "points", "path"):
+            if data.get(name) is not None:
                 data[name] = move(data[name])
+        for run in data.get("runs") or []:
+            run["start"], run["end"] = move(run["start"]), move(run["end"])
         ops.append(data)
     return BuildPlan.model_validate({"plan_version": plan.plan_version, "spec_hash": plan.spec_hash, "ops": ops})

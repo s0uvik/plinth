@@ -33,10 +33,18 @@ class FakeRevit:
                                   "data": {"results": [{"index": self.fail_index, "ok": False, "error": "LEVEL_NOT_FOUND: x"}], "rolledBack": True},
                                   "failures": [{"severity": "Warning", "description": "overlap"}]})
             results = []
-            for i, _ in enumerate(params["commands"]):
-                results.append({"index": i, "ok": True, "data": {"elementId": self.next_id}})
+            for i, sub in enumerate(params["commands"]):
+                assert sub["command"] not in ("create_stair", "create_railing"), "called directly, never in a batch"
+                field = {"create_structural_column": "column_id", "create_structural_beam": "element_id"}.get(sub["command"], "elementId")
+                results.append({"index": i, "ok": True, "data": {field: self.next_id}})
                 self.next_id += 1
             return {"results": results, "rolledBack": False}
+        if command == "create_stair":
+            self.next_id += 1
+            return {"stair_id": self.next_id - 1, "run_ids": [], "landing_ids": [], "railing_ids": []}
+        if command == "create_railing":
+            self.next_id += 1
+            return {"railing_ids": [self.next_id - 1]}
         if command == "analyze_model_statistics":
             return self.stats
         if command == "get_model_warnings_summary":
@@ -127,9 +135,9 @@ def _stats_for(created, plan=None):
     rows = {}
     by_key = (plan or HOUSE).by_key()
     for key in created:
-        op = by_key[key]
-        level = commands.expected_level(op, by_key)
-        k = (commands.CATEGORY[op.op], level)
+        op = by_key[commands.op_key(key)]
+        level = commands.expected_level(op, by_key) if key == op.key else None
+        k = (commands.category_of(key, op), level)
         rows[k] = rows.get(k, 0) + 1
     return {"categories": [{"builtInCategory": c, "level": lv, "count": n} for (c, lv), n in rows.items()], "missingIds": []}
 
