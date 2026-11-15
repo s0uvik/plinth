@@ -7,6 +7,15 @@ namespace B2M.Revit.Commands.Schedule
     {
         public static void Register(CommandDispatcher dispatcher)
         {
+            dispatcher.Register(new ListSchedulesHandler());
+            dispatcher.Register(new GetScheduleDefinitionHandler());
+            dispatcher.Register(new GetScheduleDataHandler());
+            dispatcher.Register(new GetScheduleFormulasHandler());
+            dispatcher.Register(new GetSchedulableFieldsHandler());
+            dispatcher.Register(new FindScheduleElementsHandler());
+            dispatcher.Register(new AddScheduleFieldHandler());
+            dispatcher.Register(new UpdateScheduleFieldHandler());
+            dispatcher.Register(new ApplyScheduleFilterSortHandler());
         }
     }
 }
