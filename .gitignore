@@ -15,3 +15,6 @@ __pycache__/
 # Local run data
 runs/
 logs/
+
+# Distribution builds
+dist/

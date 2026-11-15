@@ -49,6 +49,19 @@ One JSON object per line each way over the named pipe (Revit 2025+) or loopback 
 - Any Revit warning or error during a command rolls its transaction back and is listed in `failures`.
 - `batch_execute` runs up to 20 commands as one undo step; any failure rolls all of them back.
 
+## Packaging and install (Step 6)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File installeruild.ps1        # dist\B2M-<version>\ and .zip
+# on a user's PC, from the unzipped package, with Revit closed:
+powershell -ExecutionPolicy Bypass -File install.ps1                # add-in for each installed Revit 2024-2027 + service
+powershell -ExecutionPolicy Bypass -File uninstall.ps1 [-Purge]
+```
+
+The install is per user (no admin). It needs Python 3.12 for the service and puts it in `%LOCALAPPDATA%\B2M`
+with `start-b2m.cmd`. `standards.example.json` shows how to map the logical types to a firm's own. The B2M
+project template and family pack (PRD) still need to be made in Revit 2024 and added to the package.
+
 ## Service
 
 ```sh

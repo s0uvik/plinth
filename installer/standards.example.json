@@ -1,0 +1,49 @@
+{
+  "walls": {
+    "Brick 230": "Generic - 225mm",
+    "Brick 115": "Generic - 125mm"
+  },
+  "floors": {
+    "RCC 150": "Generic 150mm"
+  },
+  "doors": {
+    "Door 1000x2100": {
+      "family": "M_Single-Flush",
+      "type": "1000 x 2134mm"
+    },
+    "Door 900x2100": {
+      "family": "M_Single-Flush",
+      "type": "0900 x 2134mm"
+    },
+    "Door 750x2100": {
+      "family": "M_Single-Flush",
+      "type": "0750 x 2134mm"
+    },
+    "Door 1200x2100": {
+      "family": "M_Single-Flush",
+      "type": "1200 x 2134mm"
+    }
+  },
+  "windows": {
+    "Window 1500x1200": {
+      "family": "M_Fixed",
+      "type": "1500 x 1200mm"
+    },
+    "Window 1800x1500": {
+      "family": "M_Fixed",
+      "type": "1800 x 1500mm"
+    },
+    "Window 2400x1500": {
+      "family": "M_Fixed",
+      "type": "2400 x 1500mm"
+    },
+    "Window 1200x1200": {
+      "family": "M_Fixed",
+      "type": "1200 x 1200mm"
+    },
+    "Window 600x600": {
+      "family": "M_Fixed",
+      "type": "0600 x 0600mm"
+    }
+  }
+}
