@@ -7,6 +7,8 @@ namespace B2M.Revit.Commands.ToolBaker
     {
         public static void Register(CommandDispatcher dispatcher)
         {
+            dispatcher.Register(new ListBakedToolsHandler());
+            dispatcher.Register(new RunBakedToolHandler());
         }
     }
 }

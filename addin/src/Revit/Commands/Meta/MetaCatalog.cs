@@ -7,6 +7,15 @@ namespace B2M.Revit.Commands.Meta
     {
         public static void Register(CommandDispatcher dispatcher)
         {
+            dispatcher.Register(new GetDocumentStateHandler());
+            dispatcher.Register(new ListRecentModelsHandler());
+            dispatcher.Register(new OpenModelHandler());
+            dispatcher.Register(new ShowMessageHandler());
+            dispatcher.Register(new SetProjectInfoHandler());
+            dispatcher.Register(new PurgeUnusedHandler());
+            dispatcher.Register(new ReportTaskResultHandler());
+            dispatcher.Register(new GetReportHistoryHandler());
+            dispatcher.Register(new SendCodeToRevitHandler());
         }
     }
 }
