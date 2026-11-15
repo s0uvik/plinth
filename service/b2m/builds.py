@@ -41,13 +41,16 @@ class BuildService:
         self._connect = connect or (lambda: RevitClient.connect(required_commands=REQUIRED_COMMANDS))
         self._lock = threading.Lock()
 
-    def start(self, plan: BuildPlan, document_title: str | None = None) -> str:
-        """Start a build in the background and return its run id."""
+    def start(self, plan: BuildPlan, document_title: str | None = None, attachments: dict[str, Any] | None = None) -> str:
+        """Start a build in the background and return its run id. Attachments (spec, layout report, brief)
+        are saved in the run beside the plan."""
         if not self._lock.acquire(blocking=False):
             raise Busy("A build or removal is already running.")
         try:
             run = self.store.create()
             run.save("plan", plan.model_dump(mode="json"))
+            for name, data in (attachments or {}).items():
+                run.save(name, data)
             run.update(status="queued", created_utc=_now(), expected_document_title=document_title)
         except Exception:
             self._lock.release()

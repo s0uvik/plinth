@@ -26,13 +26,14 @@ class FakeClient(FakeRevit):
 
     def call(self, command, params=None, *, timeout_seconds=None):
         if command == "analyze_model_statistics":
-            self.stats = _stats_for({k: v for k, v in self._created.items()})
+            self.stats = _stats_for({k: v for k, v in self._created.items()}, self._plan)
         result = super().call(command, params, timeout_seconds=timeout_seconds)
         if self.observer:
             self.observer({"command": command, "params": params}, {"success": True})
         return result
 
     _created = {}
+    _plan = None
 
     def __enter__(self):
         return self
@@ -96,3 +97,52 @@ def test_api_starts_builds_and_reports_runs(tmp_path):
     assert api.get("/runs").json()[0]["run_id"] == run_id
     assert api.get("/runs/nope").status_code == 404
     assert api.post("/builds", json={"plan": {"ops": []}}).status_code == 422
+
+
+def test_brief_questions_answers_preview_and_build_through_the_api(tmp_path, monkeypatch):
+    from tests.test_brief_agent import GOOD, FakeClaude, reply, tool
+    monkeypatch.setenv("B2M_HOME", str(tmp_path))
+    claude = FakeClaude(
+        reply(tool("ask_user", {"questions": [{"field": "plot_depth_mm", "question": "How deep is the plot?"}]}, id="a1")),
+        reply(tool("submit_spec", GOOD, id="s1")))
+    client = FakeClient()
+    FakeClient._created = {}
+    service = make_service(tmp_path, client)
+    api = TestClient(create_app(service, brief_client=lambda: claude))
+
+    assert "Brief to model" in api.get("/").text
+    first = api.post("/briefs", json={"brief": "G+3, 15 m wide, two 2BHKs"}).json()
+    assert first["kind"] == "questions" and first["questions"][0]["field"] == "plot_depth_mm"
+    second = api.post(f"/briefs/{first['brief_id']}/answers", json={"answers": {"plot_depth_mm": "25 m"}}).json()
+    assert second["kind"] == "spec" and second["layout"]["ok"] and second["layout"]["template"] == "T2"
+    assert second["defaults"][0]["field"] == "floor_to_floor_mm"
+
+    bad = api.post("/preview", json={"spec": {**second["spec"], "units": [{"type": "2BHK", "per_floor": 9}]}})
+    assert bad.status_code == 422 and any("per_floor" in e for e in bad.json()["detail"]["errors"])
+    shallow = api.post("/preview", json={"spec": {**second["spec"], "units": [{"type": "3BHK", "per_floor": 4}]}}).json()
+    assert shallow["layout"]["ok"] is False and "depth" in shallow["layout"]["error"]
+
+    from b2m.engine import generate
+    from b2m.spec import BuildingSpec
+    plan = generate(BuildingSpec.model_validate(second["spec"])).plan
+    FakeClient._created = {op.key: 0 for op in plan.ops}
+    FakeClient._plan = plan
+    run_id = api.post("/builds/from-spec", json={"spec": second["spec"], "document_title": "Scratch",
+                                                "brief_id": first["brief_id"]}).json()["run_id"]
+    with service._lock:
+        pass
+    run = service.store.get(run_id)
+    assert run.load("run")["status"] == "built"
+    assert run.load("spec")["site"]["plot_mm"] == [15000, 25000]
+    assert run.load("layout_report")["template"] == "T2"
+    assert run.load("brief")["text"] == "G+3, 15 m wide, two 2BHKs"
+    FakeClient._plan = None
+
+
+def test_brief_endpoint_reports_when_claude_is_unavailable(tmp_path):
+    def no_client():
+        raise RuntimeError("no API key")
+    api = TestClient(create_app(make_service(tmp_path, FakeClient()), brief_client=no_client))
+    response = api.post("/briefs", json={"brief": "anything"})
+    assert response.status_code == 503 and "no API key" in response.json()["detail"]
+    assert api.post("/briefs", json={"brief": "  "}).status_code == 422

@@ -123,9 +123,9 @@ def test_timeout_marks_the_run_unknown():
     assert result.batches_succeeded == 1
 
 
-def _stats_for(created):
+def _stats_for(created, plan=None):
     rows = {}
-    by_key = HOUSE.by_key()
+    by_key = (plan or HOUSE).by_key()
     for key in created:
         op = by_key[key]
         level = commands.expected_level(op, by_key)
