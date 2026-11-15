@@ -77,7 +77,10 @@ namespace B2M.Revit.Commands.Create
                 tx.Start();
                 try
                 {
-                    var roof = doc.Create.NewFootPrintRoof(footprint, level, roofType, out var modelCurves);
+                    // Revit reads this "out" argument (it is a C++/CLI reference), so it must start as an empty array,
+                    // not null; Autodesk's samples do the same. Found in the first live run ("Value cannot be null").
+                    var modelCurves = new ModelCurveArray();
+                    var roof = doc.Create.NewFootPrintRoof(footprint, level, roofType, out modelCurves);
                     if (roof == null) return RolledBack(tx, "CREATE_FAILED: Revit did not create the roof.");
 
                     // Match each sketch line Revit made to the footprint edge it came from by its end points, rather
