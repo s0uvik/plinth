@@ -7,6 +7,14 @@ namespace B2M.Revit.Commands.Workflows
     {
         public static void Register(CommandDispatcher dispatcher)
         {
+            dispatcher.Register(new WorkflowClashReviewHandler());
+            dispatcher.Register(new WorkflowModelAuditHandler());
+            dispatcher.Register(new WorkflowRoomDocumentationHandler());
+            dispatcher.Register(new WorkflowSheetSetHandler());
+            dispatcher.Register(new WorkflowDataRoundtripHandler());
+            dispatcher.Register(new WorkflowViewCleanupHandler());
+            dispatcher.Register(new WorkflowNamingNormalizationHandler());
+            dispatcher.Register(new WorkflowTakeoffReportHandler());
         }
     }
 }
