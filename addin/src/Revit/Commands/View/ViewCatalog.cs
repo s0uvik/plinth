@@ -15,6 +15,7 @@ namespace B2M.Revit.Commands.View
             dispatcher.Register(new SetViewStyleHandler());
             dispatcher.Register(new SetViewOrientationHandler());
             dispatcher.Register(new CreateCameraViewHandler());
+            dispatcher.Register(new SetGridHeadsHandler());
         }
     }
 }

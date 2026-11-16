@@ -428,6 +428,7 @@ class ImportBuildRequest(BaseModel):
 
 class ImportDrawingsRequest(BaseModel):
     run_id: str
+    remake: bool = False  # delete the run's previous drawing set (its own sheets and views only) and make it again
 
 
 class ImportEstimateRequest(BaseModel):
@@ -973,15 +974,20 @@ def add_import_routes(app: FastAPI, service: BuildService, imports: Imports) -> 
         return run, made_from
 
     def stage_conflict(project: ImportProject, stage: str, asked: list[dict[str, Any]], what: str) -> HTTPException:
-        """Turn a stage's questions into import questions (ids = the answer keys) and say what to answer."""
+        """Turn a stage's questions into import questions (ids = the answer keys) and say what to answer. Questions
+        marked blocks=False (title block fields) become import questions too but are not what the stage waits for."""
         qs = stage_questions.merge(project, stage, asked)
         imports.store.save(project)
+        waiting = {a["id"] for a in asked if a.get("blocks", True)}
+        needed = [q for q in qs if q.open and q.id in waiting]
         return HTTPException(409, {"errors": [f"B2M needs answers before it can make the {what}:"]
-                                             + [f"{q.id}: {q.text}" for q in qs if q.open],
-                                   "questions": [q.model_dump(mode="json") for q in qs if q.open]})
+                                             + [f"{q.id}: {q.text}" for q in needed],
+                                   "questions": [q.model_dump(mode="json") for q in needed]})
 
-    def make_drawings(import_id: str | None, run_id: str) -> dict[str, Any]:
-        """The source sheet set reproduced in Revit for a run built from an import (T10)."""
+    def make_drawings(import_id: str | None, run_id: str, remake: bool = False) -> dict[str, Any]:
+        """The source sheet set reproduced in Revit for a run built from an import (T10). A run makes one set; remake
+        deletes the one it made before (the sheets and views recorded under its DWG- keys, nothing else) and makes
+        it again, e.g. after answering the title block questions."""
         from b2m.imported.drawings import load_sheets, make_import_drawing_set
         from b2m.imported.to_plan import ImportPlan
 
@@ -990,8 +996,11 @@ def add_import_routes(app: FastAPI, service: BuildService, imports: Imports) -> 
         record = run.load("run")
         if record.get("status") not in ("built", "built_with_issues"):
             raise HTTPException(409, "Build the model before making its drawing set.")
-        if (record.get("drawings") or {}).get("sheets"):
-            raise HTTPException(409, "This run already has a drawing set; remove the run and build again to redo it.")
+        previous = {k: v for k, v in (record.get("created") or {}).items() if k.startswith("DWG-")}
+        if (previous or (record.get("drawings") or {}).get("sheets")) and not remake:
+            raise HTTPException(409, "This run already has a drawing set. To make it again, post with \"remake\": "
+                                     "true: B2M deletes the sheets and views it made for that set (nothing else) "
+                                     "and makes the set again.")
         project = imports.project(import_id)
         building = RecognisedBuilding.model_validate(run.load("recognised_building"))
         result = ImportPlan.model_validate(run.load("import_plan"))
@@ -1001,9 +1010,14 @@ def add_import_routes(app: FastAPI, service: BuildService, imports: Imports) -> 
             def remember(key: str, element_id: int) -> None:
                 current = run.load("run").get("created") or {}
                 run.update(created={**current, key: element_id})
+
+            def forget(keys: list[str]) -> None:
+                gone = set(keys)
+                current = run.load("run").get("created") or {}
+                run.update(created={k: v for k, v in current.items() if k not in gone})
             created = run.load("run").get("created") or {}
             return make_import_drawing_set(revit, project, building, result, created, run.dir, record=remember,
-                                           sheets=sheets)
+                                           sheets=sheets, previous=previous or None, forget=forget)
 
         try:
             out = service.run_on(run_id, make, "drawings").get("drawings") or {}
@@ -1015,9 +1029,9 @@ def add_import_routes(app: FastAPI, service: BuildService, imports: Imports) -> 
                                      "drawing set")
         if out.get("error") and not out.get("sheets"):
             raise HTTPException(502, {"errors": [f"The drawing set failed: {out['error']}"], "drawings": out})
-        with imports.edit:  # whatever it asked before is settled
+        with imports.edit:  # whatever it asked before is settled; the title block fields not answered stay asked
             project = imports.project(import_id)
-            stage_questions.merge(project, "drawings", [])
+            stage_questions.merge(project, "drawings", out.get("questions") or [])
             imports.store.save(project)
         comparison = out.get("comparison") or {}
         return {**{k: v for k, v in out.items() if k not in ("log", "comparison")},
@@ -1031,7 +1045,7 @@ def add_import_routes(app: FastAPI, service: BuildService, imports: Imports) -> 
     @app.post("/imports/{import_id}/drawings")
     def import_drawings(import_id: str, request: ImportDrawingsRequest) -> dict[str, Any]:
         finished(import_id)
-        return make_drawings(import_id, request.run_id)
+        return make_drawings(import_id, request.run_id, request.remake)
 
     @app.post("/imports/{import_id}/estimate")
     def import_estimate(import_id: str, request: ImportEstimateRequest | None = None) -> dict[str, Any]:

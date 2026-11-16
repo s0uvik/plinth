@@ -237,4 +237,39 @@ namespace B2M.Revit.Core.Tests
             Assert.False(TextTypeNames.SameSize(2.5, 2.52));
         }
     }
+
+    public class GridHeadTests
+    {
+        [Fact]
+        public void AShortGridIsStretchedToTheBoxKeepingItsDirection()
+        {
+            // Grid 3 runs only between two interior walls, drawn top to bottom: it now spans the box, still top to bottom.
+            var s = GridHeads.ClipToBox(5000, 12000, 5000, 8000, -1000, -1000, 31000, 18000);
+            Assert.Equal(new[] { 5000.0, 18000, 5000, -1000 }, new[] { s.X0, s.Y0, s.X1, s.Y1 });
+        }
+
+        [Fact]
+        public void ALongGridIsCutToTheBox()
+        {
+            var s = GridHeads.ClipToBox(-50000, 3000, 90000, 3000, 0, 0, 30000, 17000);
+            Assert.Equal(new[] { 0.0, 3000, 30000, 3000 }, new[] { s.X0, s.Y0, s.X1, s.Y1 });
+        }
+
+        [Fact]
+        public void ASkewGridEndsOnTheBoxEdges()
+        {
+            var s = GridHeads.ClipToBox(0, 0, 1, 1, -10, -5, 10, 10);
+            Assert.Equal(-5, s.X0, 9);
+            Assert.Equal(-5, s.Y0, 9);
+            Assert.Equal(10, s.X1, 9);
+            Assert.Equal(10, s.Y1, 9);
+        }
+
+        [Fact]
+        public void AGridOutsideTheBoxOrWithoutLengthHasNoSegment()
+        {
+            Assert.Null(GridHeads.ClipToBox(50000, 0, 50000, 1000, 0, 0, 30000, 17000));
+            Assert.Null(GridHeads.ClipToBox(5, 5, 5, 5, 0, 0, 10, 10));
+        }
+    }
 }

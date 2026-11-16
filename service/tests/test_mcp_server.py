@@ -124,7 +124,7 @@ def test_import_tools_forward_to_the_local_service():
         ("POST", "/imports/i1/build", {"document_title": "Scratch"}),
         ("POST", "/imports/i1/answers", {"question_id": "estimate:material:D1", "answer": {"wood": 12, "pvc": 8}}),
         ("GET", "/runs/r1", None),
-        ("POST", "/imports/i1/drawings", {"run_id": "r1"}),
+        ("POST", "/imports/i1/drawings", {"run_id": "r1", "remake": False}),
         ("POST", "/imports/i1/estimate", {"run_id": "r1", "reference_xlsx": "D:/est.xlsx", "rules": None}),
         ("POST", "/imports/i1/estimate", {"run_id": None, "reference_xlsx": None, "rules": None}),
     ]

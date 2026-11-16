@@ -229,6 +229,28 @@ def test_sample_drawings_to_model_drawings_and_estimate(flow):
     assert drawings["pdf_url"] == f"/runs/{run_id}/drawings.pdf"
     assert api.get(drawings["comparison_url"]).status_code == 200
     assert all(k.startswith(("DWG-", )) or k in state["created"] for k in api.get(f"/runs/{run_id}").json()["created"])
+    # the title block fields were asked without stopping the set: import questions now, still open
+    assert drawings["title_fields"]["filled"] == {}
+    review = api.get(f"/imports/{import_id}/questions").json()
+    titles = [q for g in review["groups"] for q in g["questions"] if q["id"].startswith("drawing:title:")]
+    assert len(titles) == 7 and not any(q["answered_by"] for q in titles)
+
+    # ---- remake: a run has one set; remaking deletes that set's own sheets and views, then makes it again
+    again = api.post(f"/imports/{import_id}/drawings", json={"run_id": run_id})
+    assert again.status_code == 409 and "remake" in again.json()["detail"]
+    assert api.post(f"/imports/{import_id}/answers", json={"question_id": "drawing:title:project_name",
+                                                           "answer": "G+4 Residence"}).status_code == 200
+    before = {k: v for k, v in api.get(f"/runs/{run_id}").json()["created"].items() if k.startswith("DWG-")}
+    flow.revit.calls.clear()
+    remade = api.post(f"/imports/{import_id}/drawings", json={"run_id": run_id, "remake": True})
+    assert remade.status_code == 200, remade.json()
+    deleted = [p for c, p in flow.revit.calls if c == "delete_element"][0]["elementIds"]
+    assert sorted(deleted) == sorted(before.values())  # only what the previous set recorded
+    assert [p for c, p in flow.revit.calls if c == "set_project_info"] == [{"name": "G+4 Residence"}]
+    after = api.get(f"/runs/{run_id}").json()["created"]
+    assert not any(after.get(k) == v for k, v in before.items())  # the old ids are no longer the run's
+    assert all(k in after for k in state["created"])  # the model is untouched
+    assert remade.json()["sheets"] == [str(n) for n in range(28, 37)]
 
     # ---- estimate from the model, compared with the office's workbook
     first = api.post(f"/imports/{import_id}/estimate", json={"run_id": run_id, "reference_xlsx": str(REFERENCE)})
