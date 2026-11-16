@@ -141,8 +141,11 @@ def test_plan_annotation_from_the_source(sample):
     assert labels["text_mode"] == "given" and len(labels["rooms"]) == 14
     assert {r["text"] for r in labels["rooms"]} == {"3500 X 4000", "4000 X 4000", "4500 X 4000"}
     tags = next(s for s in steps if s.command == "tag_elements").params["element_keys"]
-    assert len(tags) == 25 - 14
+    assert len(tags) == 29 - 14  # 29 rooms per storey (each flat's kitchen its own room), 14 labelled with a size
     assert [s.params["category"] for s in steps if s.command == "tag_all_by_category"] == ["OST_Doors", "OST_Windows"]
+    # the kitchens' room separation lines are B2M's, not the source's: hidden in the view
+    assert any(s.command == "set_category_visibility" and s.params["categories"] == ["OST_RoomSeparationLines"]
+               for s in typical.views[0].after_create)
     assert typical.source_marks == {"door": {"D": 12, "D1": 20}, "window": {"W": 24, "W1": 4, "W2": 4, "W3": 4, "W4": 1}}
     kinds = sorted(d.kind for d in typical.source_dimensions)
     assert kinds == ["grids"] * 3 + ["local"] * 2 + ["references"] * 7
@@ -257,7 +260,8 @@ def test_drawing_set_in_revit(sample, tmp_path):
     # per sheet: views, then their crop/visibility, annotation, then the viewport
     seq = [c for c, p in revit.calls if c not in ("list_titleblocks", "export_pdf")]
     typical = seq[seq.index("create_sheet", 1) + 1:]
-    assert typical[:17] == ["create_view", "set_grid_heads"] + ["create_dimensions"] * 10 + [
+    # (set_category_visibility: the kitchens' room separation lines hidden, the source does not draw them)
+    assert typical[:18] == ["create_view", "set_grid_heads", "set_category_visibility"] + ["create_dimensions"] * 10 + [
         "label_rooms", "tag_elements", "tag_all_by_category", "tag_all_by_category", "place_view_on_sheet"]
     places = [p for c, p in revit.calls if c == "place_view_on_sheet"]
     assert all("x_mm" in p for p in places) and len(places) == 10

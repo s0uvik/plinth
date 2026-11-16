@@ -18,6 +18,8 @@ Registration.frame.
 Optional fields added by T5 (the import pipeline): SectionMark.cut / view, PlanRecognition.room_separations,
 RecognisedBuilding.resolved (cross-sheet resolutions, with evidence from every sheet involved) and
 RecognisedBuilding.answered (which answered questions have been applied to this copy).
+
+Optional fields added for fit-out (Step 10): Room.shared_space (the enclosed space a label shares with others).
 """
 
 from __future__ import annotations
@@ -103,6 +105,9 @@ class Room(_Model):
     boundary: list[Point] | None = None  # closed polygon when walls enclose it
     area_m2: float | None = None
     unit: str | None = None  # flat/unit id when the drawing groups rooms (e.g. by mirrored flats)
+    # the enclosed space this room's label shares with other labels (no wall between them), anticlockwise; the
+    # boundary stays None. Where to split it is the build plan's question (b2m.imported.split_space).
+    shared_space: list[Point] | None = None
     evidence: Evidence
 
 

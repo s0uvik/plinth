@@ -35,7 +35,11 @@ Mapping rules (each in its own method below):
   widths), height and sill from the drawing or asked; hosted on their wall at the plan position, flipped per swing
   and hinge; a door in no wall is asked about (skip, or a wall across the gap).
 - Rooms with the name as written, number "<storey>-<unit>-<n>" ("<storey>-<n>" outside units), department = unit;
-  rooms sharing one space and rooms not enclosed are asked about (one room, separate with lines, or skip).
+  rooms sharing one space and rooms not enclosed are asked about (one room, separate with lines, or skip). Rooms
+  sharing one space may also be answered {"mode": "separate", "rooms": ["KITCHEN"], "name": "LIVING / DINING"}: the
+  named labels become rooms of their own, closed off by a room separation line where their alcove opens (found
+  from the recognised space, ``split_space``; asked with the candidate lines when no line is clear), the rest one
+  room with the given name.
 - Stairs per storey from the plan: risers from the plan's count when within the rule set's riser limit (else
   asked), tread and width from the plan, landing end asked, first flight from the up arrow; a railing on each.
 """
@@ -51,6 +55,7 @@ from shapely.geometry import LineString, Point as SPoint, Polygon
 
 from b2m.cad.building import (Column, Opening, PlanRecognition, Projection, RecognisedBuilding, Registration, Room,
                               Stair, Wall)
+from b2m.imported import split_space
 from b2m.imported.standards import (BEAM_FAMILY, COLUMN_FAMILY, FloorStandard, FrameStandard, OpeningStandard,
                                     ProjectStandards, WallStandard, beam_type_name, column_type_name, floor_type_name,
                                     wall_type_name)
@@ -838,14 +843,18 @@ class _Converter:
         for fid, members in grouped.items():
             names = " / ".join(dict.fromkeys(r.name for r in members))
             answer = self.need(f"rooms:{sheet}:{fid}", "rooms_share_space",
-                               f"Rooms {names} on {sheet} share one space with no wall between them. One room, or "
-                               "separate rooms divided by room separation lines (give the lines)?",
+                               f"Rooms {names} on {sheet} share one space with no wall between them. One room, "
+                               "separate rooms divided by room separation lines (give the lines), or some of them "
+                               "rooms of their own and the rest one room ({\"mode\": \"separate\", \"rooms\": "
+                               "[\"KITCHEN\"], \"name\": ...}: the line is found where each one's alcove opens)?",
                                [_ref(sheet, r.id) for r in members],
                                [{"mode": "one_room", "name": names}, {"mode": "separate", "lines": []}, "skip"])
             mode = answer.get("mode") if isinstance(answer, dict) else answer
             if mode == "one_room":
                 name = answer.get("name") if isinstance(answer, dict) and answer.get("name") else names
                 placed.append((members[0], name))
+            elif mode == "separate" and isinstance(answer, dict) and answer.get("rooms"):
+                placed += self.split_rooms(p, fid, members, answer, tok, level)
             elif mode == "separate":
                 lines = answer.get("lines") if isinstance(answer, dict) else None
                 if not lines:
@@ -890,6 +899,42 @@ class _Converter:
             if r.unit:
                 op["flat"] = r.unit
             self.emit(op, Source(sheet=sheet, element=r.id, storey=tok))
+
+    def split_rooms(self, p: PlanRecognition, fid: str, members: list[Room], answer: dict, tok: str,
+                    level: str) -> list[tuple[Room, str]]:
+        """Some labels of a shared space as rooms of their own ({"mode": "separate", "rooms": [...]}), the rest as
+        one room ("name", else their names joined): a room separation line each, where its alcove opens
+        (``split_space``), or as given in "lines" (one per room, in order). No clear line: asked, with the
+        candidates as answers."""
+        sheet, t = p.sheet, self.xf(p.sheet)
+        qid = f"rooms:{sheet}:{fid}"
+        refs = [_ref(sheet, r.id) for r in members]
+        split = split_space.plan_split(members, answer["rooms"], p.walls, lines=answer.get("lines") or None)
+        if split.problems:
+            self.missing[qid] = Missing(id=qid, topic="rooms_share_space", elements=refs,
+                                        text=f"On {sheet}: " + "; ".join(split.problems) + ". Name each room to "
+                                             "separate by a word of its label or its id.")
+            return []
+        if split.unresolved:
+            room, mouth = split.unresolved[0]
+            done = [line for _, line in split.lines]
+            options = [{**answer, "lines": [[list(q) for q in ln] for ln in done]
+                        + [[list(q) for q in split_space.into_walls(c, p.walls)]]} for c in mouth.candidates]
+            self.missing[qid] = Missing(
+                id=qid, topic="rooms_share_space", elements=refs, options=options,
+                text=f"Where does \"{room.name}\" on {sheet} end? {mouth.reason[:1].upper()}{mouth.reason[1:]}. Give "
+                     f"its room separation line ([[x, y], ...] in {sheet}'s coordinates, one line per room to "
+                     "separate, in the answer's \"lines\")" + (", or choose one of the lines found" if options else "")
+                     + ".")
+            return []
+        for n, (room, line) in enumerate(split.lines, 1):
+            self.emit({"op": "room_separator", "key": f"{sheet}-{fid}.{n}-{tok}", "level": level,
+                       "points": [t(tuple(q)) for q in line]},
+                      Source(sheet=sheet, element=fid, storey=tok,
+                             note=f"separates {room.name} ({room.id}) from the rest of the space (answer)"))
+        rest = split.together
+        name = answer.get("name") or " / ".join(dict.fromkeys(r.name for r in rest))
+        return [(room, room.name) for room, _ in split.lines] + [(rest[0], name)]
 
     # ---------------------------------------------------------------------------------------- stairs
 

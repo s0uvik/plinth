@@ -649,6 +649,11 @@ def _plan_view(planned: PlannedSheet, rec: SheetRecord, sheet: cad_sheet.Sheet, 
                                          "cropped and placed like the source")
         return
     view = _plan_view_for(planned, rec, sheet, reg, model, level, prefix)
+    if any(op.op == "room_separator" and op.level == level for op in model.ops):
+        # lines B2M drew to split a shared space (a kitchen off a living/dining): the source does not draw them
+        view.after_create.append(Step(command="set_category_visibility", purpose="show what the source sheet shows",
+                                      params={"view_id": "$view", "categories": ["OST_RoomSeparationLines"],
+                                              "hidden": True}))
     xf = _xf(reg, model.offset)
     dims = _plan_dimensions(planned, rec, sheet, plan, reg, model, level, xf, out)
     view.steps += dims

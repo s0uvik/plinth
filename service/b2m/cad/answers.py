@@ -15,8 +15,10 @@ Answer types (what ``answer`` accepts):
 - ``choice_or_text``: one of the options, or the user's own words.
 - ``mark_width``: {"width_mm": 800} or {"split": true, "new_marks": {"900": "D1A"}} (or "new_mark" when there is
   one other width); an option's text or index is accepted for a width.
-- ``rooms``: {"one_room": true, "name": "LIVING / DINING"}, {"skip": true}, or {"lines": {"<instance>":
-  [[x1, y1, x2, y2], ...]}} with separation lines (sheet coordinates, mm) for every instance of the question.
+- ``rooms``: {"one_room": true, "name": "LIVING / DINING"}, {"skip": true}, {"lines": {"<instance>":
+  [[x1, y1, x2, y2], ...]}} with separation lines (sheet coordinates, mm) for every instance of the question, or
+  {"separate": ["KITCHEN"], "name": "LIVING / DINING"}: the named labels rooms of their own, the rest one room, the
+  lines found where each alcove opens (lines given per instance are used instead, one per named room).
 - ``opening_host``: "skip" or {"mode": "new_wall", "thickness_mm": 250, "function": "interior"}.
 - ``plan_input``: a value the build-plan converter (T6) asks for under its own id: a length in mm (a number, or
   "450 mm"), one of its options, or its dict form ({"mode": "one_room", ...}).
@@ -79,6 +81,9 @@ class RoomsAnswer(_A):
     skip: bool = False  # leave these rooms out of the model
     name: str | None = None
     lines: dict[str, list[tuple[float, float, float, float]]] = {}
+    # labels that become rooms of their own (a word of the label or its id, e.g. "KITCHEN"), the rest one room
+    # named ``name``; their lines are found where each one's alcove opens (b2m.imported.split_space)
+    separate: list[str] = []
 
 
 class DoorHeightAnswer(_A):
@@ -185,7 +190,9 @@ def normalise(q: Question, value: Any) -> Any:
             elif isinstance(value, str) and value.startswith("one room"):
                 value = {"one_room": True}
             a = RoomsAnswer.model_validate(value)
-            if not a.one_room and not a.skip:
+            if a.separate and (a.one_room or a.skip):
+                raise AnswerError(f"{q.id}: separate rooms cannot also be one room or skipped")
+            if not a.one_room and not a.skip and not a.separate:
                 refs = [i["ref"] for i in q.key.get("instances", [])]
                 missing = [r for r in refs if not a.lines.get(r)]
                 if missing:
@@ -380,7 +387,9 @@ def _apply_rooms(b: RecognisedBuilding, q: Question, a: dict) -> None:
         rooms = [r for r in plan.rooms if r.id in inst["rooms"]]
         if not rooms or a.get("skip"):
             continue
-        if a["one_room"]:
+        if a.get("separate"):
+            _apply_separate(plan, q, a, inst, rooms)
+        elif a["one_room"]:
             name = a.get("name") or " / ".join(r.name for r in rooms)
             first = rooms[0]
             merged = Room(id=first.id, name=name, point=first.point, labelled_size_mm=None,
@@ -396,6 +405,32 @@ def _apply_rooms(b: RecognisedBuilding, q: Question, a: dict) -> None:
                     rooms=[r.id for r in rooms],
                     evidence=Evidence(sheet=plan.sheet, handles=[h for r in rooms for h in r.evidence.handles][:8],
                                       note=f"separation line by answer {q.id}")))
+
+
+def _apply_separate(plan, q: Question, a: dict, inst: dict, rooms: list[Room]) -> None:
+    """Named labels apart, each behind its separation line (as the build plan draws it), the rest merged into one
+    room. When a line is not clear the rooms stay as drawn: the build plan asks for it."""
+    from b2m.imported import split_space
+
+    given = [[(x1, y1), (x2, y2)] for x1, y1, x2, y2 in a.get("lines", {}).get(inst["ref"], [])] or None
+    split = split_space.plan_split(rooms, a["separate"], plan.walls, lines=given)
+    if not split.ok:
+        return
+    for room, line in split.lines:
+        for n, (start, end) in enumerate(zip(line, line[1:]), 1):
+            plan.room_separations.append(RoomSeparation(
+                id=f"{q.id}-{inst['ref'].split('#')[-1]}-{room.id}-{n}", start=start, end=end,
+                rooms=[r.id for r in rooms],
+                evidence=Evidence(sheet=plan.sheet, handles=[h for r in rooms for h in r.evidence.handles][:8],
+                                  note=f"separation line of {room.name} by answer {q.id}")))
+    rest = split.together
+    first = rest[0]
+    name = a.get("name") or " / ".join(r.name for r in rest)
+    merged = first.model_copy(update={
+        "name": name, "labelled_size_mm": None if len(rest) > 1 else first.labelled_size_mm,
+        "evidence": Evidence(sheet=plan.sheet, handles=[h for r in rest for h in r.evidence.handles],
+                             note=f"one room by answer {q.id} (labelled {', '.join(repr(r.name) for r in rest)})")})
+    plan.rooms = [merged if r is first else r for r in plan.rooms if r is first or r not in rest]
 
 
 def _apply_length(b: RecognisedBuilding, q: Question, a: dict) -> None:

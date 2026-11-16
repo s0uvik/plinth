@@ -154,14 +154,17 @@ def rooms(ctx: Ctx, labels: list[RoomLabel], sol: Solid, shaft_faces: set[int]) 
     for lb in sorted(labels, key=lambda l: (round(-l.point[1]), round(l.point[0]))):
         rid = ctx.new_id("room")
         f = face_of(sol, lb.point)
-        boundary = area = None
-        if f is not None and len(by_face[id(f)]) == 1:
+        boundary = area = shared = None
+        if f is not None:
             ring = list(f.simplify(tol).exterior.coords)[:-1]
             if polygon_area(ring) < 0:
                 ring.reverse()
-            boundary = [(round(x, 2), round(y, 2)) for x, y in ring]
+            ring = [(round(x, 2), round(y, 2)) for x, y in ring]
+        if f is not None and len(by_face[id(f)]) == 1:
+            boundary = ring
             area = round(f.area / 1e6, 3)
         elif f is not None:
+            shared = ring
             others = [o.name for o in by_face[id(f)] if o is not lb]
             if lb is by_face[id(f)][0]:
                 ctx.finding("rooms_share_space", "Rooms " + ", ".join(f"\"{o.name}\"" for o in by_face[id(f)])
@@ -172,7 +175,8 @@ def rooms(ctx: Ctx, labels: list[RoomLabel], sol: Solid, shaft_faces: set[int]) 
             ctx.finding("room_not_enclosed", f"\"{lb.name}\" is not enclosed by walls, so its boundary and area "
                         "cannot be measured. Where are its limits?", lb.handles, severity="info")
         room = Room(id=rid, name=lb.name, point=(round(lb.point[0], 2), round(lb.point[1], 2)),
-                    labelled_size_mm=lb.size, boundary=boundary, area_m2=area, evidence=ctx.ev(lb.handles))
+                    labelled_size_mm=lb.size, boundary=boundary, area_m2=area, shared_space=shared,
+                    evidence=ctx.ev(lb.handles))
         if boundary and lb.size:
             _size_check(ctx, room, f)
         ctx.claim(lb.handles, rid)

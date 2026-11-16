@@ -195,6 +195,8 @@ def test_answers_make_the_build_plan(tmp_path):
                 value = 2100
             elif q.answer_type == "window_size":
                 value = {"sill_mm": 900, "head_mm": 2100}
+            elif q.id == "rooms-share-space-dining-kitchen-open-living-room":  # the kitchen its own room (2026-11-17)
+                value = {"separate": ["KITCHEN"], "name": "LIVING / DINING"}
             elif q.answer_type == "rooms":
                 value = {"one_room": True}
             else:
@@ -209,3 +211,15 @@ def test_answers_make_the_build_plan(tmp_path):
     ids = {q.id for q in project.questions}
     assert not any(i.startswith(("door_height:", "window_sill:", "window_height:", "rooms:", "opening_host:",
                                  "door_width:", "beam_depth:")) for i in ids)
+    # one answer for the four flats: a kitchen and a living/dining room each, a separation line between, per storey
+    rooms = [op for op in result.plan.ops if op.op == "room" and op.level == "Floor 1"]
+    assert sum("KITCHEN" in op.name for op in rooms) == 4 and sum(op.name == "LIVING / DINING" for op in rooms) == 4
+    assert sum(op.op == "room_separator" for op in result.plan.ops) == 16
+    # the applied building (review overlay, estimate) splits the same way, on the same lines
+    applied = answers.apply(project, raw)
+    typical = next(p for p in applied.plans if p.sheet.startswith("2."))
+    assert len(typical.room_separations) == 4
+    assert sum(r.name == "LIVING / DINING" for r in typical.rooms) == 4
+    seps = {(s.start, s.end) for s in typical.room_separations}
+    assert seps == {(tuple(op.points[0]), tuple(op.points[1])) for op in result.plan.ops
+                    if op.op == "room_separator" and op.key.endswith("-1")}

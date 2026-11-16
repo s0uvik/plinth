@@ -310,7 +310,9 @@ def _rooms_share(b: RecognisedBuilding, d: Describe, refs: list[FRef]) -> list[Q
             f"rooms-share-space-{_slug('-'.join(key))}", "rooms_share_space",
             f"Rooms labelled {', '.join(shown)} share one enclosed space with no wall between them, in "
             f"{n} place{'s' if n > 1 else ''} on {', '.join(d.sheet(s) for s in sheets)}{area_txt}. Are they one "
-            "room, or where does one end and the next begin (room separation lines for each place)?",
+            "room, or where does one end and the next begin (room separation lines for each place)? Some of them "
+            "may be rooms of their own and the rest one room ({\"separate\": [\"KITCHEN\"], \"name\": ...}): their "
+            "lines are then found where each one's alcove opens, and asked when that is not clear.",
             "blocking", evidence=[rm.evidence for _, _, rooms in items for rm in rooms],
             options=["one room (give its name)", "separate rooms: give the separation lines for each place",
                      "skip (leave them out of the model)"],
