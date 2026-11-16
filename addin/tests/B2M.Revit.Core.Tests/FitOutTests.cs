@@ -265,6 +265,45 @@ namespace B2M.Revit.Core.Tests
             Assert.Null(FamilyMeasure.DefaultLevel(new Dictionary<string, double>()));
         }
 
+        // ---- BoxFamily ---------------------------------------------------------------------------------
+
+        [Fact]
+        public void ABoxHasItsOriginAtTheMiddleOfItsBackWithItsFrontTowardsMinusY()
+        {
+            var box = BoxFamily.Box(1500, 2000, 450);
+            Assert.Equal(new[] { -750.0, -2000.0, 0.0 }, box[0]);
+            Assert.Equal(new[] { 750.0, 0.0, 450.0 }, box[1]);
+            Assert.Equal("1500 x 2000 x 450mm (B2M)", BoxFamily.DefaultTypeName(1500, 2000, 450));
+            Assert.Equal("1500 x 1999.5 x 500mm (B2M)", BoxFamily.DefaultTypeName(1500, 1999.5, 500.04));
+        }
+
+        [Theory]
+        [InlineData("B2M Bed", null)]
+        [InlineData("B2M Side table 2", null)]
+        [InlineData("", "empty")]
+        [InlineData(" B2M Bed", "space")]
+        [InlineData("B2M: Bed", "':'")]
+        [InlineData("Bed [B2M]", "'['")]
+        [InlineData("Bed.", "dot")]
+        public void BoxFamilyNamesMustBeFileAndFamilyNames(string name, string error)
+        {
+            var got = BoxFamily.NameError(name);
+            if (error == null) Assert.Null(got);
+            else Assert.Contains(error, got);
+        }
+
+        [Fact]
+        public void BoxSizesAndTemplates()
+        {
+            Assert.Null(BoxFamily.SizeError(1500, 2000, 450));
+            Assert.StartsWith("depth_mm", BoxFamily.SizeError(1500, 0, 450));
+            Assert.StartsWith("height_mm", BoxFamily.SizeError(1500, 2000, 25000));
+            Assert.StartsWith("width_mm", BoxFamily.SizeError(double.NaN, 2000, 450));
+            Assert.Equal(new[] { "Metric Furniture.rft", "Metric Generic Model.rft" }, BoxFamily.Templates("OST_Furniture"));
+            Assert.Equal(new[] { "Metric Generic Model.rft" }, BoxFamily.Templates("OST_GenericModel"));
+            Assert.Equal(new[] { "Metric Generic Model.rft" }, BoxFamily.Templates("OST_LightingFixtures"));
+        }
+
         [Theory]
         [InlineData(850, 0.0, 850)]       // the hob live on 2026-11-17: asked 850 above the level, left on it
         [InlineData(850, 849.5, 0)]       // raised: within 1 mm

@@ -31,6 +31,8 @@ namespace B2M.Revit.Commands.Families
             dispatcher.Register(new CopyTypesFromFileHandler());
             // New in B2M (Step 10, families first): each family type's box about its insertion point, measured and rolled back.
             dispatcher.Register(new MeasureFamilyTypesHandler());
+            // New in B2M (Step 10, 2026-11-17): a plain box family for a fit-out item, created only when the user says so.
+            dispatcher.Register(new CreateBoxFamilyHandler());
         }
     }
 }

@@ -43,6 +43,7 @@ namespace B2M.Revit.Core.Tests
             Assert.Contains("NOT_ALLOWED_IN_BATCH", BatchExecutor.Precheck(new JArray(new JObject { ["command"] = "send_code_to_revit" }), SchemaOf).FirstError);
             Assert.Contains("NOT_ALLOWED_IN_BATCH", BatchExecutor.Precheck(new JArray(new JObject { ["command"] = "create_stair" }), SchemaOf).FirstError);
             Assert.Contains("NOT_ALLOWED_IN_BATCH", BatchExecutor.Precheck(new JArray(new JObject { ["command"] = "ensure_family_type" }), SchemaOf).FirstError);
+            Assert.Contains("NOT_ALLOWED_IN_BATCH", BatchExecutor.Precheck(new JArray(new JObject { ["command"] = "create_box_family" }), SchemaOf).FirstError);
         }
 
         [Fact]

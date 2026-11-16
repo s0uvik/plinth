@@ -36,6 +36,8 @@ namespace B2M.Revit.Core.Execution
             // It opens, saves and closes family documents and may write .rfa files, which the batch's rollback cannot undo.
             ["ensure_family_type"] = "ensure_family_type cannot run inside batch_execute (it opens and saves family files, which a batch "
                 + "rollback cannot undo); call it directly before the batch.",
+            ["create_box_family"] = "create_box_family cannot run inside batch_execute (it builds, saves and loads a family file, which a "
+                + "batch rollback cannot undo); call it directly before the batch.",
             // Both open and close another Revit file in the background, which is not done inside the batch's transaction group.
             ["list_types_in_file"] = "list_types_in_file cannot run inside batch_execute (it opens another Revit file); call it directly.",
             ["copy_types_from_file"] = "copy_types_from_file cannot run inside batch_execute (it opens another Revit file and copies "
