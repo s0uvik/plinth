@@ -4,7 +4,7 @@ furniture out with their real footprints and prints the questions, assumptions, 
 counts. With --build it builds the plan as its own run on top of the building's run (removable on its own).
 
     cd service
-    .venv\\Scripts\\python scripts\\fitout_build.py --run 2026-11-16T16-19-54Z-7d66 --title collage_project_structure ^
+    .venv\\Scripts\\python -m scripts.fitout_build --run 2026-11-16T16-19-54Z-7d66 --title collage_project_structure ^
         --rules west-bengal --answers fitout_answers.json [--measurements family_measurements.json] ^
         [--measured-level "Floor 1"] [--out report_dir] [--build]
 
@@ -14,7 +14,9 @@ which way the family's front faces in its own coordinates) and "includes" (items
 --measurements: boxes measured earlier (measure_family_types' shape), used instead of measuring now (an add-in
 without measure_family_types then needs no redeploy); --measured-level: the level they were measured on (else a box
 starting at one of the building's level elevations is taken as measured there with the point's z taken as offset).
-The document must be the one the building run was built in (its title is checked).
+The document must be the one the building run was built in (its title is checked). Building a family that takes the
+point's z as its offset (base offset in its measurement) on an upper level needs an add-in with FamilyPlacer's
+put-back (2026-11-17); an older one stops that op with its 1 mm position check and rolls its batch back.
 """
 
 from __future__ import annotations
@@ -31,11 +33,14 @@ from b2m.builds import BuildService
 from b2m.fitout import families, rooms, rules, to_plan
 from b2m.plan import BuildPlan, LevelOp
 from b2m.revit import RevitClient
+from b2m.revit.commands import REQUIRED_COMMANDS
 from b2m.revit.types import TypeMap
 from b2m.runs import RunStore
 
 # What planning reads in the document (measure_family_types is used when the add-in has it).
 PLAN_COMMANDS = ["get_available_family_types", "get_type_parameters", "list_template_files", "list_types_in_file"]
+# What building needs on top of a building's commands (types from templates, size copies).
+BUILD_COMMANDS = REQUIRED_COMMANDS + ["copy_types_from_file", "duplicate_family_type", "get_available_family_types"]
 
 
 def load_answers(text: str | None) -> dict[str, Any]:
@@ -165,8 +170,8 @@ def main(argv: list[str] | None = None, *, connect: Callable[[], Any] | None = N
         print(f"{len(model.questions)} room questions (answer them in --answers): "
               + "; ".join(f"{q.id}: {q.text}" for q in model.questions[:10]))
 
-    connect = connect or (lambda: RevitClient.connect(required_commands=PLAN_COMMANDS))
-    with connect() as revit:
+    plan_connect = connect or (lambda: RevitClient.connect(required_commands=PLAN_COMMANDS))
+    with plan_connect() as revit:
         title = revit.confirm_document(args.title)
         found = to_plan.plan_furniture(revit, building, built, model, ruleset, answers=answers,
                                        measurements=measurements, document=title, measure_level=args.measured_level)
@@ -187,7 +192,8 @@ def main(argv: list[str] | None = None, *, connect: Callable[[], Any] | None = N
     if not found.ready and not args.partial:
         print("not built: there are open questions (answer them, or pass --partial to build what is planned)")
         return 1
-    service = BuildService(store, connect=connect, types=types if types is not None else TypeMap.load(args.types))
+    build_connect = connect or (lambda: RevitClient.connect(required_commands=BUILD_COMMANDS))
+    service = BuildService(store, connect=build_connect, types=types if types is not None else TypeMap.load(args.types))
     built_run = service.build_now(found.plan, args.title)
     fitout_run = store.get(built_run["run_id"])
     fitout_run.save("fitout_report", {**result, "building_run": args.run, "answers": answers})
