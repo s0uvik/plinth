@@ -67,6 +67,21 @@ namespace B2M.Revit.Core.Tests
             Assert.Empty(plan.Bends);
         }
 
+        [Fact]
+        public void RunReachesItsTargetBySnappingOrExtending()
+        {
+            var points = new List<double[]> { P(0, 0, 0), P(1000, 0, 0) };
+            Assert.Equal("snapped", RunPath.Reach(points, false, P(1000.5, 0, 0), 1.0));
+            Assert.Equal(1000.5, points[1][0]);
+            Assert.Equal("extended", RunPath.Reach(points, true, P(0, 0, -400), 1.0));
+            Assert.Equal(3, points.Count);
+            Assert.Equal(-400, points[0][2]);
+            Assert.Equal("extended", RunPath.Reach(points, false, P(1500, 0, 0), 1.0));
+            var plan = RunPath.Build(points, 0.8);
+            Assert.Equal(new[] { 2 }, plan.Dropped); // Straight on: the old end is merged into one segment.
+            Assert.Single(plan.Bends);
+        }
+
         // ---- ConnectorMatch ---------------------------------------------------------------------------
 
         [Theory]

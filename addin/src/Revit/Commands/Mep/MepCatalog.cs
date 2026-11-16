@@ -23,6 +23,7 @@ namespace B2M.Revit.Commands.Mep
             dispatcher.Register(new GetPanelScheduleHandler());
             dispatcher.Register(new FindMepDisconnectsHandler());
             dispatcher.Register(new AnalyzeMepNetworkHandler());
+            dispatcher.Register(new CreateMepRunHandler());
         }
     }
 }

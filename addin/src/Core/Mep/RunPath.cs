@@ -107,6 +107,24 @@ namespace B2M.Revit.Core.Mep
             return plan;
         }
 
+        /// <summary>
+        /// Makes the run reach a connector or a point on a main at one end: the end point is moved onto the target when it is
+        /// within snapMm, otherwise the target is added as a new end point (Build later merges it when it is straight on).
+        /// Returns "snapped" or "extended".
+        /// </summary>
+        public static string Reach(List<double[]> points, bool atStart, double[] target, double snapMm)
+        {
+            var index = atStart ? 0 : points.Count - 1;
+            if (Distance(points[index], target) <= snapMm)
+            {
+                points[index] = target;
+                return "snapped";
+            }
+            if (atStart) points.Insert(0, target);
+            else points.Add(target);
+            return "extended";
+        }
+
         /// <summary>Angle in degrees between the direction a→b and the direction b→c (0 when straight on).</summary>
         public static double DeflectionDeg(double[] a, double[] b, double[] c)
         {
