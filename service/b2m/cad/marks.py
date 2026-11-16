@@ -4,6 +4,9 @@ A section mark is a labelled arrowhead ("A") at each end of a cut line. The line
 any jogs, to the other arrow's base; where the mark is drawn with tails (short legs from the cut out to the arrows),
 the end legs run along the arrows' direction and are not part of the cut. The arrows point the way the section looks.
 Arrows with no label beside them (stair arrows, leaders) are not section marks.
+
+This is the one section-mark finder: plan recognition (T3) stores its marks in ``PlanRecognition.section_marks``
+(``to_model``), and registration and cut lines (T4) read them back from there (``from_model``).
 """
 
 from __future__ import annotations
@@ -13,6 +16,7 @@ import re
 from dataclasses import dataclass
 
 from b2m.cad.annot import TOL, Arrow, Seg, arrowheads, flat, flatten, rect_distance, segments, text_box, texts
+from b2m.cad import building
 from b2m.cad.building import Evidence, Finding
 
 LABEL_RE = re.compile(r"^[A-Z0-9]{1,3}$", re.I)
@@ -30,6 +34,22 @@ class SectionMark:
     @property
     def straight(self) -> bool:
         return len(self.cut) == 2
+
+
+def to_model(mark: SectionMark, sheet_name: str) -> building.SectionMark:
+    """The contract's form (PlanRecognition.section_marks)."""
+    r = lambda p: (round(p[0], 2), round(p[1], 2))  # noqa: E731
+    return building.SectionMark(name=mark.label, points=[r(p) for p in mark.path], cut=[r(p) for p in mark.cut],
+                                view=(round(mark.view[0], 6) + 0.0, round(mark.view[1], 6) + 0.0),
+                                evidence=Evidence(sheet=sheet_name, handles=list(dict.fromkeys(mark.handles))))
+
+
+def from_model(mark: building.SectionMark) -> SectionMark:
+    """Back from the contract's form (a mark recorded without its cut or view keeps its drawn line and no view)."""
+    path = [tuple(p) for p in mark.points]
+    cut = [tuple(p) for p in mark.cut] if mark.cut else list(path)
+    view = tuple(mark.view) if mark.view else (0.0, 0.0)
+    return SectionMark(mark.name, path, cut, view, list(mark.evidence.handles))
 
 
 def mark_label(section_name: str) -> str:

@@ -10,7 +10,6 @@ from dataclasses import dataclass, field
 from b2m.cad.recognise.context import Arc, Ctx, Fill, Insert
 from b2m.cad.recognise.geometry import (Point, Seg, angle_diff, axis_angle, dot, frame, group_by_direction,
                                         point_seg_distance, sub)
-from b2m.cad.recognise.text import MARK_RE
 
 DOOR_SWEEP = (20.0, 120.0)  # a drawn swing shows the door open between these angles (degrees)
 
@@ -274,63 +273,6 @@ def triangle_base_mid(fill: Fill, tip: Point) -> Point:
     xs = [p[0] for p in others]
     ys = [p[1] for p in others]
     return (sum(xs) / len(xs), sum(ys) / len(ys))
-
-
-def section_marks(ctx: Ctx) -> list[tuple[str, list[Point], list[str]]]:
-    """Section cut lines: centre-linetype linework whose two ends carry the same short letter label.
-    Returns (name, points, handles) and claims the line, labels and arrowheads at its ends."""
-    out = []
-    centre = [s for s in ctx.segs if s.linetype == "center" and not ctx.claimed(s.handles[0])]
-    chains = _chains(centre, ctx.params.tol_mm)
-    labels = [t for t in ctx.texts if not ctx.claimed(t.handle) and MARK_RE.match(t.flat) and len(t.flat) <= 2
-              and t.flat.isalpha()]
-    for chain, pts in chains:
-        ends = [pts[0], pts[-1]]
-        names = []
-        for e in ends:
-            near = [t for t in labels if math.dist(t.center, e) <= 4 * t.height]
-            near.sort(key=lambda t: math.dist(t.center, e))
-            names.append(near[0] if near else None)
-        if not (names[0] and names[1] and names[0].flat.upper() == names[1].flat.upper()):
-            continue
-        handles = [h for s in chain for h in s.handles] + [names[0].handle, names[1].handle]
-        for f in ctx.fills:
-            if ctx.claimed(f.handle) or triangle_tip(f) is None:
-                continue
-            reach = 4 * names[0].height
-            if any(math.dist(triangle_tip(f), e) <= reach or any(math.dist(p, e) <= reach for p in f.polygon)
-                   for e in ends):
-                handles.append(f.handle)
-        # arrows drawn as short lines at the ends belong to the mark too
-        ctx.claim(handles, "section")
-        out.append((names[0].flat.upper(), pts, list(dict.fromkeys(handles))))
-    return out
-
-
-def _chains(segs: list[Seg], tol: float) -> list[tuple[list[Seg], list[Point]]]:
-    """Segments joined end to end into open chains (a polyline's edges, or LINEs that meet)."""
-    remaining = list(segs)
-    out = []
-    while remaining:
-        chain = [remaining.pop(0)]
-        pts = [chain[0].a, chain[0].b]
-        grown = True
-        while grown:
-            grown = False
-            for s in list(remaining):
-                for p, q in ((s.a, s.b), (s.b, s.a)):
-                    if math.dist(p, pts[-1]) <= tol:
-                        pts.append(q)
-                    elif math.dist(p, pts[0]) <= tol:
-                        pts.insert(0, q)
-                    else:
-                        continue
-                    chain.append(s)
-                    remaining.remove(s)
-                    grown = True
-                    break
-        out.append((chain, pts))
-    return out
 
 
 def arrows(ctx: Ctx, segs: list[Seg], fills: list[Fill]) -> list[Arrow]:

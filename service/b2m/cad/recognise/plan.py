@@ -16,7 +16,8 @@ from pathlib import Path
 from shapely.geometry import LineString, Point as SPoint, Polygon
 from shapely.ops import unary_union
 
-from b2m.cad.building import Evidence, Grid, PlanRecognition, RoofFall, SectionMark, Stair, Wall
+from b2m.cad import marks as section_marks
+from b2m.cad.building import Evidence, Grid, PlanRecognition, RoofFall, Stair, Wall
 from b2m.cad.classify import Classification
 from b2m.cad.reader import CadEntity
 from b2m.cad.recognise import columns as cols_mod
@@ -57,8 +58,13 @@ def recognise_plan_detailed(sheet: Sheet, classification: Classification,
     tol = p.tol_mm
     report = Report()
 
-    marks = [SectionMark(name=n, points=[(round(x, 2), round(y, 2)) for x, y in pts], evidence=ctx.ev(h))
-             for n, pts, h in sym.section_marks(ctx)]
+    # section cut lines: the one finder shared with registration (b2m.cad.marks); their linework, arrows and
+    # letters are claimed first so they cannot be taken for walls or opening marks
+    found, mark_findings = section_marks.find_marks(name, sheet.drawing_entities)
+    marks = [section_marks.to_model(m, name) for m in found]
+    for m in found:
+        ctx.claim(m.handles, "section")
+    ctx.findings.extend(mark_findings)
     doors = sym.find_doors(ctx)
     column_shapes = cols_mod.find_columns(ctx)
     stair_drafts = _flights(ctx)

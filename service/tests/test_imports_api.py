@@ -42,7 +42,8 @@ class FakeEngine:
     def question_groups(self, project):
         groups = {}
         for q in project.questions:
-            groups.setdefault(SEVERITY.get(q.topic, "check"), []).append(q)
+            q.severity = SEVERITY.get(q.topic, "check")  # questions carry their severity (T5)
+            groups.setdefault(q.severity, []).append(q)
         return groups
 
     def apply_answer(self, project, question_id, answer):

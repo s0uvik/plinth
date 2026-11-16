@@ -4,8 +4,9 @@
 
 Reads and classifies every sheet, recognises sections, foundation and beam-layout sheets, places every sheet in one
 building frame (the typical floor plan's coordinates), ties sections to the plans through their cut lines, and
-prints what was found with the findings. Plan recognition is T3's: until its recogniser is passed in (``plans``),
-a provisional one gives the plans just the features registration needs (columns, centre lines, section marks).
+prints what was found with the findings. Plans are recognised by T3 (``b2m.cad.recognise.recognise_plan``) and
+registration uses its features (columns, grids, wall axes, outline, section marks). Only a plan T3 cannot recognise
+falls back to a provisional reading with just what registration needs, and a finding says so.
 """
 
 from __future__ import annotations
@@ -17,7 +18,6 @@ from pathlib import Path
 from typing import Callable
 
 from b2m.cad import classify, reader, register, sheet as sheets
-from b2m.cad import marks as section_marks
 from b2m.cad.annot import name_of
 from b2m.cad.beams import recognise_beam_layout
 from b2m.cad.building import Evidence, Finding, PlanRecognition, RecognisedBuilding, SectionRecognition
@@ -39,25 +39,34 @@ def load(inputs: list[str | Path], oda: str | None = None) -> list[sheets.Sheet]
 
 
 def recognise_set(sheet_list: list[sheets.Sheet], plan_recogniser: PlanRecogniser | None = None,
-                  rules: str | None = "nbc2016") -> RecognisedBuilding:
+                  rules: str | None = "nbc2016",
+                  classifications: dict[str, classify.Classification] | None = None) -> RecognisedBuilding:
+    """Every sheet recognised by its role and placed in one building frame. ``classifications`` (by sheet file
+    name) overrides what the titles say, e.g. roles the user answered; ``rules`` adds clear-height findings."""
+    if plan_recogniser is None:
+        from b2m.cad.recognise import recognise_plan as plan_recogniser
     building = RecognisedBuilding()
-    plans: list[tuple[sheets.Sheet, classify.Classification, PlanRecognition, list]] = []
+    plans: list[tuple[sheets.Sheet, classify.Classification, PlanRecognition]] = []
     sections: list[tuple[SectionRecognition, float | None]] = []
     features: dict[str, tuple[register.Features, register.Features | None]] = {}
-    marks_by_sheet: dict[str, list[section_marks.SectionMark]] = {}
+    marks_by_sheet: dict[str, list] = {}
     for sh in sheet_list:
         src = name_of(sh)
-        c = classify.classify(sh.title, src)
+        c = (classifications or {}).get(src) or classify.classify(sh.title, src)
         if c.role in ("floor_plan", "roof_plan"):
-            if plan_recogniser:
+            try:
                 plan = plan_recogniser(sh, c)
-                marks, _ = section_marks.find_marks(src, sh.drawing_entities)
-            else:
-                plan, marks = register.provisional_plan(sh, c.role, c.storeys)
-            plans.append((sh, c, plan, marks))
+            except Exception as exc:  # noqa: BLE001 - one unreadable plan must not stop the set
+                plan, _ = register.provisional_plan(sh, c.role, c.storeys)
+                plan.findings.append(Finding(
+                    id="plan-not-recognised", topic="plan_recognition", severity="blocking",
+                    text=f"Plan recognition failed on this sheet ({type(exc).__name__}: {exc}); only its columns, "
+                         "centre lines and section marks were read, to place it. Its walls, openings and rooms "
+                         "are not recognised.", evidence=Evidence(sheet=src)))
+            plans.append((sh, c, plan))
             building.plans.append(plan)
-            marks_by_sheet[src] = marks
-            features[src] = (register.plan_features(plan, marks), None)
+            marks_by_sheet[src] = plan.section_marks
+            features[src] = (register.plan_features(plan), None)
         elif c.role == "section":
             rec, datum_y = recognise_section_full(sh, c.name)
             sections.append((rec, datum_y))
@@ -71,7 +80,7 @@ def recognise_set(sheet_list: list[sheets.Sheet], plan_recogniser: PlanRecognise
             building.beam_layouts.append(rec)
             features[src] = (register.beam_layout_features(rec), register.beam_layout_content(rec))
 
-    frame = _frame([(c, p) for _, c, p, _ in plans])
+    frame = _frame([(c, p) for _, c, p in plans])
     regs = {}
     if frame is None:
         building.findings.append(Finding(id="frame-none", topic="registration", severity="blocking",

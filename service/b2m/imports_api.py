@@ -9,12 +9,15 @@ than doing anything in its place: nothing is guessed.
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
 from b2m.cad.building import RecognisedBuilding
 from b2m.cad.project import ImportProject, Question
 from b2m.plan import BuildPlan
+
+log = logging.getLogger(__name__)
 
 BUILDING_FILE = "recognised_building.json"  # written by the API beside project.json after run_import
 
@@ -61,14 +64,38 @@ def ready_to_build(project: ImportProject, building: RecognisedBuilding | None) 
 
 
 def to_plan(project: ImportProject, building: RecognisedBuilding) -> BuildPlan | list[Any]:
-    """T6: the build plan, or the list of inputs still missing."""
-    return _engine("to_plan").to_plan(building, project)
+    """T6: the build plan, or the list of inputs still missing. The building is the recognised one as saved; T5's
+    plan bridge gives T6 the building with the answers applied and the answers in T6's own form
+    (b2m.cad.plan_bridge.to_plan -> b2m.cad.to_plan.to_plan(building, answers, rules))."""
+    result = _engine("plan_bridge").to_plan(project, building)
+    if result.plan is None:
+        return [m.model_dump(mode="json") for m in result.missing]
+    return result.plan
 
 
 def save_building(directory: Path, building: RecognisedBuilding) -> None:
     temp = directory / f".{BUILDING_FILE}.tmp"
     temp.write_text(json.dumps(building.model_dump(mode="json"), ensure_ascii=False), encoding="utf-8")
     temp.replace(directory / BUILDING_FILE)
+    save_standards(directory, building)
+
+
+def save_standards(directory: Path, building: RecognisedBuilding, project: ImportProject | None = None) -> None:
+    """T6's project standards (project-standards.json) beside project.json, from the building as answered so far.
+    Skipped while the plan converter is not installed."""
+    if project is None:
+        path = directory / "project.json"
+        if not path.is_file():
+            return
+        project = ImportProject.model_validate_json(path.read_text(encoding="utf-8"))
+    try:
+        result = _engine("plan_bridge").to_plan(project, building)
+    except NotWired:
+        return
+    except Exception:  # noqa: BLE001 - the standards are derived; never lose the import over them
+        log.exception("project standards for %s not written", directory.name)
+        return
+    result.standards.save(directory)
 
 
 def load_building(directory: Path) -> RecognisedBuilding | None:
