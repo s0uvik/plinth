@@ -8,6 +8,10 @@
 // rvt-mcp's output=file NDJSON report spilling is dropped (no response spill infrastructure in B2M); the import
 // transaction is "B2M: ..." and any Revit warning rolls it back (FailureScope). dry_run applies to the model
 // import only; the export file is written whenever the mode exports.
+// Duplicate before edit (TypeEditGuard): the export lists placed elements only, but an import row keyed to a type (or a
+// material) would change something shared. Such rows need duplicate_as (the values go to a new copy; no element moves)
+// or confirm_edit_all (= its exact user count); otherwise the import is refused with TYPE_IN_USE / MATERIAL_IN_USE,
+// in dry runs too, before anything changes.
 
 using System;
 using System.Collections.Generic;
@@ -35,7 +39,9 @@ namespace B2M.Revit.Commands.Workflows
         public string Description =>
             "Export a category's parameter values to .json or .csv (export_path, exact; overwrite to replace) and/or import edited values back "
             + "(import_path). mode: export_only (default), import_only, export_then_import. key_field: element_id or unique_id. "
-            + "Units: lengths mm, areas m2, volumes m3, angles degrees. dry_run (default true) validates the import without changing the model.";
+            + "Units: lengths mm, areas m2, volumes m3, angles degrees. dry_run (default true) validates the import without changing the model. "
+            + "Rows keyed to a type or material change something shared:" + TypeEditGuard.Rule
+            + " Several in one import: duplicate_as {\"<id>\": \"name\"} and confirm_edit_all {\"<id>\": N}.";
         public string ParametersSchema => @"{""type"":""object"",""properties"":{
             ""category"":{""type"":""string""},
             ""parameter_names"":{""type"":""array"",""items"":{""type"":""string""}},
@@ -44,13 +50,15 @@ namespace B2M.Revit.Commands.Workflows
             ""mode"":{""type"":""string"",""enum"":[""export_only"",""import_only"",""export_then_import""]},
             ""dry_run"":{""type"":""boolean""},
             ""key_field"":{""type"":""string"",""enum"":[""element_id"",""unique_id""]},
-            ""overwrite"":{""type"":""boolean""}},
+            ""overwrite"":{""type"":""boolean""},
+            " + TypeEditGuard.SchemaFields + @"},
             ""required"":[""category""]}";
         public bool ReadOnly => false;
 
         private sealed class Change
         {
             public long ElementId;
+            public Element Element;
             public Parameter Parameter;
             public string ParameterName;
             public string Value;
@@ -143,6 +151,11 @@ namespace B2M.Revit.Commands.Workflows
                         changed, changeCount, skipped, skippedCount, errors, errorCount,
                         WorkflowsHelpers.Rollback("None", false, "Validation failed; the model was not touched.")));
 
+                // Rows that change a type or material are shared edits: refuse before anything changes unless the caller chose.
+                if (!TypeEditGuard.TryPlan(doc, p, changes.Where(c => TypeEditGuard.IsShared(c.Element)).Select(c => new SharedEdit(c.Element)),
+                        out var plan, out var refusal))
+                    return refusal;
+
                 if (dryRun)
                 {
                     steps.Add(WorkflowsHelpers.Step("Apply Import Changes", "Parameter.Set", "skipped", "Dry run: validated changes were not applied.", new { proposed_changes = changes.Count }));
@@ -158,16 +171,21 @@ namespace B2M.Revit.Commands.Workflows
                         tx.Start();
                         try
                         {
+                            plan.Apply(doc);
                             foreach (var change in changes)
                             {
-                                if (!WorkflowsHelpers.TrySetParameterFromString(change.Parameter, change.Value, out var setError))
+                                var target = plan.TargetFor(change.Element);
+                                var parameter = target.Id == change.Element.Id ? change.Parameter : target.LookupParameter(change.ParameterName);
+                                if (parameter == null || parameter.IsReadOnly)
+                                    throw new InvalidOperationException("the copy of element " + change.ElementId + " has no writable parameter '" + change.ParameterName + "'");
+                                if (!WorkflowsHelpers.TrySetParameterFromString(parameter, change.Value, out var setError))
                                     throw new InvalidOperationException("element " + change.ElementId + " parameter '" + change.ParameterName + "': " + setError);
                                 modifiedIds.Add(change.ElementId);
                             }
                             if (tx.Commit() != TransactionStatus.Committed)
                                 throw new InvalidOperationException("Revit rolled the import back; see failures.");
                             steps.Add(WorkflowsHelpers.Step("Apply Import Changes", "Parameter.Set", "succeeded", "Applied the validated changes.",
-                                new { changed_values = changes.Count, changed_elements = modifiedIds.Distinct().Count() }));
+                                new { changed_values = changes.Count, changed_elements = modifiedIds.Distinct().Count(), shared_edits = plan.Report() }));
                         }
                         catch (Exception ex)
                         {
@@ -303,7 +321,7 @@ namespace B2M.Revit.Commands.Workflows
                         && double.TryParse(newValue, NumberStyles.Float, CultureInfo.InvariantCulture, out var n)
                         && oldValue.Type != JTokenType.Null && Math.Abs(oldValue.Value<double>() - n) < 1e-9) continue;
 
-                    changes.Add(new Change { ElementId = elementId, Parameter = parameter, ParameterName = name, Value = newValue });
+                    changes.Add(new Change { ElementId = elementId, Element = element, Parameter = parameter, ParameterName = name, Value = newValue });
                     if (changed.Count < MaxListed)
                         changed.Add(new JObject
                         {

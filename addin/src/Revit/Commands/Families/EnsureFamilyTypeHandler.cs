@@ -14,6 +14,8 @@
 // is one transaction; any failure leaves the project unchanged (a file this command saved is deleted again).
 // It opens, saves and closes separate family documents and may write files, which no TransactionGroup rollback can
 // undo, so it is refused inside batch_execute (BatchExecutor) and must be called directly.
+// Duplicate before edit (see TypeEditGuard): it only ever creates types (duplicated, loaded or built); a type that already
+// exists is checked and returned, never edited, even for material_name.
 
 using System;
 using System.Collections.Generic;
@@ -399,6 +401,8 @@ namespace B2M.Revit.Commands.Families
                     FamilySymbol symbol;
                     JObject dims;
                     var existing = TypeIn(family, r.TypeName);
+                    // Duplicate before edit holds: with ownTypes the family was made by this call and loaded in this transaction (LoadFamily
+                    // never overwrites), so this type is new and unused; an existing project type is never edited (CheckExisting refuses).
                     if (existing != null && ownTypes)
                     {
                         symbol = existing;

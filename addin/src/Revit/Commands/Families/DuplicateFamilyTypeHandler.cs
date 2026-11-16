@@ -4,6 +4,7 @@
 // committed the new type and listed the failures); a missing parameter lists the type's writable parameters;
 // overrides use the shared value rules (lengths in mm through Mm, areas m2, volumes m3, angles degrees, other
 // measured values need unit "internal"); source_type_id is an integer; failures are errors, not success payloads.
+// Duplicate before edit (see TypeEditGuard): it only creates a new type; overrides are set on the new copy, never on the source.
 
 using System;
 using System.Linq;

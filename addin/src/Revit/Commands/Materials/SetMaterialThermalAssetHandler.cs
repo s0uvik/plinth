@@ -3,6 +3,9 @@
 // Modified for B2M: the new asset starts as a copy of the material's current thermal asset, so values not given
 // are kept (rvt-mcp started from defaults); the shared asset itself is never edited; a taken asset_name is
 // refused and the default name is made unique (rvt-mcp failed on a second run).
+// Duplicate before edit (TypeEditGuard): a material is shared, so it is changed only with duplicate_as (a copy named
+// so gets the change; nothing else moves onto it) or confirm_edit_all (= its best-effort user count); otherwise
+// MATERIAL_IN_USE before anything changes.
 
 using System;
 using Autodesk.Revit.DB;
@@ -17,14 +20,16 @@ namespace B2M.Revit.Commands.Materials
         public string Name => "set_material_thermal_asset";
         public string Description =>
             "Give a material a new thermal asset: conductivity_w_per_m_k, specific_heat_j_per_kg_k, emissivity (0-1), permeability, "
-            + "density_kg_per_m3. Values not given are copied from its current thermal asset (or a new solid asset); the old asset is left untouched.";
+            + "density_kg_per_m3. Values not given are copied from its current thermal asset (or a new solid asset); the old asset is left untouched. "
+            + "Giving the material the new asset changes every element using it:" + TypeEditGuard.Rule;
         public string ParametersSchema => @"{""type"":""object"",""properties"":{" + MaterialsHelpers.MaterialSchema + @",
             ""asset_name"":{""type"":""string""},
             ""conductivity_w_per_m_k"":{""type"":""number""},
             ""specific_heat_j_per_kg_k"":{""type"":""number""},
             ""emissivity"":{""type"":""number""},
             ""permeability"":{""type"":""number""},
-            ""density_kg_per_m3"":{""type"":""number""}}}";
+            ""density_kg_per_m3"":{""type"":""number""},
+            " + TypeEditGuard.SchemaFields + @"}}";
         public bool ReadOnly => false;
 
         public CommandResult Execute(UIApplication app, JObject p)
@@ -45,7 +50,9 @@ namespace B2M.Revit.Commands.Materials
                 return CommandResult.Fail("INVALID_PARAMS: thermal values must not be negative.");
             if (emissivity.HasValue && (emissivity.Value < 0 || emissivity.Value > 1))
                 return CommandResult.Fail("INVALID_PARAMS: emissivity must be 0 to 1.");
-            if (!MaterialsHelpers.TryAssetName(doc, p.Value<string>("asset_name"), mat.Name + " Thermal", out var assetName, out failure))
+            if (!TypeEditGuard.TryPlan(doc, p, new[] { new SharedEdit(mat) }, out var plan, out failure)) return failure;
+
+            if (!MaterialsHelpers.TryAssetName(doc, p.Value<string>("asset_name"), SetMaterialStructuralAssetHandler.EditName(plan, mat) + " Thermal", out var assetName, out failure))
                 return failure;
 
             var current = (doc.GetElement(mat.ThermalAssetId) as PropertySetElement)?.GetThermalAsset();
@@ -62,6 +69,8 @@ namespace B2M.Revit.Commands.Materials
                 tx.Start();
                 try
                 {
+                    plan.Apply(doc);
+                    mat = (Material)plan.TargetFor(mat);
                     if (conductivity.HasValue) asset.ThermalConductivity = UnitUtils.ConvertToInternalUnits(conductivity.Value, UnitTypeId.WattsPerMeterKelvin);
                     if (specificHeat.HasValue) asset.SpecificHeat = UnitUtils.ConvertToInternalUnits(specificHeat.Value, UnitTypeId.JoulesPerKilogramDegreeCelsius);
                     if (emissivity.HasValue) asset.Emissivity = emissivity.Value;
@@ -76,6 +85,7 @@ namespace B2M.Revit.Commands.Materials
                         ["updated"] = true,
                         ["material_id"] = RevitCompat.GetId(mat.Id),
                         ["based_on_existing"] = current != null,
+                        ["shared_edits"] = plan.Report(),
                         ["thermal_asset"] = GetMaterialPropertiesHandler.Thermal(set)
                     });
                 }

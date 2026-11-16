@@ -4,6 +4,9 @@
 // values not given are kept (rvt-mcp started from Revit defaults and lost them); the shared asset itself is never
 // edited, because other materials may use it; an unknown structural_class is refused instead of becoming
 // "generic"; a taken asset_name is refused and the default name is made unique (rvt-mcp failed on a second run).
+// Duplicate before edit (TypeEditGuard): a material is shared, so it is changed only with duplicate_as (a copy named
+// so gets the change; nothing else moves onto it) or confirm_edit_all (= its best-effort user count); otherwise
+// MATERIAL_IN_USE before anything changes.
 
 using System;
 using Autodesk.Revit.DB;
@@ -15,18 +18,24 @@ namespace B2M.Revit.Commands.Materials
 {
     public sealed class SetMaterialStructuralAssetHandler : IRevitCommand
     {
+        /// <summary>The name of the material that will be edited: the copy's when duplicate_as was given.</summary>
+        internal static string EditName(SharedEditPlan plan, Material mat) =>
+            plan.EntryFor(mat)?.Decision.CopyName ?? mat.Name;
+
         public string Name => "set_material_structural_asset";
         public string Description =>
             "Give a material a new isotropic structural asset: density_kg_per_m3, young_modulus_mpa, poisson_ratio (0-0.5), shear_modulus_mpa. "
             + "Values not given are copied from its current asset. structural_class (generic, concrete, metal, wood, liquid, gas, plastic) "
-            + "starts a fresh asset of that class. The old asset is left untouched for other materials.";
+            + "starts a fresh asset of that class. The old asset is left untouched for other materials. Giving the material the new asset "
+            + "changes every element using it:" + TypeEditGuard.Rule;
         public string ParametersSchema => @"{""type"":""object"",""properties"":{" + MaterialsHelpers.MaterialSchema + @",
             ""asset_name"":{""type"":""string""},
             ""structural_class"":{""type"":""string"",""enum"":[""generic"",""concrete"",""metal"",""wood"",""liquid"",""gas"",""plastic""]},
             ""density_kg_per_m3"":{""type"":""number""},
             ""young_modulus_mpa"":{""type"":""number""},
             ""poisson_ratio"":{""type"":""number""},
-            ""shear_modulus_mpa"":{""type"":""number""}}}";
+            ""shear_modulus_mpa"":{""type"":""number""},
+            " + TypeEditGuard.SchemaFields + @"}}";
         public bool ReadOnly => false;
 
         public CommandResult Execute(UIApplication app, JObject p)
@@ -47,7 +56,9 @@ namespace B2M.Revit.Commands.Materials
                 return CommandResult.Fail("INVALID_PARAMS: density and moduli must not be negative.");
             if (poisson.HasValue && (poisson.Value < 0 || poisson.Value > 0.5))
                 return CommandResult.Fail("INVALID_PARAMS: poisson_ratio must be 0 to 0.5.");
-            if (!MaterialsHelpers.TryAssetName(doc, p.Value<string>("asset_name"), mat.Name + " Structural", out var assetName, out failure))
+            if (!TypeEditGuard.TryPlan(doc, p, new[] { new SharedEdit(mat) }, out var plan, out failure)) return failure;
+
+            if (!MaterialsHelpers.TryAssetName(doc, p.Value<string>("asset_name"), EditName(plan, mat) + " Structural", out var assetName, out failure))
                 return failure;
 
             var current = (doc.GetElement(mat.StructuralAssetId) as PropertySetElement)?.GetStructuralAsset();
@@ -68,6 +79,8 @@ namespace B2M.Revit.Commands.Materials
                 tx.Start();
                 try
                 {
+                    plan.Apply(doc);
+                    mat = (Material)plan.TargetFor(mat);
                     asset.Behavior = StructuralBehavior.Isotropic;
                     if (density.HasValue) asset.Density = UnitUtils.ConvertToInternalUnits(density.Value, UnitTypeId.KilogramsPerCubicMeter);
                     if (young.HasValue)
@@ -90,6 +103,7 @@ namespace B2M.Revit.Commands.Materials
                         ["updated"] = true,
                         ["material_id"] = RevitCompat.GetId(mat.Id),
                         ["based_on_existing"] = className == null && current != null,
+                        ["shared_edits"] = plan.Report(),
                         ["structural_asset"] = GetMaterialPropertiesHandler.Structural(set)
                     });
                 }
