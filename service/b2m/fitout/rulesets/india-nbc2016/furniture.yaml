@@ -1,0 +1,338 @@
+# Furniture: the standard set per room class (decided with the user 2026-11-16: "standard per room"), each item's
+# nominal sizes, clearances and placement rule, and the Revit category and keywords F1/F5 match families by.
+#
+# Sizes: width along the wall the item backs onto, depth away from it, height; the first size is preferred, the
+# others are smaller standard sizes tried in order when it does not fit (the record says which size was used).
+# Placement rules (b2m/fitout/furniture.py):
+#   against_wall       back against a wall face, front into the room
+#   head_against_wall  a bed: head against a wall, foot into the room, side clearances
+#   corner             against a wall, snug in a corner (shower area)
+#   beside             next to its anchor's side at the wall (side table beside the bed head)
+#   opposite           against the wall facing its anchor, within a distance range (TV unit opposite the sofa)
+#   free               free-standing, clearance all round (dining set)
+#   counter            a run along walls, L-shaped at a corner or straight (kitchen counter), its fixtures set on it
+#   on_counter         set on a counter (sink, hob); placed with the counter
+# prefer: window_wall, no_window_wall, not_door_wall, longest_wall, corner, centre, far_from_door, near_door,
+#   exterior_wall (counter fixtures: under_window, not_under_window).
+# tall: kept clear of windows (out of the zone in front of each window). Left out, an item is tall when it is higher
+#   than the window's sill.
+furniture:
+  layout:
+    door_swing_clearance_mm:
+      value: 100
+      source: "B2M layout practice: margin kept beyond a door leaf's swing arc"
+      verified: false
+    door_approach_mm:
+      value: 900
+      source: "B2M layout practice: clear depth in front of every door, both sides, door width wide (NBC 2016 Part 3 accessibility suggests 1500 for wheelchair turning)"
+      verified: false
+    window_zone_mm:
+      value: 600
+      source: "B2M layout practice: depth in front of a window kept free of tall items"
+      verified: false
+    circulation_mm:
+      value: 600
+      source: "Typical residential practice: 600 mm clear passage from the door to each item's front"
+      verified: false
+    grid_mm:
+      value: 50
+      source: "B2M solver step along walls (not a code value)"
+      verified: false
+    unknown_door_width_mm:
+      value: 1000
+      source: "B2M conservative placeholder: swing radius used for a door whose width the plan does not give (a question is raised too)"
+      verified: false
+
+  items:
+    bed:
+      label: Bed
+      category: Furniture
+      keywords: [bed, double bed, queen, mattress]
+      sizes:
+        - {width_mm: 1500, depth_mm: 2000, height_mm: 450}  # queen (60" x 78" rounded)
+        - {width_mm: 1200, depth_mm: 2000, height_mm: 450}  # three-quarter
+        - {width_mm: 900, depth_mm: 2000, height_mm: 450}   # single
+      placement: head_against_wall
+      priority: 10
+      clearance: {front_mm: 600, sides_mm: 600, sides_required: 1}
+      prefer: [not_door_wall, no_window_wall, centre]
+      source: "Common Indian mattress sizes (queen 1525 x 1980, single 915 x 1905, rounded); 600 mm access per typical practice"
+      verified: false
+    wardrobe:
+      label: Wardrobe
+      category: Casework
+      keywords: [wardrobe, almirah, closet, cupboard]
+      sizes:
+        - {width_mm: 1200, depth_mm: 600, height_mm: 2100}
+        - {width_mm: 900, depth_mm: 600, height_mm: 2100}
+      placement: against_wall
+      priority: 20
+      clearance: {front_mm: 750}
+      prefer: [corner, no_window_wall]
+      source: "Typical Indian residential practice (two/three-shutter wardrobe, 600 deep, 750 clear for open shutters)"
+      verified: false
+    side_table:
+      label: Side table
+      category: Furniture
+      keywords: [side table, bedside, night stand, nightstand]
+      sizes:
+        - {width_mm: 450, depth_mm: 450, height_mm: 550}
+        - {width_mm: 400, depth_mm: 400, height_mm: 500}
+      placement: beside
+      anchor: bed
+      priority: 30
+      source: "Typical residential practice"
+      verified: false
+    study_table:
+      label: Study table
+      category: Furniture
+      keywords: [study table, desk, writing table, table]
+      sizes:
+        - {width_mm: 1000, depth_mm: 600, height_mm: 750}
+        - {width_mm: 900, depth_mm: 500, height_mm: 750}
+      placement: against_wall
+      priority: 40
+      clearance: {front_mm: 750}
+      prefer: [window_wall, not_door_wall]
+      source: "Typical residential practice (750 mm for the chair)"
+      verified: false
+    dressing_table:
+      label: Dressing table
+      category: Furniture
+      keywords: [dressing table, dresser, vanity]
+      sizes:
+        - {width_mm: 900, depth_mm: 450, height_mm: 1800}
+        - {width_mm: 600, depth_mm: 400, height_mm: 1800}
+      placement: against_wall
+      priority: 30
+      clearance: {front_mm: 750}
+      prefer: [no_window_wall]
+      source: "Typical residential practice (table with mirror)"
+      verified: false
+    sofa:
+      label: Sofa
+      category: Furniture
+      keywords: [sofa, couch, settee]
+      sizes:
+        - {width_mm: 2100, depth_mm: 850, height_mm: 850}  # three-seater
+        - {width_mm: 1500, depth_mm: 850, height_mm: 850}  # two-seater
+      placement: against_wall
+      priority: 20
+      clearance: {front_mm: 900}
+      prefer: [not_door_wall, longest_wall, centre]
+      source: "Typical residential practice (900 mm for a centre table and legroom)"
+      verified: false
+    tv_unit:
+      label: TV unit
+      category: Casework
+      keywords: [tv unit, tv cabinet, media unit, entertainment unit]
+      sizes:
+        - {width_mm: 1800, depth_mm: 450, height_mm: 600}
+        - {width_mm: 1200, depth_mm: 400, height_mm: 600}
+      placement: opposite
+      anchor: sofa
+      opposite: {min_mm: 1800, max_mm: 4500}
+      priority: 30
+      prefer: [centre]
+      source: "Typical residential practice (viewing distance about 2-4 m for living-room screens)"
+      verified: false
+    dining_set:
+      label: Dining set
+      category: Furniture
+      keywords: [dining table, dining set, table and chairs]
+      sizes:
+        - {width_mm: 1200, depth_mm: 1800, height_mm: 750}  # four-seater: 1200 x 750 table, chairs drawn in
+        - {width_mm: 750, depth_mm: 1800, height_mm: 750}   # two-seater
+      placement: free
+      priority: 40
+      clearance: {around_mm: 300}
+      source: "Typical residential practice (chair pull-out 450-600 counted in the depth; 300 mm passage round)"
+      verified: false
+    counter:
+      label: Kitchen counter
+      category: Casework
+      keywords: [counter, base cabinet, kitchen counter, platform]
+      sizes:
+        - {width_mm: 600, depth_mm: 600, height_mm: 850}  # width: one module; the run's length comes from stretch
+      placement: counter
+      stretch: {min_mm: 1800, max_mm: 4200, leg_min_mm: 900, shapes: [l_shape, straight]}
+      fixtures: [kitchen_sink, hob]
+      priority: 10
+      clearance: {front_mm: 900}
+      prefer: [window_wall, longest_wall]
+      tall: false
+      source: "Typical Indian kitchen practice (850 high, 600 deep platform; 900-1200 working aisle)"
+      verified: false
+    kitchen_sink:
+      label: Kitchen sink
+      category: Plumbing Fixtures
+      keywords: [kitchen sink, sink, bowl]
+      sizes:
+        - {width_mm: 750, depth_mm: 450, height_mm: 200}
+        - {width_mm: 600, depth_mm: 450, height_mm: 200}
+      placement: on_counter
+      priority: 11
+      prefer: [under_window]
+      on_counter: {min_from_end_mm: 150}
+      source: "Typical Indian kitchen practice (single bowl with drain board, under the window)"
+      verified: false
+    hob:
+      label: Hob
+      category: Specialty Equipment
+      keywords: [hob, cooktop, gas stove, burner]
+      sizes:
+        - {width_mm: 750, depth_mm: 450, height_mm: 100}
+        - {width_mm: 600, depth_mm: 450, height_mm: 100}
+      placement: on_counter
+      priority: 12
+      prefer: [not_under_window]
+      on_counter: {min_from_end_mm: 150, min_from_mm: {kitchen_sink: 450}}
+      source: "Typical Indian kitchen practice (3-burner hob; not under a window; clear of the sink)"
+      verified: false
+    fridge:
+      label: Refrigerator
+      category: Specialty Equipment
+      keywords: [refrigerator, fridge]
+      sizes:
+        - {width_mm: 700, depth_mm: 700, height_mm: 1700}
+        - {width_mm: 600, depth_mm: 650, height_mm: 1500}
+      placement: against_wall
+      priority: 50
+      clearance: {front_mm: 900}
+      prefer: [corner, near_door]
+      source: "Typical residential practice (double-door refrigerator space)"
+      verified: false
+    wc:
+      label: Water closet
+      category: Plumbing Fixtures
+      keywords: [water closet, wc, toilet, ewc, commode]
+      sizes:
+        - {width_mm: 400, depth_mm: 700, height_mm: 800}  # with its cistern
+      placement: against_wall
+      priority: 10
+      clearance: {front_mm: 600, sides_mm: 200, sides_required: 2}
+      prefer: [not_door_wall, far_from_door]
+      tall: false
+      source: "Typical practice; IS 1172 / NBC 2016 Part 9 space about fixtures (600 in front, 400 from the WC centre to a side wall) as recalled"
+      verified: false
+    basin:
+      label: Wash basin
+      category: Plumbing Fixtures
+      keywords: [wash basin, basin, lavatory, washbasin]
+      sizes:
+        - {width_mm: 550, depth_mm: 450, height_mm: 850}
+        - {width_mm: 450, depth_mm: 350, height_mm: 850}
+      placement: against_wall
+      priority: 20
+      clearance: {front_mm: 600, sides_mm: 100, sides_required: 2}
+      prefer: [near_door]
+      tall: false
+      source: "Typical practice; IS 1172 / NBC 2016 Part 9 space about fixtures as recalled"
+      verified: false
+    shower:
+      label: Shower area
+      category: Plumbing Fixtures
+      keywords: [shower, shower tray, shower head, shower area]
+      sizes:
+        - {width_mm: 900, depth_mm: 900, height_mm: 2100}
+        - {width_mm: 800, depth_mm: 800, height_mm: 2100}
+      placement: corner
+      priority: 30
+      clearance: {front_mm: 450}
+      prefer: [far_from_door]
+      tall: false
+      source: "Typical practice (900 x 900 shower area, a corner away from the door)"
+      verified: false
+    washing_machine:
+      label: Washing machine
+      category: Specialty Equipment
+      keywords: [washing machine, washer]
+      sizes:
+        - {width_mm: 600, depth_mm: 600, height_mm: 850}
+      placement: against_wall
+      priority: 10
+      clearance: {front_mm: 600}
+      prefer: [corner]
+      tall: false
+      source: "Typical residential practice (front-loading machine)"
+      verified: false
+    puja_unit:
+      label: Puja unit
+      category: Casework
+      keywords: [puja unit, mandir, temple, prayer unit]
+      sizes:
+        - {width_mm: 600, depth_mm: 450, height_mm: 1500}
+        - {width_mm: 450, depth_mm: 350, height_mm: 1200}
+      placement: against_wall
+      priority: 10
+      clearance: {front_mm: 750}
+      prefer: [not_door_wall, centre]
+      source: "Typical Indian residential practice"
+      verified: false
+    shelf:
+      label: Storage shelf
+      category: Casework
+      keywords: [shelf, shelving, rack, storage unit]
+      sizes:
+        - {width_mm: 900, depth_mm: 450, height_mm: 2100}
+        - {width_mm: 600, depth_mm: 400, height_mm: 2100}
+      placement: against_wall
+      priority: 50
+      clearance: {front_mm: 600}
+      prefer: [corner]
+      source: "Typical residential practice"
+      verified: false
+
+  # The standard set per room class. Classes without a set get no furniture (lobby, stair, lift, balcony...).
+  sets:
+    bedroom:
+      items:
+        - {item: bed}
+        - {item: wardrobe}
+        - {item: side_table}
+        - {item: study_table, optional: true}  # "study table if it fits"
+      source: "Standard per room, decided with the user 2026-11-16"
+      verified: false
+    servant:
+      items: [{item: bed}, {item: shelf, optional: true}]
+      source: "Standard per room, decided with the user 2026-11-16"
+      verified: false
+    living:
+      items:
+        - {item: sofa}
+        - {item: tv_unit}
+        - {item: dining_set, unless_flat_has: [dining]}  # the dining set goes in the dining room when there is one
+      source: "Standard per room, decided with the user 2026-11-16"
+      verified: false
+    dining:
+      items: [{item: dining_set}]
+      source: "Standard per room, decided with the user 2026-11-16"
+      verified: false
+    kitchen:
+      items: [{item: counter}, {item: fridge, optional: true}]
+      source: "Standard per room, decided with the user 2026-11-16 (counter with sink and hob)"
+      verified: false
+    toilet:
+      items: [{item: wc}, {item: basin}, {item: shower}]
+      source: "Standard per room, decided with the user 2026-11-16 (WC, basin, shower)"
+      verified: false
+    study:
+      items: [{item: study_table}, {item: shelf, optional: true}]
+      source: "Standard per room, decided with the user 2026-11-16"
+      verified: false
+    dress:
+      items: [{item: wardrobe, count: 2}, {item: dressing_table, optional: true}]
+      source: "Standard per room, decided with the user 2026-11-16"
+      verified: false
+    puja:
+      items: [{item: puja_unit}]
+      source: "Standard per room, decided with the user 2026-11-16"
+      verified: false
+    store:
+      items: [{item: shelf, count: 2, optional: true}]
+      source: "Standard per room, decided with the user 2026-11-16"
+      verified: false
+    utility:
+      items: [{item: washing_machine}]
+      source: "Standard per room, decided with the user 2026-11-16"
+      verified: false

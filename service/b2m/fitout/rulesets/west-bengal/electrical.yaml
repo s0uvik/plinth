@@ -1,0 +1,9 @@
+electrical:
+  supply_authority:
+    value: "CESC Limited in its Kolkata/Howrah licence area; WBSEDCL elsewhere in West Bengal"
+    source: "Distribution licensees of West Bengal (WBERC); the licence area of the site decides"
+    verified: false
+  meter_room:
+    value: "a meter room or meter space on the ground floor near the entrance, as the supply licensee requires"
+    source: "CESC / WBSEDCL service connection practice for multi-dwelling buildings"
+    verified: false

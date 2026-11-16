@@ -1,0 +1,28 @@
+# HVAC rule tables (used by F4): split AC per bedroom and living room, sized by area, indoor unit high on an outside
+# wall, outdoor unit outside; exhaust fans per toilet and kitchen. All values unverified placeholders.
+hvac:
+  split_ac:
+    classes: [bedroom, living, study]
+    sizing:
+      - {max_area_m2: 11, tr: 1.0}
+      - {max_area_m2: 16, tr: 1.5}
+      - {max_area_m2: 23, tr: 2.0}
+    indoor: {width_mm: 1000, depth_mm: 250, height_mm: 320}
+    indoor_bottom_mm: 2100
+    outdoor: {width_mm: 850, depth_mm: 320, height_mm: 600}
+    max_pipe_run_m: 10
+    source: "Typical Indian residential practice (about 1 TR per 10-12 m² in a hot-humid climate; NBC 2016 Part 8 Section 3 for design); larger rooms are asked"
+    verified: false
+  exhaust:
+    toilet:
+      air_changes_per_hour: 8
+      fan_dia_mm: 150
+      height_mm: 2100
+      source: "NBC 2016 Part 8 Section 3 air changes for toilets, as recalled; typical 150 mm fan above the door head"
+      verified: false
+    kitchen:
+      air_changes_per_hour: 12
+      fan_dia_mm: 300
+      height_mm: 2100
+      source: "NBC 2016 Part 8 Section 3 air changes for kitchens, as recalled; typical 300 mm fan"
+      verified: false
