@@ -110,6 +110,10 @@ namespace B2M.Revit.Commands.Families
                 {
                     var created = baseType.Duplicate(decision.TypeName) as HostObjAttributes;
                     if (created == null) return RolledBack(tx, "DUPLICATE_FAILED: Revit did not duplicate '" + baseType.Name + "'.");
+                    // A new simple structure gets Revit's default end cap, which floor and foundation types refuse
+                    // ("wrong EndCap condition", found live); take the base type's own, which is valid for its kind.
+                    var baseStructure = baseType.GetCompoundStructure();
+                    if (baseStructure != null) structure.EndCap = baseStructure.EndCap;
                     created.SetCompoundStructure(structure);
                     if (created is WallType wallType)
                         wallType.Function = request.Function == "exterior" ? WallFunction.Exterior : WallFunction.Interior;

@@ -270,6 +270,12 @@ namespace B2M.Revit.Commands.View
                         if (deviation > 1.0)
                             throw new InvalidOperationException("the section's cut plane is " + Math.Round(deviation, 1)
                                 + " mm off the given line.");
+                        var alongLine = (sectionEnd - sectionStart).Normalize();
+                        var leftSide = XYZ.BasisZ.CrossProduct(alongLine);
+                        var wanted = p.Value<string>("side") == "right" ? leftSide.Negate() : leftSide;
+                        if (!LooksToward(view, wanted))
+                            throw new InvalidOperationException("the section looks to the other side of the line than asked ("
+                                + (p.Value<string>("side") ?? "left") + ").");
                     }
 
                     if (tx.Commit() != TransactionStatus.Committed)
@@ -493,15 +499,26 @@ namespace B2M.Revit.Commands.View
             return true;
         }
 
-        /// <summary>How far (mm) a plan point is from the section's cut plane: the crop box's front face (local Z = Max.Z).</summary>
+        /// <summary>
+        /// How far (mm) a plan point is from the section's cut plane. The cut plane is the crop box's Z face nearest the
+        /// viewer (View.ViewDirection points toward the viewer). Revit may store the box with either Z face first, so the
+        /// face is chosen by direction, not assumed to be Max.Z (the first live run measured the far clip face that way).
+        /// </summary>
         private static double OffPlaneMm(View view, XYZ point)
         {
             var box = view.CropBox;
             var t = box.Transform;
-            var front = t.OfPoint(new XYZ(0, 0, box.Max.Z));
+            var a = t.OfPoint(new XYZ(0, 0, box.Min.Z));
+            var b = t.OfPoint(new XYZ(0, 0, box.Max.Z));
+            var front = (b - a).DotProduct(view.ViewDirection) >= 0 ? b : a;
+            var normal = t.BasisZ;
             var p = new XYZ(point.X, point.Y, front.Z);
-            return Math.Abs((p - front).DotProduct(t.BasisZ)) * 304.8;
+            return Math.Abs((p - front).DotProduct(normal)) * 304.8;
         }
+
+        /// <summary>True when the section looks toward the given plan side (the model it shows lies on that side).</summary>
+        private static bool LooksToward(View view, XYZ side) =>
+            view.ViewDirection.Negate().DotProduct(new XYZ(side.X, side.Y, 0).Normalize()) > 0.5;
 
         private static XYZ Compass(string direction)
         {
