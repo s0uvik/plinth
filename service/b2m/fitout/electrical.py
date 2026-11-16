@@ -12,7 +12,8 @@ underside) on a grid across the room, lights moved off the fans. One switchboard
 to a common area or the outside, else the first), on the latch side at ``switchboard.height_mm``, so it is at hand as
 the door opens (decided with the user). Sockets spread along the walls away from the door, first beside the bed's
 side table, the TV unit, the study table, never behind tall furniture or in a door or window; a 16 A point is the AC's
-(beside the indoor unit), the geyser's (beside it) or an appliance's (above the kitchen counter). One distribution
+(beside the indoor unit: a room with several answered AC units gets one per unit), the geyser's (beside it) or an
+appliance's (above the kitchen counter). One distribution
 board per flat beside its entrance door (hinge side, the switchboard having the latch side), one common board for the
 lobbies, stairs, terraces and pumps, in a common lobby on the lowest storey that has one (listed as an assumption).
 The meter board stands in the meter room on the lowest storey; without one it is asked.
@@ -133,6 +134,11 @@ def points(ctx: Ctx, st: State, room: Room) -> None:
                                                     load=False, source=sb.source, note=note)
     # 16 A points by use
     mount = {k: float(v.value) for k, v in el.mounting_mm.items()}
+    n_ac = len(ctx.in_room_devices(room.key, "ac_indoor"))  # a large room's answered units: a socket each
+    ac_key = next((k for k in sorted(counts) if k.startswith("16a:") and k[4:] in ctx.rules.hvac.split_ac.classes),
+                  None)
+    if ac_key is not None:
+        counts[ac_key] = max(counts[ac_key], n_ac)
     for key, n in sorted(counts.items()):
         if not key.startswith("16a:") or n <= 0:
             continue
