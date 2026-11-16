@@ -440,26 +440,29 @@ namespace B2M.Revit.Commands.View
         }
 
         /// <summary>
-        /// Section box with its origin on the plan line's midpoint at height 0: BasisX along the line (reversed when
-        /// looking right), BasisY up, BasisZ (toward the viewer) = BasisX x up, so the view looks to the left of
-        /// start->end, or to the right when lookRight. Local Y is therefore absolute height; local Z runs from -depth
-        /// (far clip) to 0 (the cut, on the line).
+        /// Section box with its origin on the plan line's midpoint at height 0: BasisZ = the look direction (left of
+        /// start->end, or right when lookRight), BasisY up, BasisX = up x look. Local Y is absolute height; local Z runs
+        /// from 0 (the cut, on the line) to depth (far clip).
         /// </summary>
         private static BoundingBoxXYZ SectionBox(XYZ start, XYZ end, double depth, double bottom, double top, bool lookRight)
         {
+            // Measured in Revit 2026 (developer-mode probe, 2026-11-16): for ViewSection.CreateSection the box's BasisZ is
+            // the LOOK direction, the cut plane is at local Min.Z and the far clip at Max.Z (BasisX = up x look). The
+            // first version built it the other way round and every section looked away from its line, cut depth mm off.
             var along = (end - start).Normalize();
-            if (lookRight) along = along.Negate();
+            var look = XYZ.BasisZ.CrossProduct(along); // left of start->end
+            if (lookRight) look = look.Negate();
             var transform = Transform.Identity;
             transform.Origin = (start + end) * 0.5;
-            transform.BasisX = along;
+            transform.BasisZ = look;
             transform.BasisY = XYZ.BasisZ;
-            transform.BasisZ = along.CrossProduct(XYZ.BasisZ);
+            transform.BasisX = XYZ.BasisZ.CrossProduct(look);
             var half = start.DistanceTo(end) * 0.5;
             return new BoundingBoxXYZ
             {
                 Transform = transform,
-                Min = new XYZ(-half, bottom, -depth),
-                Max = new XYZ(half, top, 0)
+                Min = new XYZ(-half, bottom, 0),
+                Max = new XYZ(half, top, depth)
             };
         }
 
