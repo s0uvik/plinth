@@ -183,14 +183,96 @@ class RoomOp(_Op):
     flat: str | None = None
 
 
-Op = Annotated[Union[LevelOp, GridOp, ColumnOp, WallOp, FloorOp, ShaftOp, BeamOp, StairOp, RailingOp, DoorOp, WindowOp,
-                     RoomOp], Field(discriminator="op")]
+class RoomSeparatorOp(_Op):
+    """Room separation lines on a level through ``points`` (an open polyline, or a loop with ``close_loop``)."""
 
-# Build order (PRD): levels, grids, columns, walls (which then join the columns), floors, shaft openings (which cut
-# the floors), beams (onto columns, under the slabs), stairs (inside the cut shafts), railings (on their stairs),
-# doors and windows (into their walls), rooms (once every bounding element exists).
-PHASES: tuple[tuple[str, ...], ...] = (("level",), ("grid",), ("column",), ("wall",), ("floor",), ("shaft",), ("beam",),
-                                       ("stair",), ("railing",), ("door", "window"), ("room",))
+    op: Literal["room_separator"]
+    level: str
+    points: list[Point] = Field(min_length=2)
+    close_loop: bool = False
+
+
+class FoundationSlabOp(_Op):
+    """A structural foundation slab (raft): top at ``level`` (+ ``offset_mm``), outline ``points``; its thickness is
+    its type's (a foundation slab floor type, made sure of by a ``floor_type`` op with ``foundation``)."""
+
+    op: Literal["foundation_slab"]
+    level: str
+    type: str
+    points: list[Point] = Field(min_length=3)
+    offset_mm: float = 0
+
+
+class _TypeOp(_Op):
+    """A type the plan's elements use, made sure of before anything is built: found, else a copy of another type is
+    made and set (duplicate before edit; an existing type is never changed). ``name`` is the logical name the
+    elements refer to; the runner swaps in the project type the add-in returns."""
+
+    name: str = Field(min_length=1)
+    base_type_name: str | None = None
+
+
+class TypeLayer(BaseModel):
+    """One layer of a wall or floor type, outside (walls) or top (floors) first. Without a material the copied
+    type's material for that function is kept."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    function: Literal["structure", "finish1", "finish2", "substrate", "insulation", "membrane"]
+    thickness_mm: float = Field(ge=0)
+    material: str | None = None
+
+
+class _HostTypeOp(_TypeOp):
+    thickness_mm: float = Field(gt=0)
+    layers: list[TypeLayer] | None = None
+
+    @model_validator(mode="after")
+    def _layers_add_up(self) -> "_HostTypeOp":
+        if self.layers is not None:
+            if abs(sum(layer.thickness_mm for layer in self.layers) - self.thickness_mm) > 0.01:
+                raise ValueError(f"{self.key}: the layers must add up to thickness_mm")
+            if not any(layer.function == "structure" for layer in self.layers):
+                raise ValueError(f"{self.key}: a type needs a structure layer")
+        return self
+
+
+class WallTypeOp(_HostTypeOp):
+    op: Literal["wall_type"]
+    function: Literal["exterior", "interior"]
+
+
+class FloorTypeOp(_HostTypeOp):
+    op: Literal["floor_type"]
+    structural: bool = False
+    foundation: bool = False  # a structural foundation slab type, for foundation_slab ops
+
+
+class OpeningTypeOp(_TypeOp):
+    """A door or window type by size and type mark; the add-in picks the family unless ``family`` is given."""
+
+    op: Literal["opening_type"]
+    category: Literal["door", "window"]
+    width_mm: float = Field(gt=0)
+    height_mm: float = Field(gt=0)
+    type_mark: str | None = None
+    family: str | None = None
+    hint: str | None = None
+
+
+Op = Annotated[Union[LevelOp, GridOp, ColumnOp, WallOp, FloorOp, ShaftOp, BeamOp, StairOp, RailingOp, DoorOp, WindowOp,
+                     RoomOp, RoomSeparatorOp, FoundationSlabOp, WallTypeOp, FloorTypeOp, OpeningTypeOp],
+               Field(discriminator="op")]
+
+# Ops that make sure of a type rather than create a model element: never counted in the read-back.
+TYPE_OPS = frozenset({"wall_type", "floor_type", "opening_type"})
+
+# Build order (PRD): types (before anything uses them), levels, grids, columns, walls (which then join the columns),
+# floors and foundation slabs, shaft openings (which cut the floors), beams (onto columns, under the slabs), stairs
+# (inside the cut shafts), railings (on their stairs), doors and windows (into their walls), room separation lines,
+# rooms (once every bounding element exists).
+PHASES: tuple[tuple[str, ...], ...] = (("wall_type", "floor_type", "opening_type"), ("level",), ("grid",), ("column",),
+                                       ("wall",), ("floor", "foundation_slab"), ("shaft",), ("beam",), ("stair",),
+                                       ("railing",), ("door", "window"), ("room_separator",), ("room",))
 PHASE_OF = {name: i for i, names in enumerate(PHASES) for name in names}
 
 
@@ -213,6 +295,15 @@ class BuildPlan(BaseModel):
         elevation = {op.name: op.elevation_mm for op in self.ops if isinstance(op, LevelOp)}
         if len(levels) != sum(isinstance(op, LevelOp) for op in self.ops):
             raise ValueError("level names must be unique")
+        type_names = [(op.op, op.name) for op in self.ops if isinstance(op, _TypeOp)]
+        if len(set(type_names)) != len(type_names):
+            raise ValueError("a type may be made sure of only once per plan")
+        floor_types = {op.name: op for op in self.ops if isinstance(op, FloorTypeOp)}
+        for op in self.ops:
+            if isinstance(op, FoundationSlabOp) and op.type in floor_types and not floor_types[op.type].foundation:
+                raise ValueError(f"{op.key}: type {op.type!r} is not a foundation slab type")
+            if isinstance(op, FloorOp) and op.type in floor_types and floor_types[op.type].foundation:
+                raise ValueError(f"{op.key}: type {op.type!r} is a foundation slab type, not a floor type")
         for op in self.ops:
             for field in ("level", "top_level", "base_level"):
                 name = getattr(op, field, None)
