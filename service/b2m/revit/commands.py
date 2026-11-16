@@ -29,6 +29,15 @@ IMPORT_COMMANDS = [
     "ensure_wall_type", "ensure_floor_type", "ensure_family_type", "create_foundation_slab", "create_room_separator",
 ]
 
+# What a fit-out (Step 10, F14) needs on top: types from Revit's installed templates (list_types_in_file and
+# copy_types_from_file open another file, so they run directly, never inside batch_execute), placed families, MEP runs
+# with fittings and connections, and circuits.
+FITOUT_COMMANDS = [
+    "list_template_files", "list_types_in_file", "copy_types_from_file", "load_family_from_path",
+    "create_lighting_fixture", "create_air_terminal", "create_mep_run", "create_electrical_circuit",
+    "get_mep_element_connectors", "find_mep_disconnects", "list_mep_systems",
+]
+
 # Ops the runner calls directly, one call (and one Revit undo step) per op, never inside batch_execute:
 # the add-in refuses create_stair in a batch, and a railing needs its stair's id and railings first; type pre-steps
 # may open, save or duplicate types, which a batch rollback cannot undo, and their results rename what later ops use.
