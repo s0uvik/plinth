@@ -9,6 +9,19 @@ run on top of the building's run, so it is approved, built, read back and remove
     found.assumptions   # template copies, size copies, size differences, placements decided here
     found.left_out      # records not in the plan, each with why
 
+    # families first: each item's family chosen and measured, the layout made with their real footprints
+    found = to_plan.plan_furniture(revit, building_plan, building_run_created, model, ruleset, answers=answers,
+                                   measurements=families.load_measurements(path))   # measurements optional
+    found.layout, found.items   # the layout it made; the family (and measured types) per rule item
+
+A measured family is inserted so its box lands on the layout's footprint (``measured_point``): the layout gives the
+middle of the item's back edge and the turn for a family whose front faces -Y; the family's back middle (the middle
+of its box's edge opposite its front) goes on that point after the turn, whatever its origin, and its front is turned
+by the user's ``front`` when it is not -Y. It stands on the level (offset 0) unless its geometry reaches below its own
+origin, and a sink or hob keeps its origin at the counter top; the measurement is written in the op's source and in
+the item's assumption. A work-plane-based fixture on a counter goes on the level's plane at the counter top, never
+on the wall behind it.
+
 The plan's ops, in build order:
 - ``types_from_file`` per installed template the chosen types come from (copied in as new types; types the project
   has stay as they are and are never removed with the run), then ``family_type_copy`` per type copied to a size;
@@ -38,9 +51,10 @@ from typing import Any, Iterable
 
 from pydantic import BaseModel, ConfigDict
 
-from b2m.fitout import families
-from b2m.fitout.families import Choice, Need, Resolution
-from b2m.fitout.rooms import Assumption, Question
+from b2m.fitout import families, furniture as furniture_solver
+from b2m.fitout.families import BASE_TOL_MM, FRONT_TURN, Choice, ItemFamilies, Measurement, Need, Resolution, turn
+from b2m.fitout.furniture import FurnitureLayout
+from b2m.fitout.rooms import Assumption, Question, RoomModel
 from b2m.plan import BuildPlan, LevelOp, WallOp
 
 TYPES_KEY, TYPE_COPY_KEY = "FIT-TYPES-", "FIT-TYPE-"
@@ -66,6 +80,8 @@ class FitoutPlan(_Model):
     left_out: list[LeftOut] = []
     families: dict[str, Choice] = {}  # need id -> the family type it is placed with
     needs: list[Need] = []
+    layout: FurnitureLayout | None = None  # plan_furniture: the layout made with the chosen families' sizes
+    items: ItemFamilies | None = None  # plan_furniture: the family chosen (and measured) per rule item
 
 
 def _get(record: Any, name: str, default: Any = None) -> Any:
@@ -94,6 +110,69 @@ def plan_fitout(revit: families.Revit, building: BuildPlan, built: dict[str, int
     needs = families.needs_from(devices) + families.run_needs(_mep_part(mep, "runs"))
     resolution = families.resolve(needs, revit, answers, templates=templates, year=year)
     return make(resolution, needs, building, built, furniture=furniture, mep=mep)
+
+
+def plan_furniture(revit: families.Revit, building: BuildPlan, built: dict[str, int], model: RoomModel, rules: Any, *,
+                   answers: dict[str, Any] | None = None, measurements: list[Measurement] | None = None,
+                   mep: Any = None, document: str | None = None, measure_level: str | None = None,
+                   cache: dict | None = None, templates: list[str] | None = None,
+                   year: int | str | None = None) -> FitoutPlan:
+    """Families first, then the layout, then the plan:
+
+    1. a family type per rule item (``families.resolve_items``: answers ``fitout:family:<item>``, else the best match),
+       each project type measured (``measurements`` given, else the add-in's measure_family_types on
+       ``measure_level``), items the user skips or a chosen family includes left out;
+    2. the layout with each measured item at its family's own footprint (its smaller types when it does not fit) and
+       the rule's clearances, so what does not fit is reported as it really is;
+    3. the plan: measured items placed with the type the layout used, their insertion worked out from the measured box
+       (``measured_point``); the rest (a counter's legs, template types, MEP) matched per size as ``plan_fitout``."""
+    answers = answers or {}
+    search = families._Search(revit, year, None, templates)
+    items = families.resolve_items(model, rules, revit, answers, measurements=measurements, document=document,
+                                   level=measure_level, cache=cache, search=search)
+    layout = furniture_solver.solve(model, furniture_solver.with_sizes(rules, items.sizes(), items.no_sides),
+                                    leave_out=items.left_out)
+    records = {p.key: p for p in layout.placed}
+    devices = list(layout.placed) + _mep_part(mep, "devices")
+    needs = families.needs_from(devices) + families.run_needs(_mep_part(mep, "runs"))
+    pinned: dict[str, Choice] = {}
+    asked: dict[str, list[str]] = {}
+    rest: list[Need] = []
+    for need in needs:
+        fam = items.items.get(need.item) if not need.mep else None
+        record = records.get(need.keys[0]) if need.keys else None
+        if fam is not None and fam.options and record is not None:
+            option = fam.options[min(record.size_index, len(fam.options) - 1)]
+            pinned[need.id] = option.model_copy(update={"need": need.id})
+        elif record is not None and need.item in items.asked:
+            asked.setdefault(items.asked[need.item], []).extend(need.keys)
+        else:
+            rest.append(need)
+    found = families.resolve(rest, revit, answers, search=search)
+    questions = [q.model_copy(update={"instances": asked[q.id]}) for q in items.questions if q.id in asked]
+    resolution = Resolution(choices={**found.choices, **pinned}, questions=questions + found.questions,
+                            assumptions=[*items.assumptions, *found.assumptions], skipped=found.skipped,
+                            searched=list(dict.fromkeys(items.searched + found.searched)))
+    result = make(resolution, needs, building, built, furniture=layout, mep=mep)
+    return result.model_copy(update={"layout": layout, "items": items})
+
+
+def measured_point(m: Measurement, front: str, point: tuple[float, float], rotation_deg: float) -> tuple[tuple[float, float], float]:
+    """Where to insert a measured family, and its turn, so that its box lands on the layout's footprint: the layout
+    gives the middle of the item's back edge and the turn for a family whose front faces -Y; the family's own back
+    middle (its box turned so its front faces -Y: the middle of the box's +Y edge) goes on that point."""
+    x0, _, x1, y1 = m.item_box(front)
+    back = turn(((x0 + x1) / 2, y1), rotation_deg)
+    return (round(point[0] - back[0], 1), round(point[1] - back[1], 1)), rotation_deg + FRONT_TURN[front]
+
+
+def measured_offset(m: Measurement, elevation: float, on_counter: bool) -> float:
+    """The offset above the level: the layout's elevation (a counter top for a sink or hob, whose family origin is on
+    the surface it sits in), raised for an item on the floor whose geometry reaches below its origin. The measured
+    base offset (a family that took the point's z as an offset) is the add-in's way of placing, not the family's."""
+    if not on_counter and m.base_mm < -BASE_TOL_MM:
+        return elevation - m.base_mm
+    return elevation
 
 
 def make(resolution: Resolution, needs: list[Need], building: BuildPlan, built: dict[str, int], *,
@@ -246,6 +325,26 @@ def _family_op(record: Any, choice: Choice, walls: set[str], built: dict[str, in
             op[name] = _get(record, name)
     note = None
     placement = choice.placement
+    on_counter = bool(_get(record, "host"))  # a sink or hob: on the counter top, never on the wall behind it
+    m = choice.measured
+    if m is not None and (placement in LEVEL_BASED or placement == "WorkPlaneBased" and on_counter and not face_down):
+        at, rotation = measured_point(m, choice.front, tuple(point), float(_get(record, "rotation_deg") or 0))
+        op["point"] = at
+        offset = measured_offset(m, elevation, on_counter)
+        op.pop("offset_mm", None)
+        if offset:
+            op["offset_mm"] = round(offset, 1)
+        if _rotation(rotation):
+            op["rotation_deg"] = _rotation(rotation)
+        w, d, _ = m.size(choice.front)
+        op["source"] = (f"{op['source']}; " if op.get("source") else "") + \
+            (f"placed by its measured box ({w:g} x {d:g} mm, front {choice.front.upper()}; {m.describe()}): its back's "
+             f"middle on the layout's point {tuple(round(v, 1) for v in point)}")
+        return op, None
+    if placement == "WorkPlaneBased" and on_counter and not face_down:  # not measured: on the level's plane
+        if _rotation(float(_get(record, "rotation_deg") or 0)):
+            op["rotation_deg"] = _rotation(float(_get(record, "rotation_deg")))
+        return op, "its family is work-plane-based: placed on the level's plane at the counter top, not on the wall"
     if placement in LEVEL_BASED:
         if _rotation(float(_get(record, "rotation_deg") or 0)):
             op["rotation_deg"] = _rotation(float(_get(record, "rotation_deg")))

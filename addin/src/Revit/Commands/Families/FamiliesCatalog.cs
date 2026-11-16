@@ -4,7 +4,7 @@ namespace B2M.Revit.Commands.Families
 {
     /// <summary>Registers the families toolset's commands ported in Step 8 (the earlier ones are in CommandCatalog) and the
     /// B2M-only ensure_family_type and find_family_files, the system-type counterparts ensure_wall_type and ensure_floor_type,
-    /// and the template-content commands list_template_files, list_types_in_file and copy_types_from_file
+    /// the template-content commands list_template_files, list_types_in_file and copy_types_from_file, and measure_family_types
     /// (types are this toolset's concern; their creation counterpart create_foundation_slab is in CreateCatalog).</summary>
     internal static class FamiliesCatalog
     {
@@ -29,6 +29,8 @@ namespace B2M.Revit.Commands.Families
             dispatcher.Register(new ListTemplateFilesHandler());
             dispatcher.Register(new ListTypesInFileHandler());
             dispatcher.Register(new CopyTypesFromFileHandler());
+            // New in B2M (Step 10, families first): each family type's box about its insertion point, measured and rolled back.
+            dispatcher.Register(new MeasureFamilyTypesHandler());
         }
     }
 }

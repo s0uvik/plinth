@@ -30,26 +30,24 @@ def test_sample_rooms_are_furnished_by_class(sample_layout):
         "wc": 33, "basin": 33, "shower": 32,  # 8 toilets per typical storey + the ground-floor toilet
         # each flat's kitchen is its own 7.37 m2 room since 2026-11-17 (2.7 m outer wall with the window, 4.0 m side
         # wall): a straight counter (U1, U2, U3) or an L along the 900 mm stub (U4) per storey
-        "counter": 20, "kitchen_sink": 16, "hob": 4, "fridge": 16,
+        # every kitchen gets its hob since 2026-11-17: in U2-U4 the window-wall counter (sink under the window) left the
+        # hob 50-100 mm short of its 450 mm gap from the sink; the solver now moves the sink along the run (or takes
+        # another run) until both fit, so 12 more hobs (4 -> 16)
+        "counter": 20, "kitchen_sink": 16, "hob": 16, "fridge": 16,
         "sofa": 16, "tv_unit": 16, "dining_set": 16}
     for room in model.rooms:
         items = Counter(p.item for p in layout.in_room(room.key))
         if room.cls == "bedroom":
             assert items["bed"] == items["wardrobe"] == items["side_table"] == 1, room.key
         if "kitchen" in room.classes:
-            assert items["counter"] >= 1 and items["kitchen_sink"] == 1 and items["hob"] <= 1, room.key
+            assert items["counter"] >= 1 and items["kitchen_sink"] == items["hob"] == 1, room.key
         if room.cls in ("lobby", "terrace", "mumty", "lift_machine_room"):
             assert not items  # nothing to furnish
-    # KNOWN SOLVER LIMIT (not the room's size): in U2-U4 the counter is chosen on the window wall before its fixtures,
-    # 2087 mm of it after the corner; the sink goes under the window and the hob then misses the 450 mm gap by under
-    # 100 mm, and the solver does not try the next counter (the 4.0 m wall). Fixing the solver turns these into hobs.
-    kitchens_without_hob = {f"2.PLAN 1st to 4th.dxf-room-{n}-{s}" for n in (1, 33, 34) for s in range(1, 5)}
-    assert [(u.room_key, u.item, u.status) for u in layout.unplaced if u.item != "hob"] == [
+    assert [(u.room_key, u.item, u.status) for u in layout.unplaced] == [
         ("1.GROUND FLOOR PLAN.dxf-room-1-0", "shower", "no_fit")]
-    hobs = [u for u in layout.unplaced if u.item == "hob"]
-    assert {u.room_key for u in hobs} == kitchens_without_hob and len(hobs) == 12
-    assert all(u.status == "no_fit" and "450 mm to the kitchen sink" in u.reason for u in hobs)
-    layout = layout.model_copy(update={"unplaced": [u for u in layout.unplaced if u.item != "hob"]})
+    sinks = {p.room_key: p for p in layout.placed if p.item == "kitchen_sink"}
+    for hob in (p for p in layout.placed if p.item == "hob"):
+        assert Polygon(hob.footprint).distance(Polygon(sinks[hob.room_key].footprint)) >= 450 - 0.5, hob.key
     why = layout.unplaced[0].reason
     assert "900 x 900, 800 x 800" in why and "water closet" in why and "door" in why
     assert layout.skipped == []

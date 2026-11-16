@@ -30,7 +30,9 @@ earlier item is tried at its next-best valid places (distinct ones, up to ``ALTE
 greedily, and a layout placing more (required items before optional ones, then larger sizes) is kept, within
 ``MAX_RUNS`` layouts per room. So a WC moves along the wall to leave the shower its corner, a bed shifts to leave
 its side table room; a room where nothing fits everything still gets its best layout and the list of what is left
-out, each with the rules its positions broke in the final layout.
+out, each with the rules its positions broke in the final layout. A counter is placed together with its fixtures:
+the runs where every fixture finds a place come first (the sink leaves its place under the window, or the run goes on
+another wall or leg, so the hob keeps its gap from the sink), then the others.
 
 Records (``Placed``), for F5 (placing families) and F4 (MEP on top of the furniture):
 - ``key`` "FIT-<room key>-<item>-<n>", stable for the same plan and rules (a counter's legs are its items 1 and 2).
@@ -47,7 +49,7 @@ from __future__ import annotations
 import json
 import math
 from collections import Counter
-from typing import Literal
+from typing import Iterable, Literal
 
 from pydantic import BaseModel, ConfigDict
 from shapely import prepared
@@ -66,6 +68,7 @@ ACCESS_SHARE = 0.25  # an item's use space is reachable when this share of it to
 MAX_RUNS = 60  # greedy layouts tried per room when the first leaves something out
 ALTERNATIVES = 10  # next-best valid positions (distinct places) tried per item
 PASSAGE_TOL_MM = 5.0  # a passage exactly circulation_mm wide counts
+FIXTURE_BUDGET = 20000  # places tried per counter when looking for a place for every fixture (sink and hob)
 
 
 class _Model(BaseModel):
@@ -102,7 +105,7 @@ class Unplaced(_Model):
     item: str
     label: str
     optional: bool
-    status: Literal["no_fit", "anchor_missing", "not_needed"]
+    status: Literal["no_fit", "anchor_missing", "not_needed", "left_out"]
     reason: str
 
 
@@ -171,7 +174,25 @@ class _Item:
 
 # ------------------------------------------------------------------------------------------------ the solver
 
-def solve(model: RoomModel, rules: FitoutRules) -> FurnitureLayout:
+def with_sizes(rules: FitoutRules, sizes: dict[str, list[Size]], no_sides: Iterable[str] = ()) -> FitoutRules:
+    """The rule set with these items' sizes replaced, preferred first (the footprints of the family types chosen for
+    them); placement, clearances and preferences stay the rule's, except for the items in ``no_sides``, which keep no
+    side clearance (a bed set whose family holds the side tables that stand in that space)."""
+    no_sides = set(no_sides)
+    items = {}
+    for k, v in rules.furniture.items.items():
+        update: dict = {}
+        if sizes.get(k):
+            update["sizes"] = list(sizes[k])
+        if k in no_sides and v.clearance.sides_mm:
+            update["clearance"] = v.clearance.model_copy(update={"sides_mm": 0, "sides_required": 0})
+        items[k] = v.model_copy(update=update) if update else v
+    return rules.model_copy(update={"furniture": rules.furniture.model_copy(update={"items": items})})
+
+
+def solve(model: RoomModel, rules: FitoutRules, *, leave_out: dict[str, str] | None = None) -> FurnitureLayout:
+    """Lay out every furnished room. ``leave_out``: items not placed at all, with why (the user left them out, or a
+    family chosen for another item includes them, as a bed set its side tables); each room's are listed."""
     by_key = model.by_key()
     placed: list[Placed] = []
     unplaced: list[Unplaced] = []
@@ -194,6 +215,13 @@ def solve(model: RoomModel, rules: FitoutRules) -> FurnitureLayout:
             unplaced.append(Unplaced(room_key=room.key, level=room.level, item=e.item,
                                      label=rules.furniture.items[e.item].label, optional=e.optional,
                                      status="not_needed", reason=why))
+        if leave_out:
+            for e in entries:
+                if e.item in leave_out:
+                    unplaced.extend(Unplaced(room_key=room.key, level=room.level, item=e.item,
+                                             label=rules.furniture.items[e.item].label, optional=e.optional,
+                                             status="left_out", reason=leave_out[e.item]) for _ in range(e.count))
+            entries = [e for e in entries if e.item not in leave_out]
         if not entries:
             continue
         sig = _signature(room, entries)
@@ -306,6 +334,7 @@ class _RoomSolver:
         self.door_centres = [o.center for o in room.doors]
         self.items: list[_Item] = []
         self.option_cache: dict[tuple, list[list[_Cand]]] = {}
+        self.fixture_cache: dict[tuple, tuple[list[tuple], list[tuple]]] = {}
         self.done: list[dict] = []
         self.failed: list[dict] = []
         self.counts: Counter[str] = Counter()
@@ -391,15 +420,21 @@ class _RoomSolver:
         if item.anchor and anchor is None:
             return None
         seen: list[Polygon] = []  # the k alternatives are distinct places: each overlaps no earlier one by half
-        for si, size in enumerate(item.sizes):
-            for cands in self.options(item, si, size, anchor):
-                body = cands[0].body
-                if any(body.intersection(b).area > 0.5 * min(body.area, b.area) for b in seen):
-                    continue
-                if self.check_all(item, size, cands, anchor) is None:
-                    if len(seen) == k:
-                        return si, size, cands
-                    seen.append(body)
+        # A counter: first the runs that take all its fixtures (another wall or leg when the window wall's run leaves
+        # the hob no place beside the sink), then the others.
+        passes = (True, False) if item.placement == "counter" and item.fixtures else (False,)
+        for with_fixtures in passes:
+            for si, size in enumerate(item.sizes):
+                for cands in self.options(item, si, size, anchor):
+                    body = cands[0].body
+                    if any(body.intersection(b).area > 0.5 * min(body.area, b.area) for b in seen):
+                        continue
+                    if self.check_all(item, size, cands, anchor) is None:
+                        if with_fixtures and not self.fixtures_fit(item, size, cands):
+                            continue
+                        if len(seen) == k:
+                            return si, size, cands
+                        seen.append(body)
         return None
 
     def replay(self, choices: list[tuple | None]) -> None:
@@ -744,52 +779,105 @@ class _RoomSolver:
             self.items[:] = saved
 
     def place_fixtures(self, counter: FurnitureItem, csize: Size, legs: list[_Item]) -> None:
-        items = self.rules.furniture.items
         entry_of = {e.item: e for e in self.entries}
-        on: list[tuple[str, _Cand]] = []
-        for fx in counter.fixtures:
-            item = items[fx]
-            e = entry_of.get(fx) or SetEntry(item=fx)
-            rule = item.on_counter
-            best = None
-            reasons: Counter[str] = Counter()
-            for si, size in enumerate(item.sizes):
-                cands = []
-                for leg in legs:
-                    lc = leg.cand
-                    start = rule.min_from_end_mm if rule else 0.0
-                    end = lc.width - size.width_mm - (rule.min_from_end_mm if rule else 0.0)
-                    s = start
-                    while s <= end + 0.5:
-                        p0 = _add(_add(self.faces[lc.face].start, lc.along, lc.s + s), lc.inward,
-                                  (csize.depth_mm - size.depth_mm) / 2)
-                        body = _rect(p0, lc.along, lc.inward, size.width_mm, size.depth_mm)
-                        c = _Cand(body, lc.along, lc.inward, _add(p0, lc.along, size.width_mm / 2), lc.face,
-                                  lc.s + s, size.width_mm, size.depth_mm, {}, 0.0)
-                        c.score = self.score(item, c)
-                        cands.append((leg, c))
-                        s += self.grid
-                for leg, c in sorted(cands, key=lambda t: t[1].score):
-                    if any(_overlap(c.body, o.body) for _, o in on):
-                        reasons["it would overlap another fixture on the counter"] += 1
-                        continue
-                    far = rule.min_from_mm if rule else {}
-                    near = [fid for fid, o in on if fid in far and c.body.distance(o.body) < far[fid] - 0.5]
-                    if near:
-                        reasons[f"it would be closer than {far[near[0]]:g} mm to the {items[near[0]].label.lower()}"] += 1
-                        continue
-                    best = (leg, c, size, si)
-                    break
-                if best:
-                    break
-            if best is None:
-                why = "; ".join(r for r, _ in reasons.most_common(2)) or "the counter is too short for it"
-                self.fail(e, item, "no_fit", f"no place on the counter: {why}")
-                continue
-            leg, c, size, si = best
-            self.commit(fx, item, size, si, c, host=leg.key, elevation=csize.height_mm)
+        chosen, failed = self.fixture_layout(counter, csize, [leg.cand for leg in legs])
+        for fx, item, size, si, k, c in chosen:
+            self.commit(fx, item, size, si, c, host=legs[k].key, elevation=csize.height_mm)
             self.items.pop()  # a fixture is part of its counter: not an obstacle for later items
-            on.append((fx, c))
+        for fx, item, why in failed:
+            self.fail(entry_of.get(fx) or SetEntry(item=fx), item, "no_fit", f"no place on the counter: {why}")
+
+    def fixtures_fit(self, counter: FurnitureItem, csize: Size, legs: list[_Cand]) -> bool:
+        """Whether every fixture of the counter (sink, hob) finds a place on these legs."""
+        return not self.fixture_layout(counter, csize, legs)[1]
+
+    def fixture_layout(self, counter: FurnitureItem, csize: Size, legs: list[_Cand]) -> tuple[list[tuple], list[tuple]]:
+        """Where the counter's fixtures go on its legs: [(item id, item, size, size index, leg index, cand)], and the
+        fixtures with no place [(item id, item, why)]. Every fixture is placed when any arrangement allows it (the sink
+        leaves its preferred place under the window, or goes to the other leg, to give the hob its gap); otherwise
+        each fixture in turn takes its best place and the rest are listed."""
+        key = (id(counter), csize.depth_mm, csize.height_mm, tuple((c.face, c.s, c.width) for c in legs))
+        if key in self.fixture_cache:
+            return self.fixture_cache[key]
+        items = self.rules.furniture.items
+        fixtures = [(fx, items[fx]) for fx in counter.fixtures]
+        lists = [self.fixture_candidates(item, csize, legs) for _, item in fixtures]
+        full = self.fixture_search(fixtures, lists, 0, [], [FIXTURE_BUDGET])
+        if full is not None:
+            result: tuple[list[tuple], list[tuple]] = (full, [])
+        else:
+            chosen: list[tuple] = []
+            failed: list[tuple] = []
+            for (fx, item), entries in zip(fixtures, lists):
+                reasons: Counter[str] = Counter()
+                got = None
+                for si, size, k, c in entries:
+                    why = self.fixture_conflict(fx, item, c, chosen)
+                    if why:
+                        reasons[why] += 1
+                        continue
+                    got = (fx, item, size, si, k, c)
+                    break
+                if got:
+                    chosen.append(got)
+                else:
+                    failed.append((fx, item, "; ".join(r for r, _ in reasons.most_common(2))
+                                   or "the counter is too short for it"))
+            result = (chosen, failed)
+        self.fixture_cache[key] = result
+        return result
+
+    def fixture_candidates(self, item: FurnitureItem, csize: Size, legs: list[_Cand]) -> list[tuple]:
+        """(size index, size, leg index, cand) for a fixture: each size in turn, its best places first."""
+        rule = item.on_counter
+        margin = rule.min_from_end_mm if rule else 0.0
+        out = []
+        for si, size in enumerate(item.sizes):
+            cands = []
+            for k, lc in enumerate(legs):
+                s = margin
+                while s <= lc.width - size.width_mm - margin + 0.5:
+                    p0 = _add(_add(self.faces[lc.face].start, lc.along, lc.s + s), lc.inward,
+                              (csize.depth_mm - size.depth_mm) / 2)
+                    body = _rect(p0, lc.along, lc.inward, size.width_mm, size.depth_mm)
+                    c = _Cand(body, lc.along, lc.inward, _add(p0, lc.along, size.width_mm / 2), lc.face,
+                              lc.s + s, size.width_mm, size.depth_mm, {}, 0.0)
+                    c.score = self.score(item, c)
+                    cands.append((si, size, k, c))
+                    s += self.grid
+            out.extend(sorted(cands, key=lambda t: t[3].score))
+        return out
+
+    def fixture_conflict(self, fx: str, item: FurnitureItem, c: _Cand, chosen: list[tuple]) -> str | None:
+        """Why a fixture cannot go at ``c`` beside the fixtures already on the counter (overlap, or closer than either
+        one's rule allows), or None."""
+        for other, oitem, _, _, _, oc in chosen:
+            if _overlap(c.body, oc.body):
+                return "it would overlap another fixture on the counter"
+            gap = max(item.on_counter.min_from_mm.get(other, 0.0) if item.on_counter else 0.0,
+                      oitem.on_counter.min_from_mm.get(fx, 0.0) if oitem.on_counter else 0.0)
+            if gap and c.body.distance(oc.body) < gap - 0.5:
+                return f"it would be closer than {gap:g} mm to the {oitem.label.lower()}"
+        return None
+
+    def fixture_search(self, fixtures: list, lists: list, i: int, chosen: list[tuple], budget: list[int]) -> list[tuple] | None:
+        """Depth first: a place for every fixture from the i-th on beside the ones chosen, or None (also when the
+        budget of tries is spent)."""
+        if i == len(fixtures):
+            return list(chosen)
+        fx, item = fixtures[i]
+        for si, size, k, c in lists[i]:
+            budget[0] -= 1
+            if budget[0] < 0:
+                return None
+            if self.fixture_conflict(fx, item, c, chosen):
+                continue
+            chosen.append((fx, item, size, si, k, c))
+            found = self.fixture_search(fixtures, lists, i + 1, chosen, budget)
+            if found is not None:
+                return found
+            chosen.pop()
+        return None
 
 
 def problems(layout: FurnitureLayout, model: RoomModel, rules: FitoutRules) -> list[str]:
