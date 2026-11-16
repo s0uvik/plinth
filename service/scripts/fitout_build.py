@@ -140,6 +140,8 @@ def main(argv: list[str] | None = None, *, connect: Callable[[], Any] | None = N
     ap.add_argument("--out", type=Path, help="folder to write report.json and plan.json to")
     ap.add_argument("--build", action="store_true", help="build the plan as its own run")
     ap.add_argument("--partial", action="store_true", help="with --build: build even with open questions (their items wait)")
+    ap.add_argument("--level", help="with --flat: the level of the flat to build alone (a pilot)")
+    ap.add_argument("--flat", help="build only this flat's rooms on --level (a pilot to check placement before the rest)")
     args = ap.parse_args(argv)
     logs.configure()
 
@@ -192,6 +194,16 @@ def main(argv: list[str] | None = None, *, connect: Callable[[], Any] | None = N
     if not found.ready and not args.partial:
         print("not built: there are open questions (answer them, or pass --partial to build what is planned)")
         return 1
+    if args.flat:
+        keep = {r.key for r in model.rooms if r.flat == args.flat and (not args.level or r.level == args.level)}
+        if not keep:
+            print(f"no rooms of flat {args.flat!r}" + (f" on {args.level}" if args.level else "")
+                  + f"; flats: {sorted({str(r.flat) for r in model.rooms if r.flat})}")
+            return 2
+        ops = [o for o in found.plan.ops if getattr(o, "op", None) != "family" or getattr(o, "room_key", None) in keep]
+        found.plan = found.plan.model_copy(update={"ops": ops})
+        print(f"pilot: flat {args.flat}{' on ' + args.level if args.level else ''}: "
+              f"{sum(1 for o in ops if o.op == 'family')} families in {len(keep)} rooms")
     build_connect = connect or (lambda: RevitClient.connect(required_commands=BUILD_COMMANDS))
     service = BuildService(store, connect=build_connect, types=types if types is not None else TypeMap.load(args.types))
     built_run = service.build_now(found.plan, args.title)
