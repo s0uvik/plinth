@@ -1,0 +1,177 @@
+# Electrical rule tables (used by F4): points per room class, switchboards, mounting heights, distribution boards,
+# circuits and assumed loads. Points: a count is at least `min`, at least `count`, and one per 1/per_m2 m² of the
+# room's area (rounded up). All values unverified placeholders (see profile.yaml).
+electrical:
+  points:
+    bedroom:
+      lights: {per_m2: 0.125, min: 2}
+      fans: {count: 1}
+      sockets_6a: {count: 3}
+      sockets_16a: {count: 1}  # the split AC
+      tv: {count: 1}
+      source: "NBC 2016 Part 8 Section 2 (electrical installations), points for dwellings, and typical practice; as recalled"
+      verified: false
+    living:
+      lights: {per_m2: 0.125, min: 2}
+      fans: {per_m2: 0.08, min: 1}
+      sockets_6a: {per_m2: 0.25, min: 4}
+      sockets_16a: {count: 1}
+      tv: {count: 1}
+      data: {count: 1}
+      source: "NBC 2016 Part 8 Section 2, points for dwellings, and typical practice; as recalled"
+      verified: false
+    dining:
+      lights: {per_m2: 0.125, min: 1}
+      fans: {count: 1}
+      sockets_6a: {count: 2}
+      source: "NBC 2016 Part 8 Section 2, points for dwellings, and typical practice; as recalled"
+      verified: false
+    kitchen:
+      lights: {per_m2: 0.125, min: 1}
+      sockets_6a: {count: 2}
+      sockets_16a: {count: 3}  # refrigerator, microwave/OTG, water purifier/mixer
+      source: "NBC 2016 Part 8 Section 2 and typical Indian kitchen practice; as recalled"
+      verified: false
+    toilet:
+      lights: {count: 1}
+      sockets_6a: {count: 1}
+      sockets_16a: {count: 1}  # the geyser
+      source: "NBC 2016 Part 8 Section 2 and typical practice; as recalled"
+      verified: false
+    balcony:
+      lights: {count: 1}
+      sockets_6a: {count: 1}
+      source: "Typical practice"
+      verified: false
+    utility:
+      lights: {count: 1}
+      sockets_16a: {count: 1}  # washing machine
+      source: "Typical practice"
+      verified: false
+    study:
+      lights: {per_m2: 0.125, min: 2}
+      fans: {count: 1}
+      sockets_6a: {count: 3}
+      data: {count: 1}
+      source: "Typical practice"
+      verified: false
+    servant:
+      lights: {count: 1}
+      fans: {count: 1}
+      sockets_6a: {count: 1}
+      source: "Typical practice"
+      verified: false
+    dress:
+      lights: {count: 1}
+      sockets_6a: {count: 1}
+      source: "Typical practice"
+      verified: false
+    puja:
+      lights: {count: 1}
+      sockets_6a: {count: 1}
+      source: "Typical practice"
+      verified: false
+    store:
+      lights: {count: 1}
+      source: "Typical practice"
+      verified: false
+    lobby:
+      lights: {per_m2: 0.1, min: 1}
+      source: "Typical practice for common lobbies and passages"
+      verified: false
+    stair:
+      lights: {count: 2}  # one per landing of a dog-leg flight per storey
+      source: "Typical practice; NBC 2016 Part 4 asks for exit-way lighting"
+      verified: false
+    terrace:
+      lights: {per_m2: 0.02, min: 1}
+      source: "Typical practice"
+      verified: false
+    lift_machine_room:
+      lights: {count: 1}
+      sockets_6a: {count: 1}
+      source: "Typical practice; lift supply itself per the lift maker"
+      verified: false
+    mumty:
+      lights: {count: 1}
+      source: "Typical practice"
+      verified: false
+    parking:
+      lights: {per_m2: 0.04, min: 1}
+      source: "Typical practice"
+      verified: false
+
+  switchboard:
+    side: latch
+    height_mm: 1200
+    from_jamb_mm: 150
+    source: "Typical Indian practice (decided with the user 2026-11-16: at the door's latch side, 1200 mm)"
+    verified: false
+
+  mounting_mm:
+    socket_6a:
+      value: 300
+      source: "Typical practice: general sockets near floor level beside beds and TV"
+      verified: false
+    socket_kitchen:
+      value: 1100
+      source: "Typical practice: above the 850 mm counter"
+      verified: false
+    socket_ac:
+      value: 2100
+      source: "Typical practice: beside the split AC indoor unit"
+      verified: false
+    socket_geyser:
+      value: 1800
+      source: "Typical practice"
+      verified: false
+    tv_point:
+      value: 1200
+      source: "Typical practice: behind a wall-hung screen"
+      verified: false
+    wall_light:
+      value: 2100
+      source: "Typical practice: wall bracket lights"
+      verified: false
+    fan_blade_min:
+      value: 2400
+      source: "NBC 2016 Part 8 Section 2: ceiling fan blades not less than 2.4 m above floor, as recalled"
+      verified: false
+
+  distribution_board:
+    per_flat: 1
+    location: "inside the flat, near the entrance door"
+    height_mm: 1800
+    common_board: true
+    source: "IS 732 / NBC 2016 Part 8 Section 2 practice: one board per dwelling at its entrance; as recalled"
+    verified: false
+
+  circuits:
+    lighting_max_points: 10
+    lighting_max_w: 800
+    power_16a_max_outlets: 2
+    source: "NBC 2016 Part 8 Section 2 / IS 732: at most 10 points or 800 W per lighting final circuit; at most two 16 A outlets per power circuit; as recalled"
+    verified: false
+
+  loads_w:
+    light:
+      value: 60
+      source: "NBC 2016 Part 8 Section 2: load per point when not known (incandescent lamp 60 W), as recalled"
+      verified: false
+    fan:
+      value: 60
+      source: "NBC 2016 Part 8 Section 2: ceiling fan 60 W, as recalled"
+      verified: false
+    socket_6a:
+      value: 100
+      source: "NBC 2016 Part 8 Section 2: 6 A socket outlet 100 W, as recalled"
+      verified: false
+    socket_16a:
+      value: 1000
+      source: "NBC 2016 Part 8 Section 2: 16 A socket outlet 1000 W, as recalled"
+      verified: false
+
+  meter_room:
+    value: "a meter space on the ground floor near the entrance, one meter per flat plus the common meter"
+    source: "Typical Indian multi-dwelling practice; the supply authority decides"
+    verified: false

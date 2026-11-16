@@ -1,0 +1,137 @@
+# Room classes, recognised from the room's name as written. Names are matched as whole words after normalising (lower
+# case, punctuation and numbers dropped: "Bedroom 2" -> "bedroom", "W.C." -> "w c"); a combined name is split on
+# "/", "&", "+", ",", "and", "cum" and each part is matched on its own ("LIVING / DINING / KITCHEN" -> living, dining,
+# kitchen). The longest matching phrase wins ("lift room" -> lift machine room, not lift). A name no class matches
+# becomes a question.
+rooms:
+  bedroom:
+    label: Bedroom
+    names: [bedroom, bed room, bed, master bed, master bedroom, guest room, guest bedroom, children room,
+            childrens room, kids room, kid room, son room, daughter room, parents room]
+    habitable: true
+    source: "NBC 2016 Part 3 (habitable rooms); B2M naming practice for Indian residential drawings"
+  living:
+    label: Living room
+    names: [living, living room, drawing, drawing room, hall, lounge, family room, family lounge, sitting,
+            sitting room, family, baithak]
+    habitable: true
+    source: "NBC 2016 Part 3 (habitable rooms); B2M naming practice for Indian residential drawings"
+  dining:
+    label: Dining
+    names: [dining, dining room, dining hall, dining area, dining space]
+    habitable: true
+    source: "B2M naming practice for Indian residential drawings"
+  kitchen:
+    label: Kitchen
+    names: [kitchen, kit, kitchenette, cooking, pantry, cook]
+    wet: true
+    source: "NBC 2016 Part 3 (kitchen); B2M naming practice"
+  toilet:
+    label: Toilet / bath
+    names: [toilet, toilets, wc, w c, bath, bathroom, bath room, toilet bath, washroom, wash room, lavatory,
+            powder room, attached toilet, common toilet, ensuite, en suite, latrine, tlt, privy]
+    wet: true
+    source: "NBC 2016 Part 3 (bath rooms and water closets); B2M naming practice"
+  balcony:
+    label: Balcony / verandah
+    names: [balcony, verandah, veranda, varandah, sit out, sitout, deck, loggia, open balcony]
+    outdoor: true
+    furnish: true
+    source: "NBC 2016 Part 3 (balcony); B2M naming practice"
+  lobby:
+    label: Lobby / passage
+    names: [lobby, passage, corridor, entrance, entry, foyer, landing, gallery, entrance lobby, lift lobby,
+            common passage, common lobby, vestibule]
+    boundary_near_core: true
+    source: "B2M naming practice; a lobby holding or opening onto a stair or lift, or into several flats, is common"
+  dress:
+    label: Dressing
+    names: [dress, dressing, dressing room, walk in, walk in closet, wardrobe room]
+    source: "B2M naming practice"
+  puja:
+    label: Puja room
+    names: [puja, pooja, puja room, pooja room, prayer, prayer room, mandir, thakur ghar, thakurghar, temple]
+    source: "B2M naming practice for Indian residential drawings"
+  store:
+    label: Store
+    names: [store, storage, store room, box room, lumber room, godown]
+    source: "B2M naming practice"
+  utility:
+    label: Utility / wash
+    names: [utility, wash, wash area, washing, washing area, laundry, service, service area, wash yard]
+    wet: true
+    source: "B2M naming practice"
+  study:
+    label: Study
+    names: [study, study room, office, home office, library, work room]
+    habitable: true
+    source: "NBC 2016 Part 3 (habitable rooms); B2M naming practice"
+  servant:
+    label: Servant room
+    names: [servant, servant room, servants room, maid, maid room, domestic help, staff room]
+    habitable: true
+    source: "B2M naming practice"
+  stair:
+    label: Stair
+    names: [stair, stairs, staircase, stair case, stair well, stairwell, stair hall]
+    in_flat: false
+    flat_boundary: true
+    furnish: false
+    source: "NBC 2016 Part 4 (exits); B2M naming practice"
+  lift:
+    label: Lift
+    names: [lift, lifts, elevator, lift well, lift shaft, lift core]
+    in_flat: false
+    flat_boundary: true
+    furnish: false
+    source: "NBC 2016 Part 8 Sec 5 (lifts); B2M naming practice"
+  shaft:
+    label: Shaft / duct
+    names: [shaft, duct, ots, open to sky, service shaft, plumbing shaft, service duct, plumbing duct, electrical duct]
+    in_flat: false
+    flat_boundary: true
+    furnish: false
+    source: "NBC 2016 Part 9 (service ducts); B2M naming practice"
+  terrace:
+    label: Terrace
+    names: [terrace, open terrace, roof terrace, roof, terrace garden]
+    outdoor: true
+    in_flat: false
+    furnish: false
+    source: "B2M naming practice"
+  lift_machine_room:
+    label: Lift machine room
+    names: [lift room, lift machine room, machine room, lmr, lift m c room]
+    in_flat: false
+    furnish: false
+    source: "NBC 2016 Part 8 Sec 5 (machine room); B2M naming practice"
+  mumty:
+    label: Stair cabin (mumty)
+    names: [mumty, mumty room, mumtee, stair cabin, stair head room, head room, stair cover]
+    in_flat: false
+    furnish: false
+    source: "B2M naming practice (stair cabin over the roof)"
+  parking:
+    label: Parking
+    names: [parking, car parking, car park, stilt, stilt parking, garage, two wheeler parking, driveway]
+    in_flat: false
+    outdoor: true
+    furnish: false
+    source: "NBC 2016 Part 3 (parking); B2M naming practice"
+  meter_room:
+    label: Meter / electrical room
+    names: [meter room, meter, electric room, electrical room, panel room, electric meter room]
+    in_flat: false
+    furnish: false
+    source: "NBC 2016 Part 8 Sec 2; B2M naming practice"
+  pump_room:
+    label: Pump room
+    names: [pump room, pump house, pump]
+    in_flat: false
+    furnish: false
+    source: "NBC 2016 Part 9 Sec 1; B2M naming practice"
+  guard:
+    label: Guard room
+    names: [guard, guard room, security, security room, caretaker, watchman, darwan]
+    in_flat: false
+    source: "B2M naming practice"

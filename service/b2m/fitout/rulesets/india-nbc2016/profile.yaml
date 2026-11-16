@@ -1,0 +1,14 @@
+# Fit-out rule set: India (national). NBC 2016 Parts 4, 8 and 9, IS 732, IS 1172 and common Indian residential
+# practice, as B2M's authors recall them. Every value is an unverified placeholder (verified: false) until someone
+# checks it against the official text; the review page lists each one with its source.
+#
+# Files (all merged into one rule set; see b2m/fitout/rules.py for the schema):
+#   rooms.yaml       room classes recognised from room names
+#   furniture.yaml   layout parameters, furniture items, the standard set per room class
+#   electrical.yaml  points per room class, switchboard, mounting heights, distribution boards, circuits, loads
+#   plumbing.yaml    fixtures with fixture units, fixtures per room class, stacks, water demand, tanks
+#   hvac.yaml        split AC per room class and sizing, exhaust per room class
+#   fire.yaml        occupancy, height bands and their provisions (NBC Part 4), extinguishers
+id: india-nbc2016
+name: "India (national): NBC 2016 and common residential practice"
+profiles: [india-nbc2016]

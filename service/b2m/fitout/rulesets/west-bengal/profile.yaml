@@ -1,0 +1,7 @@
+# Fit-out rule set for West Bengal: the national rule set with the state's supply and fire authorities. Only what
+# differs is here; everything else is inherited from india-nbc2016 (mappings merge key by key; null removes an
+# inherited entry).
+id: west-bengal
+name: "West Bengal: NBC 2016 practice with the state's supply and fire authorities"
+extends: india-nbc2016
+profiles: [west-bengal]

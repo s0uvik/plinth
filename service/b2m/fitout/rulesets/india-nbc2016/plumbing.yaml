@@ -1,0 +1,100 @@
+# Plumbing and drainage rule tables (used by F4). Fixtures carry drainage and supply fixture units, outlet sizes and
+# the stack they drain to (two-pipe system: soil and waste stacks apart, with a vent); furniture_item ties a fixture to
+# the furniture item that places it, so F4 connects the fixtures F3 placed. All values unverified placeholders.
+plumbing:
+  fixtures:
+    wc:
+      label: Water closet
+      drainage_fu: 4
+      supply_fu: 2
+      outlet_mm: 100
+      drains_to: soil
+      furniture_item: wc
+      source: "NBC 2016 Part 9 Section 2 / IS 1742 fixture unit tables, as recalled"
+      verified: false
+    basin:
+      label: Wash basin
+      drainage_fu: 1
+      supply_fu: 1
+      outlet_mm: 32
+      drains_to: waste
+      hot: true
+      furniture_item: basin
+      source: "NBC 2016 Part 9 Section 2 / IS 1742 fixture unit tables, as recalled"
+      verified: false
+    shower:
+      label: Shower
+      drainage_fu: 2
+      supply_fu: 2
+      outlet_mm: 75
+      drains_to: waste
+      hot: true
+      furniture_item: shower
+      source: "NBC 2016 Part 9 Section 2 / IS 1742 fixture unit tables, as recalled"
+      verified: false
+    kitchen_sink:
+      label: Kitchen sink
+      drainage_fu: 3
+      supply_fu: 2
+      outlet_mm: 40
+      drains_to: waste
+      hot: true
+      furniture_item: kitchen_sink
+      source: "NBC 2016 Part 9 Section 2 / IS 1742 fixture unit tables, as recalled"
+      verified: false
+    washing_machine:
+      label: Washing machine point
+      drainage_fu: 3
+      supply_fu: 2
+      outlet_mm: 50
+      drains_to: waste
+      furniture_item: washing_machine
+      source: "NBC 2016 Part 9 Section 2 / IS 1742 fixture unit tables, as recalled"
+      verified: false
+    floor_trap:
+      label: Floor trap (Nahani trap)
+      drainage_fu: 1
+      supply_fu: 0
+      outlet_mm: 75
+      drains_to: waste
+      cold: false
+      source: "Typical Indian practice (one floor trap per wet area)"
+      verified: false
+
+  classes:
+    toilet:
+      fixtures: [wc, basin, shower, floor_trap]
+      source: "Standard toilet (decided with the user 2026-11-16) and typical practice"
+      verified: false
+    kitchen:
+      fixtures: [kitchen_sink]
+      source: "Typical practice"
+      verified: false
+    utility:
+      fixtures: [washing_machine, floor_trap]
+      source: "Typical practice"
+      verified: false
+    balcony:
+      fixtures: [floor_trap]
+      source: "Typical practice (balcony drain)"
+      verified: false
+
+  stacks:
+    per_duct: [soil, waste, vent]
+    sizes_mm: {soil: 100, waste: 75, vent: 75, rainwater: 100}
+    rainwater_roof_m2_per_pipe: 40
+    source: "NBC 2016 Part 9 Section 2 (two-pipe system; 100 mm soil, 75 mm waste stacks) and rainwater pipe sizing at about 100 mm/h rainfall, as recalled"
+    verified: false
+
+  water:
+    lpcd: 135
+    flushing_lpcd: 45
+    persons_per_flat: 5
+    source: "NBC 2016 Part 9 Section 1, Table 1 (domestic consumption with full flushing, 135 lpcd of which 45 for flushing); 5 persons per dwelling unit; as recalled"
+    verified: false
+
+  tanks:
+    overhead_days: 0.5
+    underground_days: 1.0
+    source: "Typical Indian practice (pumping twice a day: overhead tank half a day's demand, underground tank one day's) plus fire reserves per fire rules; the authority may require more"
+    verified: false
