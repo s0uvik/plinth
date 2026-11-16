@@ -49,7 +49,7 @@ def test_paper_from_the_border():
 def test_sheet_plan_follows_the_source(sample):
     project, building, result, sheets, _ = sample
     plan = plan_sheet_set(project, building, result, sheets, FRONT)
-    assert plan.questions == []
+    assert not plan.blocking() and [q.topic for q in plan.questions] == ["title_field"] * 7
     assert [(s.number, s.title, s.scale, s.page) for s in plan.sheets] == [
         ("28", "GROUND FLOOR PLAN", 250, "28 I Page"),
         ("29", "FIRST STOREY TO FOURTH STOREY FLOOR PLAN", 150, "29 I Page"),
@@ -156,21 +156,46 @@ def test_plan_annotation_from_the_source(sample):
 def test_the_elevation_direction_is_asked(sample):
     project, building, result, sheets, _ = sample
     plan = plan_sheet_set(project, building, result, sheets)
-    assert [(q.id, q.options) for q in plan.questions] == [
+    assert [(q.id, q.options) for q in plan.questions if q.blocks] == [
         (answer_elevation(ELEVATION), ["north", "south", "east", "west"])]
 
 
 class FakeRevit:
-    def __init__(self, titleblocks=("Plinth A4: A4 Landscape", "Plinth A1: A1 Metric"), frame=A4, sizes=None):
+    VIEW_TYPES = {"floor_plan": "FloorPlan", "structural_plan": "EngineeringPlan", "section": "Section",
+                  "elevation": "Elevation", "drafting": "DraftingView"}
+
+    def __init__(self, titleblocks=("Plinth A4: A4 Landscape", "Plinth A1: A1 Metric"), frame=A4, sizes=None,
+                 levels=(), views=(), active=1, missing=()):
         self.sizes = sizes or {}
         self.calls = []
         self.ids = itertools.count(5000)
         self.titleblocks = titleblocks
         self.frame = frame
+        self.levels = list(levels)  # list_levels rows
+        self.views = list(views)  # list_views rows; views made here are added
+        self.active = active  # the active view's id
+        self.missing = set(missing)  # ids delete_element does not find (deleted by hand)
 
     def call(self, command, params=None, **_):
         self.calls.append((command, params))
         n = next(self.ids)
+        if command == "list_levels":
+            return {"levels": self.levels}
+        if command == "list_views":
+            kind = (params or {}).get("viewType")
+            return {"views": [v for v in self.views if kind in (None, v["viewType"])]}
+        if command == "get_current_view_info":
+            return {"viewId": self.active}
+        if command == "activate_view":
+            self.active = params["view_id"]
+            return {"active_view_id": self.active}
+        if command == "delete_element":
+            ids = params["elementIds"]
+            assert self.active not in ids, "Revit cannot delete the active view"
+            gone = [i for i in ids if i in self.missing]
+            return {"deleted": len(ids) - len(gone), "failedIds": gone, "errors": [f"{i}: not found" for i in gone]}
+        if command in ("set_grid_heads", "operate_element", "set_project_info", "set_element_parameter_values"):
+            return {}
         if command == "list_titleblocks":
             return {"titleblocks": [{"display_name": t, "type_id": i, "sheet_width_mm": self.sizes.get(t, (None,))[0],
                                      "sheet_height_mm": self.sizes.get(t, (None, None))[1]}
@@ -179,6 +204,8 @@ class FakeRevit:
             return {"sheet_id": n, "sheet_number": params["sheet_number"], "sheet_name": params["sheet_name"],
                     "frame_sheet_mm": self.frame}
         if command == "create_view":
+            self.views.append({"id": n, "name": params["name"], "viewType": self.VIEW_TYPES[params["viewType"]],
+                               "levelName": params.get("level"), "isTemplate": False})
             return {"viewId": n, "viewName": params["name"], "scale": params.get("scale"),
                     "elevationMarkerId": n + 100000 if params["viewType"] == "elevation" else None}
         if command == "create_dimensions":
@@ -197,7 +224,7 @@ class FakeRevit:
         if command == "spot_level":
             return {"placed": [{"element_id": n * 10 + i, "label": t["label"]} for i, t in enumerate(params["targets"])],
                     "element_ids": []}
-        if command in ("set_view_crop", "set_category_visibility", "delete_element"):
+        if command in ("set_view_crop", "set_category_visibility"):
             return {}
         if command == "place_view_on_sheet":
             return {"viewport_id": n}
@@ -230,10 +257,12 @@ def test_drawing_set_in_revit(sample, tmp_path):
     # per sheet: views, then their crop/visibility, annotation, then the viewport
     seq = [c for c, p in revit.calls if c not in ("list_titleblocks", "export_pdf")]
     typical = seq[seq.index("create_sheet", 1) + 1:]
-    assert typical[:16] == ["create_view"] + ["create_dimensions"] * 10 + [
+    assert typical[:17] == ["create_view", "set_grid_heads"] + ["create_dimensions"] * 10 + [
         "label_rooms", "tag_elements", "tag_all_by_category", "tag_all_by_category", "place_view_on_sheet"]
     places = [p for c, p in revit.calls if c == "place_view_on_sheet"]
     assert all("x_mm" in p for p in places) and len(places) == 10
+    # the drawing (its crop region) goes where the source has it, the viewport title right under it
+    assert all(p["anchor"] == "crop" and p["title_below_crop"] for p in places)
     assert [p["unit"] for c, p in revit.calls if c == "import_cad_to_view"] == ["millimeter"]
 
     comparison = json.loads((tmp_path / "drawings-comparison.json").read_text(encoding="utf-8"))
@@ -331,3 +360,170 @@ def test_views_fit_a_title_block_of_another_size():
     two = sheet.model_copy(update={"views": [plan, plan]})
     slots = _fit_layout(a1, two)
     assert [round(c[0]) for c, _ in slots] == [172, 517] and all(sz[0] == 841.0 * 0.82 / 2 for _, sz in slots)
+
+
+def _made(revit, command):
+    return [p for c, p in revit.calls if c == command]
+
+
+def test_grid_heads_outside_the_building(sample, tmp_path):
+    """Every plan runs B2M's grids past the building to heads at both ends, every section and elevation from the
+    lowest level to a head above the highest; the crop region is grown to hold the heads, and the drawing stays
+    where the source has it (the viewport is anchored on the crop centre, moved with it)."""
+    from b2m.imported.drawings import GRID_HEAD_MM, GRID_ROOM_MM
+    project, building, result, sheets, created = sample
+    plan = plan_sheet_set(project, building, result, sheets, FRONT)
+    ground = _views(plan, GROUND)[0]
+    heads = next(st for st in ground.after_create if st.command == "set_grid_heads").params
+    assert len(heads["element_keys"]) == 33 and heads["head_offset_mm"] == GRID_HEAD_MM
+    assert set(heads["bounds"]) == {"min_x_mm", "min_y_mm", "max_x_mm", "max_y_mm"}
+    for f in (AA, BB, ELEVATION):
+        for v in _views(plan, f):
+            b = next(st for st in v.after_create if st.command == "set_grid_heads").params["bounds"]
+            assert b == {"min_z_mm": -1300.0, "max_z_mm": 15900.0}  # Foundation to Upper Roof
+    crop = dict(ground.create)
+
+    revit = FakeRevit()
+    make_import_drawing_set(revit, project, building, result, created, tmp_path, sheets=sheets, answers=FRONT)
+    made = next(p for p in _made(revit, "create_view") if p["name"] == "GROUND FLOOR PLAN")
+    reach = (GRID_HEAD_MM + GRID_ROOM_MM) * 250  # paper mm at 1:250
+    b = heads["bounds"]
+    assert made["cropMinX"] <= b["min_x_mm"] - reach and made["cropMaxX"] >= b["max_x_mm"] + reach
+    assert made["cropMinY"] <= b["min_y_mm"] - reach and made["cropMaxY"] >= b["max_y_mm"] + reach
+    assert made["cropMinX"] <= crop["cropMinX"] and made["cropMaxY"] >= crop["cropMaxY"]  # never smaller
+    sections = [p for p in _made(revit, "create_view") if p["viewType"] == "section"]
+    assert all(p["top"] >= 15900 + (GRID_HEAD_MM + GRID_ROOM_MM) * p["scale"] for p in sections)
+    elevation_crop = _made(revit, "set_view_crop")[0]["bounds"]
+    assert elevation_crop["max_z_mm"] >= 15900 + (GRID_HEAD_MM + GRID_ROOM_MM) * 150
+    # the drawing keeps its source place: the anchor moves with the crop centre
+    place = _made(revit, "place_view_on_sheet")[0]
+    moved = ((made["cropMinX"] + made["cropMaxX"]) - (crop["cropMinX"] + crop["cropMaxX"])) / 2 / 250
+    assert place["x_mm"] == pytest.approx(ground.paper_center[0] + moved, abs=0.1)
+
+
+def test_levels_b2m_did_not_make_are_hidden_in_sections_and_elevations(sample, tmp_path):
+    project, building, result, sheets, created = sample
+    ours = next(iter(created.values()))
+    revit = FakeRevit(levels=[{"elementId": 311, "name": "Level 1"}, {"elementId": 312, "name": "Level 2"},
+                              {"elementId": ours, "name": "Ground Floor"}])
+    make_import_drawing_set(revit, project, building, result, created, tmp_path, sheets=sheets, answers=FRONT)
+    hidden = _made(revit, "operate_element")
+    assert all(p["operation"] == "hide" and p["elementIds"] == [311, 312] for p in hidden)
+    # AA, BB (two views) and the elevation; never the plans
+    assert sorted(p["view_id"] for p in hidden) == sorted(v["id"] for v in revit.views
+                                                          if v["viewType"] in ("Section", "Elevation"))
+    assert len(hidden) == 4
+
+
+def test_an_elevation_gets_a_plan_for_its_marker_when_its_level_has_none():
+    """Revit hangs an elevation marker on a floor plan of its level; with none there, B2M makes its own (recorded)."""
+    from b2m.imported.drawings import PlannedView, _Exec, _marker_plan
+    sheet = PlannedSheet(file="e.dxf", role="elevation", title="FRONT ELEVATION", page=None, page_number=31,
+                         number="31", scale=150, paper="A4", paper_mm=(297, 210), border_mm=(277, 190),
+                         margins_mm=(10, 10))
+    view = PlannedView(key="V1", kind="elevation", name="FRONT ELEVATION",
+                       create={"viewType": "elevation", "level": "Ground Floor", "x": 0, "y": -9000,
+                               "direction": "north", "name": "FRONT ELEVATION", "scale": 150})
+    revit, recorded = FakeRevit(views=[{"id": 7, "name": "Level 1", "viewType": "FloorPlan", "levelName": "Level 1",
+                                        "isTemplate": False}]), {}
+    _marker_plan(_Exec(revit, {}, recorded.__setitem__), sheet, view)
+    assert _made(revit, "create_view") == [{"viewType": "floor_plan", "level": "Ground Floor",
+                                            "name": "Ground Floor - plan for FRONT ELEVATION"}]
+    assert list(recorded) == ["DWG-VIEW-31-V1-PLAN"]
+    _marker_plan(_Exec(revit, {}, recorded.__setitem__), sheet, view)  # now there is one: nothing more
+    assert len(_made(revit, "create_view")) == 1
+
+
+def test_title_block_fields_from_the_answers(sample, tmp_path):
+    """Title block fields are questions that never stop the set: answered ones fill Project Information and the
+    sheets; an unanswered sheet field is left blank on B2M's sheets, an unanswered project field is not touched."""
+    from b2m.imported.drawings import answer_title
+    project, building, result, sheets, created = sample
+    answers = {**FRONT, answer_title("project_name"): "G+4 Residential, Bardhaman", answer_title("client"): "S. Roy",
+               answer_title("drawn_by"): "AK"}
+    revit = FakeRevit()
+    out = make_import_drawing_set(revit, project, building, result, created, tmp_path, sheets=sheets, answers=answers)
+    assert out["status"] == "done"
+    assert _made(revit, "set_project_info") == [{"name": "G+4 Residential, Bardhaman", "client_name": "S. Roy"}]
+    fields = {p["parameterName"]: p["value"] for p in _made(revit, "set_element_parameter_values")}
+    assert fields == {"Drawn By": "AK", "Checked By": "", "Sheet Issue Date": ""}
+    assert all(len(p["elementIds"]) == 9 for p in _made(revit, "set_element_parameter_values"))
+    commands = [c for c, _ in revit.calls]
+    assert commands.index("set_element_parameter_values") < commands.index("export_pdf")  # on the PDF too
+    assert out["title_fields"]["filled"] == {"project_name": "G+4 Residential, Bardhaman", "client": "S. Roy",
+                                             "drawn_by": "AK"}
+    assert [q["id"] for q in out["questions"]] == [answer_title(f) for f in (
+        "project_number", "address", "checked_by", "issue_date")]
+    assert not any(q["blocks"] for q in out["questions"])
+
+
+def test_title_block_suggestions_from_the_source_texts():
+    from b2m.cad import sheet as cad_sheet
+    from b2m.cad.reader import CadEntity, CadSheet
+    from b2m.imported.drawings import title_suggestions
+
+    def text(handle, x, y, value, tag=None):
+        return CadEntity(handle=handle, kind="text", dxftype="ATTRIB" if tag else "TEXT", layer="0", points=[(x, y)],
+                         text=value, height=2.5, tag=tag)
+
+    def sheet(*entities):
+        return cad_sheet.Sheet(cad=CadSheet(source="s.dxf", sha256="", dxf="s.dxf", units="mm", unit_factor=1.0,
+                                            entities=list(entities)))
+
+    a = sheet(text("1", 0, 0, "PROJECT NAME"), text("2", 40, 0.5, "PROPOSED G+4 RESIDENTIAL BUILDING"),
+              text("3", 0, -10, "PROJECT NO.: 2024/17"), text("4", 0, -20, "DRAWN BY : A. KUNDU"),
+              text("5", 0, -30, "CLIENT"), text("6", 1, -35, "SRI S. ROY"), text("7", 200, 0, "SCALE- 1:100"),
+              text("8", 0, -60, "S. DAS", tag="CHECKED_BY"))
+    b = sheet(text("1", 0, 0, "DRAWN BY : A. KUNDU"), text("2", 0, -10, "DATE- 12.03.2024"))
+    found = title_suggestions({"a": a, "b": b, "c": None})
+    assert found["project_name"] == ["PROPOSED G+4 RESIDENTIAL BUILDING"]  # right of the bare label
+    assert found["project_number"] == ["2024/17"]  # after the label (not taken for the project name)
+    assert found["drawn_by"] == ["A. KUNDU"]
+    assert found["client"] == ["SRI S. ROY"]  # just under the bare label
+    assert found["checked_by"] == ["S. DAS"]  # an attribute tagged CHECKED_BY
+    assert found["issue_date"] == ["12.03.2024"]
+    assert found["address"] == []
+
+
+def test_remake_deletes_the_previous_set_and_only_it(sample, tmp_path):
+    """A remake deletes the previous set's sheets and views (recorded DWG- keys), sheets first, after making a view
+    that is not being deleted active; elements already deleted by hand count as gone; then the set is made again."""
+    from b2m.imported.drawings import _Exec, remove_drawing_set
+    project, building, result, sheets, created = sample
+    first, recorded = FakeRevit(), {}
+    make_import_drawing_set(first, project, building, result, created, tmp_path, sheets=sheets, answers=FRONT,
+                            record=recorded.__setitem__)
+    previous = dict(recorded)
+    sheet28 = previous["DWG-SHEET-28"]
+    revit = FakeRevit(active=sheet28, missing=[previous["DWG-VIEW-36-V1"]],
+                      views=[{"id": sheet28, "name": "GROUND FLOOR PLAN", "viewType": "DrawingSheet"},
+                             {"id": 3, "name": "{3D}", "viewType": "ThreeD", "isTemplate": False}])
+    forgotten, again = [], {}
+    out = make_import_drawing_set(revit, project, building, result, created, tmp_path, sheets=sheets, answers=FRONT,
+                                  previous=previous, record=again.__setitem__, forget=forgotten.extend)
+    assert out["status"] == "done" and out["removed"]["failed"] == []
+    commands = [c for c, _ in revit.calls]
+    assert commands.index("delete_element") < commands.index("create_sheet")  # the sheet numbers are free again
+    assert _made(revit, "activate_view") == [{"view_id": 3}]
+    deleted = _made(revit, "delete_element")[0]["elementIds"]
+    assert sorted(deleted) == sorted(previous.values())  # nothing that was not recorded
+    assert all(previous[k] in deleted[:9] for k in previous if k.startswith("DWG-SHEET-"))
+    assert out["removed"]["already_gone"] == [previous["DWG-VIEW-36-V1"]]
+    assert sorted(forgotten) == sorted(previous)
+    views = [k for k in previous if k.startswith(("DWG-SHEET-", "DWG-VIEW-"))]
+    assert sorted(k for k in again if k.startswith(("DWG-SHEET-", "DWG-VIEW-"))) == sorted(views)  # made again
+
+    # a delete Revit refuses stops the remake before anything new is made, and keeps those keys
+    class Refusing(FakeRevit):
+        def call(self, command, params=None, **kw):
+            if command == "delete_element":
+                self.calls.append((command, params))
+                return {"deleted": 1, "failedIds": [sheet28], "errors": [f"{sheet28}: in use"]}
+            return super().call(command, params, **kw)
+
+    revit = Refusing()
+    removed = remove_drawing_set(_Exec(revit, {}, lambda k, i: None), previous)
+    assert removed["failed"] == [sheet28] and "DWG-SHEET-28" not in removed["removed_keys"]
+    out = make_import_drawing_set(Refusing(), project, building, result, created, tmp_path, sheets=sheets,
+                                  answers=FRONT, previous=previous)
+    assert out["status"] == "failed" and "could not be deleted" in out["error"]

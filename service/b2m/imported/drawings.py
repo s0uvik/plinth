@@ -50,10 +50,25 @@ landscape, 10 mm margins). A title block reported with a size (list_titleblocks 
 match the paper or the border, and is used without a trial sheet; when no size is known the candidates are the title
 blocks named with the paper ("A4"): exactly one is used and checked on the first sheet made (its frame must match),
 several or none are a question listing them. The user's answer wins.
-An existing title block is never edited.
+An existing title block is never edited. Its fields come from the user: the project name, number, client and address
+(Project Information) and who drew and checked the sheets and their issue date (the sheets' own fields) are drawing
+questions that offer what the source title blocks write next to those labels, if anything. They never stop the set:
+an unanswered sheet field is left blank on B2M's sheets (not the template's "Author"), an unanswered project field is
+left as the document has it, and both are listed (``title_fields``).
+
+How the views look on the sheets:
+- grid heads: the grids are modelled as long as the source drew them, so in each plan their view-specific extents
+  run past the building at both ends, heads at both ends, and in sections and elevations from the lowest level to
+  above the highest, head at the top (set_grid_heads); the crop region is grown to hold the heads.
+- levels: the template's own levels ("Level 1") are hidden in B2M's sections and elevations; only B2M's show.
+- viewports: the crop region (the drawing), not the viewport box (which also holds markers past the crop), is placed
+  where the source drawing sits, and the viewport title goes just under it with a line as wide as the drawing.
+- an elevation needs a floor plan on its level to host its marker: when the document has none, B2M makes one (its
+  own, recorded like the rest).
 
 Every view, sheet, viewport, dimension, tag, note and spot created is recorded (``record(key, id)``, keys DWG-...),
-so removing the run removes them.
+so removing the run removes them. Remaking the set (``previous``) first deletes the sheets and views recorded under
+DWG- keys, and only those, after making sure the active view is not one of them (Revit cannot delete it).
 """
 
 from __future__ import annotations
@@ -103,8 +118,29 @@ DIRECTIONS = ["north", "south", "east", "west"]
 LOOK = {"north": (0.0, 1.0), "south": (0.0, -1.0), "east": (1.0, 0.0), "west": (-1.0, 0.0)}
 SIZE_TEXT = re.compile(r"^\s*\d+(?:\.\d+)?\s*[xX×]\s*\d+(?:\.\d+)?\s*$")
 
+GRID_HEAD_MM = 10.0  # paper mm a grid runs past the building before its head (set_grid_heads head_offset_mm)
+GRID_ROOM_MM = 14.0  # paper mm the crop region keeps past a grid's end, for its head (about a head's diameter)
+TITLE_GAP_MM = 4.0  # paper mm between a drawing and its viewport title
+
 # Answer keys (project.inputs.values or the answers argument).
 ANSWER_TITLE_BLOCK = "drawing:title_block"  # "Family: Type" (one for every paper) or {"A4": "Family: Type"}
+
+# Title block fields from the user: field -> (where it goes, the Revit field, what it is, its label on a source sheet).
+# Project fields are set_project_info parameters, sheet fields are the sheets' own parameters (named as in Revit).
+TITLE_FIELDS: dict[str, tuple[str, str, str, re.Pattern]] = {
+    "project_number": ("project", "number", "the project number",
+                       re.compile(r"^(?:PROJECT|JOB|FILE)\s*(?:NO\b\.?|NUMBER\b|#)", re.I)),
+    "project_name": ("project", "name", "the project name",
+                     re.compile(r"^(?:NAME\s+OF\s+(?:THE\s+)?(?:PROJECT|WORK)|PROJECT(?:\s*(?:NAME|TITLE))?)\b", re.I)),
+    "client": ("project", "client_name", "the client (owner)",
+               re.compile(r"^(?:CLIENT|OWNER|PROPRIETOR)(?:'?S)?(?:\s*NAME)?\b", re.I)),
+    "address": ("project", "address", "the project address",
+                re.compile(r"^(?:SITE\s+)?(?:ADDRESS|LOCATION)\b", re.I)),
+    "drawn_by": ("sheet", "Drawn By", "who drew the sheets (Drawn by)", re.compile(r"^DRAWN(?:\s*BY)?\b", re.I)),
+    "checked_by": ("sheet", "Checked By", "who checked them (Checked by)",
+                   re.compile(r"^CHECKED(?:\s*BY)?\b", re.I)),
+    "issue_date": ("sheet", "Sheet Issue Date", "the issue date", re.compile(r"^(?:ISSUE\s*)?DATE\b", re.I)),
+}
 
 
 def answer_elevation(file: str) -> str:
@@ -119,6 +155,10 @@ def answer_scale(file: str) -> str:
     return f"drawing:scale:{file}"  # N of 1:N
 
 
+def answer_title(field: str) -> str:
+    return f"drawing:title:{field}"  # a TITLE_FIELDS value as it should read on the sheets
+
+
 class _Model(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -129,6 +169,7 @@ class DrawingQuestion(_Model):
     text: str
     sheet: str | None = None
     options: list[str] = []
+    blocks: bool = True  # False: asked, but the set is made without it (a title block field left blank)
 
 
 class NotReproduced(_Model):
@@ -192,9 +233,14 @@ class SheetPlan(_Model):
     sheets: list[PlannedSheet] = []
     questions: list[DrawingQuestion] = []
     not_reproduced: list[NotReproduced] = []
+    title_fields: dict[str, str] = {}  # TITLE_FIELDS answered: field -> value
 
     def blocking(self) -> bool:
-        return bool(self.questions)
+        return any(q.blocks for q in self.questions)
+
+    def open_fields(self) -> list[DrawingQuestion]:
+        """The questions that do not stop the set (title block fields not answered yet)."""
+        return [q for q in self.questions if not q.blocks]
 
 
 # ------------------------------------------------------------------------------------------------ small helpers
@@ -525,6 +571,7 @@ def plan_sheet_set(project: ImportProject, building: RecognisedBuilding, result:
             out.questions.append(DrawingQuestion(
                 id=f"drawing:sheet_numbers:{number}", topic="sheet_number", options=[],
                 text=f"{n} source sheets carry page {number}; give each its own sheet number."))
+    _title_fields(out, sheets, answers)
     return out
 
 
@@ -619,7 +666,25 @@ def _plan_view_for(planned, rec, sheet, reg, model, level, prefix, key="V1") -> 
               "cropMinX": _r(crop[0]), "cropMinY": _r(crop[1]), "cropMaxX": _r(crop[2]), "cropMaxY": _r(crop[3])}
     centre = ((box[0] + box[2]) / 2, (box[1] + box[3]) / 2)
     return PlannedView(key=key, kind="floor_plan", name=params["name"], create=params,
-                       paper_center=_paper_center(planned, sheet, centre))
+                       after_create=_grid_heads(model, vertical=False), paper_center=_paper_center(planned, sheet, centre))
+
+
+def _grid_heads(model: _Model3D, vertical: bool) -> list[Step]:
+    """set_grid_heads for B2M's grids: in a plan around the building (heads past it at both ends), in a section or
+    elevation from the lowest level to above the highest (head at the top). The crop is grown for the heads when the
+    view's final scale is known (_room_for_heads)."""
+    if not model.grids or not model.levels:
+        return []
+    if vertical:
+        bounds = {"min_z_mm": _r(min(model.levels.values())), "max_z_mm": _r(max(model.levels.values()))}
+    else:
+        x0, y0, x1, y1 = model.extent
+        if x1 - x0 <= 0 or y1 - y0 <= 0:
+            return []
+        bounds = {"min_x_mm": _r(x0), "min_y_mm": _r(y0), "max_x_mm": _r(x1), "max_y_mm": _r(y1)}
+    return [Step(command="set_grid_heads", purpose="grid heads outside the building",
+                 params={"view_id": "$view", "element_keys": [g.key for g in model.grids], "bounds": bounds,
+                         "head_offset_mm": GRID_HEAD_MM})]
 
 
 def _outline_box(plan: PlanRecognition | None) -> Rect | None:
@@ -887,7 +952,8 @@ def _section_views(planned, rec, sheet, sec: SectionRecognition | None, vreg: Re
         if centre_paper:
             mid = (us[i][0] + us[i][1]) / 2 - (total[0] + total[1]) / 2
             paper = (_r(centre_paper[0] + mid / planned.scale), centre_paper[1])
-        planned.views.append(PlannedView(key=f"V{n}", kind="section", name=name, create=params, paper_center=paper))
+        planned.views.append(PlannedView(key=f"V{n}", kind="section", name=name, create=params, paper_center=paper,
+                                         after_create=_grid_heads(model, vertical=True)))
     if len(cuts) > 1:
         out.not_reproduced.append(NotReproduced(sheet=rec.file, what="segmented section", reason=(
             f"the cut path is jogged ({len(cuts)} cut segments, {len(jogs)} jogs); the add-in cannot split a section "
@@ -1033,7 +1099,8 @@ def _elevation_view(planned, rec, sheet, building: RecognisedBuilding, model: _M
     bounds |= {"min_z_mm": _r(zmin), "max_z_mm": _r(zmax)}
     view = PlannedView(key="V1", kind="elevation", name=params["name"], create=params,
                        after_create=[Step(command="set_view_crop", purpose="crop like the source drawing",
-                                          params={"view_id": "$view", "enabled": True, "bounds": bounds})])
+                                          params={"view_id": "$view", "enabled": True, "bounds": bounds}),
+                                     *_grid_heads(model, vertical=True)])
     if box:
         centre = ((box[0] + box[2]) / 2, (box[1] + box[3]) / 2)
         view.paper_center = _paper_center(planned, sheet, centre)
@@ -1191,6 +1258,85 @@ def _fits(size: tuple[float, float], targets: list[tuple[float, float]]) -> bool
     return any(abs(w - min(t)) <= PAPER_TOL_MM and abs(h - max(t)) <= PAPER_TOL_MM for t in targets)
 
 
+# ---- title block fields
+
+TITLE_ORDER = ("project_name", "project_number", "client", "address", "drawn_by", "checked_by", "issue_date")
+MAX_FIELD_TEXT = 80  # longer texts after a label are notes, not title block fields
+
+
+def _title_fields(out: SheetPlan, sheets: dict[str, cad_sheet.Sheet], answers: dict[str, Any]) -> None:
+    """The answered fields go to out.title_fields; each other one is a question that does not stop the set."""
+    suggestions = title_suggestions(sheets)
+    for field in TITLE_ORDER:
+        value = answers.get(answer_title(field))
+        if value is not None and str(value).strip():
+            out.title_fields[field] = str(value).strip()
+            continue
+        where, _, what, _ = TITLE_FIELDS[field]
+        options = suggestions[field]
+        said = (f"the source title blocks write {', '.join(repr(o) for o in options)}" if options
+                else "the source sheets do not write it")
+        left = "left blank on the sheets" if where == "sheet" else "left as the Revit project has it"
+        out.questions.append(DrawingQuestion(
+            id=answer_title(field), topic="title_field", options=options, blocks=False,
+            text=f"Title block: what is {what}? ({said}.) Unanswered, it is {left}; the drawing set is made anyway."))
+
+
+def _title_label(text: str) -> tuple[str, str] | None:
+    """(field, the text after the label) when a text starts with a TITLE_FIELDS label ("DRAWN BY : S. ROY")."""
+    flat = " ".join(text.split())
+    for field, (*_, label) in TITLE_FIELDS.items():  # project number before project name: "PROJECT NO."
+        m = label.match(flat)
+        if m:
+            return field, flat[m.end():].strip(" :-=.–")
+    return None
+
+
+def title_suggestions(sheets: dict[str, cad_sheet.Sheet | None]) -> dict[str, list[str]]:
+    """What the source sheets' title blocks write for each title field, the most written first: an attribute tagged
+    like the field, the text after a label, else the text next to a bare label (right of it on its line, else just
+    under it). Suggestions only: the user answers."""
+    found: dict[str, Counter[str]] = {f: Counter() for f in TITLE_FIELDS}
+    for sheet in sheets.values():
+        if sheet is None:
+            continue
+        texts = [e for e in sheet.cad.walk() if e.kind == "text" and (e.text or "").strip() and e.points]
+        for e in texts:
+            tagged = _title_label(e.tag.replace("_", " ")) if e.tag else None
+            if tagged and not tagged[1]:
+                value: str | None = " ".join(e.text.split())
+                field = tagged[0]
+            else:
+                labelled = _title_label(e.text)
+                if labelled is None:
+                    continue
+                field, value = labelled
+                value = value or _next_to(e, texts)
+            if value and len(value) <= MAX_FIELD_TEXT:
+                found[field][value] += 1
+    return {f: [v for v, _ in c.most_common(5)] for f, c in found.items()}
+
+
+def _next_to(label, texts) -> str | None:
+    """The text written right of a bare label on its line, else just under it (within a few text heights)."""
+    h = label.height or 1.0
+    x0, y0 = label.points[0]
+    best = None
+    for t in texts:
+        if t is label or _title_label(t.text):
+            continue
+        dx, dy = t.points[0][0] - x0, t.points[0][1] - y0
+        if 0 < dx <= 40 * h and abs(dy) <= 0.75 * h:
+            d = dx
+        elif -3 * h <= dy < -0.5 * h and abs(dx) <= 10 * h:
+            d = abs(dy) + 0.1 * abs(dx) + 40 * h  # a text on the same line wins
+        else:
+            continue
+        if best is None or d < best[0]:
+            best = (d, " ".join(t.text.split()))
+    return best[1] if best else None
+
+
 # ------------------------------------------------------------------------------------------------ making it in Revit
 
 class _Exec:
@@ -1252,18 +1398,23 @@ def make_import_drawing_set(revit, project: ImportProject, building: RecognisedB
                             created: dict[str, int], out_dir: Path,
                             record: Callable[[str, int], None] = lambda key, element_id: None,
                             sheets: dict[str, cad_sheet.Sheet] | None = None, answers: dict[str, Any] | None = None,
-                            prefix: str = "", model_offset: Point = (0.0, 0.0)) -> dict[str, Any]:
+                            prefix: str = "", model_offset: Point = (0.0, 0.0),
+                            previous: dict[str, int] | None = None,
+                            forget: Callable[[list[str]], None] = lambda keys: None) -> dict[str, Any]:
     """Reproduce the source sheet set in Revit after an imported project was built. ``created`` is the run's created
     map (op key -> element id); ``record`` is told every element id made here. Returns {"status": "questions"} with
-    nothing created while anything must be asked, else the sheets, the PDF and the comparison with the source."""
+    nothing created while anything must be asked, else the sheets, the PDF and the comparison with the source.
+
+    ``previous`` (record key -> id, the DWG- keys of an earlier set of this run) remakes the set: once nothing more
+    needs asking, those elements are deleted (``forget`` is told the keys that are gone) and the set is made again.
+    The questions that do not stop the set (title block fields) come back with the result, still to be answered."""
     answers = dict(project.inputs.values) | dict(answers or {})
     sheets = sheets if sheets is not None else load_sheets(project)
     plan = plan_sheet_set(project, building, result, sheets, answers, prefix, model_offset)
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "drawings-sheet-plan.json").write_text(plan.model_dump_json(indent=1), encoding="utf-8")
     if plan.blocking():
-        return {"status": "questions", "questions": [q.model_dump() for q in plan.questions],
-                "not_reproduced": [n.model_dump() for n in plan.not_reproduced], "sheets": []}
+        return _asking(plan, [q for q in plan.questions if q.blocks])
 
     ex = _Exec(revit, created, record)
     todo = [s for s in plan.sheets if s.reproduced and s.views]
@@ -1275,8 +1426,15 @@ def make_import_drawing_set(revit, project: ImportProject, building: RecognisedB
     rows = (ex.call("list_titleblocks", {}, purpose="find title blocks") or {}).get("titleblocks") or []
     chosen, questions = choose_title_blocks(rows, papers, borders, answers)
     if questions:
-        return {"status": "questions", "questions": [q.model_dump() for q in questions],
-                "not_reproduced": [n.model_dump() for n in plan.not_reproduced], "sheets": []}
+        return _asking(plan, questions)
+    removed = None
+    if previous:
+        removed = remove_drawing_set(ex, previous)
+        forget(removed["removed_keys"])
+        if removed["failed"]:
+            return {**_stopped(plan, ex, f"the previous drawing set could not be deleted (elements "
+                                         f"{', '.join(str(i) for i in removed['failed'])}); nothing new was made"),
+                    "removed": removed}
 
     # The first sheet of each paper checks its title block's size before anything else is made.
     made: dict[str, dict[str, Any]] = {}
@@ -1288,9 +1446,7 @@ def make_import_drawing_set(revit, project: ImportProject, building: RecognisedB
         if w and h:  # the title block reports its size: no trial sheet needed
             mode = _frame_mode({"width": w, "height": h}, first)
             if mode is None and not _user_chose(answers, paper):
-                return {"status": "questions", "sheets": [],
-                        "not_reproduced": [n.model_dump() for n in plan.not_reproduced],
-                        "questions": [_size_question(chosen[paper], f"{w:g} x {h:g} mm", paper, first, rows)]}
+                return _asking(plan, [_size_question(chosen[paper], f"{w:g} x {h:g} mm", paper, first, rows)])
             fit_mode[paper] = mode or "fit"  # the user chose a title block of another size: fit the views to it
             continue
         data = ex.call("create_sheet", {"sheet_number": first.number, "sheet_name": first.title or first.file,
@@ -1302,12 +1458,12 @@ def make_import_drawing_set(revit, project: ImportProject, building: RecognisedB
         if mode is None and not _user_chose(answers, paper):
             ex.call("delete_element", {"elementIds": [data["sheet_id"]]}, first.file, "remove the trial sheet")
             size = f"{frame.get('width', 0):g} x {frame.get('height', 0):g} mm" if frame else "unknown"
-            return {"status": "questions", "sheets": [], "not_reproduced": [n.model_dump() for n in plan.not_reproduced],
-                    "questions": [_size_question(chosen[paper], size, paper, first, rows)]}
+            return _asking(plan, [_size_question(chosen[paper], size, paper, first, rows)])
         fit_mode[paper] = mode or "fit"
         ex.keep(f"DWG-SHEET-{first.number}", data["sheet_id"])
         made[first.file] = data
 
+    hide = _foreign_levels(ex, todo, created)
     results = []
     for s in todo:
         data = made.get(s.file)
@@ -1318,9 +1474,10 @@ def make_import_drawing_set(revit, project: ImportProject, building: RecognisedB
                 results.append({"file": s.file, "sheet_id": None, "views": []})
                 continue
             ex.keep(f"DWG-SHEET-{s.number}", data["sheet_id"])
-        results.append(_make_sheet(ex, s, data, fit_mode.get(s.paper, "paper")))
+        results.append(_make_sheet(ex, s, data, fit_mode.get(s.paper, "paper"), hide))
 
     sheet_ids = [r["sheet_id"] for r in results if r.get("sheet_id")]
+    title_fields = _fill_title_fields(ex, plan, sheet_ids)
     pdf = None
     if sheet_ids:
         exported = ex.call("export_pdf", {"output_folder": str(out_dir), "file_name": "drawings.pdf",
@@ -1332,16 +1489,78 @@ def make_import_drawing_set(revit, project: ImportProject, building: RecognisedB
                                                                                  if r.get("sheet_id")],
             "pdf": pdf, "comparison": comparison, "failed": ex.failed,
             "not_reproduced": [n.model_dump() for n in plan.not_reproduced],
-            "comparison_json": str(out_dir / "drawings-comparison.json"),
+            "title_fields": title_fields, "questions": [q.model_dump() for q in plan.open_fields()],
+            "removed": removed, "comparison_json": str(out_dir / "drawings-comparison.json"),
             "comparison_html": str(out_dir / "drawings-comparison.html"), "log": ex.log}
 
 
-def _size_question(name: str, size: str, paper: str, first: PlannedSheet, rows: list[dict[str, Any]]) -> dict[str, Any]:
+def _asking(plan: SheetPlan, questions: list[DrawingQuestion]) -> dict[str, Any]:
+    """Nothing is made: these questions first. The title block field questions come along (they do not block), so
+    the import keeps asking them."""
+    return {"status": "questions", "questions": [q.model_dump() for q in questions + plan.open_fields()],
+            "not_reproduced": [n.model_dump() for n in plan.not_reproduced], "sheets": []}
+
+
+def remove_drawing_set(ex: _Exec, previous: dict[str, int]) -> dict[str, Any]:
+    """Delete an earlier drawing set of this run: the elements recorded under its DWG- keys, nothing else. Sheets and
+    views go first (their viewports, dimensions, tags and notes go with them). Revit cannot delete the active view, so
+    when it is one of them another view is made active first: a 3D view, else a floor plan, that is not being deleted.
+    Elements already deleted by hand count as gone."""
+    order = ("DWG-SHEET-", "DWG-VIEW-")
+    keys = sorted(previous, key=lambda k: next((i for i, p in enumerate(order) if k.startswith(p)), len(order)))
+    ids = [previous[k] for k in keys]
+    doomed = set(ids)
+    out: dict[str, Any] = {"deleted": 0, "already_gone": [], "failed": [], "removed_keys": []}
+    active = (ex.call("get_current_view_info", {}, purpose="the active view") or {}).get("viewId")
+    if active in doomed:
+        views = (ex.call("list_views", {}, purpose="a view to keep active") or {}).get("views") or []
+        keep = next((v for kind in ("ThreeD", "FloorPlan") for v in views if v.get("viewType") == kind
+                     and not v.get("isTemplate") and v.get("id") not in doomed), None)
+        if keep is None or ex.call("activate_view", {"view_id": keep["id"]}, purpose="leave the views to delete") is None:
+            out["failed"] = [active]
+            return out
+    data = ex.call("delete_element", {"elementIds": ids}, purpose="delete the previous drawing set", timeout=600)
+    if data is None:
+        out["failed"] = ids
+        return out
+    gone = {int(e.split(":", 1)[0]) for e in data.get("errors") or [] if e.endswith(": not found")}
+    failed = [i for i in data.get("failedIds") or [] if i not in gone]
+    out.update(deleted=data.get("deleted", 0), already_gone=sorted(gone), failed=failed,
+               removed_keys=[k for k in keys if previous[k] not in failed])
+    return out
+
+
+def _foreign_levels(ex: _Exec, todo: list[PlannedSheet], created: dict[str, int]) -> list[int]:
+    """The document's levels B2M did not make (the template's "Level 1"), to hide in B2M's sections and elevations."""
+    if not any(v.kind in ("section", "elevation") for s in todo for v in s.views):
+        return []
+    levels = (ex.call("list_levels", {}, purpose="levels B2M did not make") or {}).get("levels") or []
+    ours = set(created.values())
+    return [lv["elementId"] for lv in levels if lv.get("elementId") not in ours]
+
+
+def _fill_title_fields(ex: _Exec, plan: SheetPlan, sheet_ids: list[int]) -> dict[str, Any]:
+    """The answered title block fields into Project Information and B2M's sheets; an unanswered sheet field is left
+    blank on them (not the template's "Author"), an unanswered project field as the document has it."""
+    project = {TITLE_FIELDS[f][1]: v for f, v in plan.title_fields.items() if TITLE_FIELDS[f][0] == "project"}
+    if project:
+        ex.call("set_project_info", project, purpose="project information as answered")
+    if sheet_ids:
+        for field in TITLE_ORDER:
+            where, name, _, _ = TITLE_FIELDS[field]
+            if where == "sheet":
+                ex.call("set_element_parameter_values", {"elementIds": sheet_ids, "parameterName": name,
+                                                         "value": plan.title_fields.get(field, "")},
+                        purpose=f"sheet field {name}" + ("" if field in plan.title_fields else " left blank"))
+    return {"filled": dict(plan.title_fields), "unanswered": [q.id for q in plan.open_fields()]}
+
+
+def _size_question(name: str, size: str, paper: str, first: PlannedSheet, rows: list[dict[str, Any]]) -> DrawingQuestion:
     return DrawingQuestion(
         id=ANSWER_TITLE_BLOCK, topic="title_block", options=[r.get("display_name") for r in rows],
         text=(f"Title block {name} is {size}, not {paper} ({first.paper_mm[0]:g} x {first.paper_mm[1]:g} mm) or the "
               f"source border ({first.border_mm[0]:g} x {first.border_mm[1]:g} mm). Which title block should the "
-              "sheets use?")).model_dump()
+              "sheets use?"))
 
 
 def _user_chose(answers: dict[str, Any], paper: str) -> bool:
@@ -1430,7 +1649,9 @@ def _fit_layout(frame: dict[str, Any], s: PlannedSheet) -> list[tuple[tuple[floa
     return [((x + w * (i + 0.5) / n, y + h / 2), (w / n, h)) for i in range(n)]
 
 
-def _make_sheet(ex: _Exec, s: PlannedSheet, sheet_data: dict[str, Any], mode: str) -> dict[str, Any]:
+def _make_sheet(ex: _Exec, s: PlannedSheet, sheet_data: dict[str, Any], mode: str,
+                hide: list[int] | None = None) -> dict[str, Any]:
+    """The sheet's views, their annotation and viewports; ``hide`` are levels to hide in sections and elevations."""
     out: dict[str, Any] = {"file": s.file, "number": sheet_data.get("sheet_number", s.number),
                            "name": sheet_data.get("sheet_name", s.title), "sheet_id": sheet_data["sheet_id"],
                            "views": []}
@@ -1441,6 +1662,9 @@ def _make_sheet(ex: _Exec, s: PlannedSheet, sheet_data: dict[str, Any], mode: st
             extent = _extent_mm(v)
             if extent:  # fitted views get their scale before anything is drawn in them
                 v.create = {**v.create, "scale": fit_scale(extent, slots[i][1])}
+        shift = _room_for_heads(v)
+        if v.kind == "elevation":
+            _marker_plan(ex, s, v)
         view = ex.call("create_view", v.create, s.file, f"view {v.name}")
         entry: dict[str, Any] = {"name": v.name, "kind": v.kind, "view_id": None, "scale": None, "dimensions": [],
                                  "labels": [], "tags": {}, "spots": [], "skipped": []}
@@ -1451,7 +1675,10 @@ def _make_sheet(ex: _Exec, s: PlannedSheet, sheet_data: dict[str, Any], mode: st
         entry["view_id"], entry["scale"] = vid, view.get("scale", v.create.get("scale"))
         ex.keep(f"DWG-VIEW-{s.number}-{v.key}", vid)
         ex.keep(f"DWG-VIEW-{s.number}-{v.key}-MARKER", view.get("elevationMarkerId"))
-        for step in v.after_create + v.steps:
+        hiding = [Step(command="operate_element", purpose="hide the levels B2M did not make",
+                       params={"operation": "hide", "elementIds": hide, "view_id": "$view"})] \
+            if hide and v.kind in ("section", "elevation") else []
+        for step in v.after_create + hiding + v.steps:
             params, missing = ex.resolve(step.params, vid)
             if missing:
                 entry["skipped"].append({"step": step.purpose, "reason": "not in the model: " + ", ".join(missing)})
@@ -1462,13 +1689,65 @@ def _make_sheet(ex: _Exec, s: PlannedSheet, sheet_data: dict[str, Any], mode: st
                 continue
             _keep_step(ex, s, step, data, entry)
         at = slots[i][0] if slots else _sheet_point(frame, s, v.paper_center, mode)
-        place = {"view_id": vid, "sheet_id": sheet_data["sheet_id"]}
+        if at and not slots:
+            at = (_r(at[0] + shift[0]), _r(at[1] + shift[1]))
+        # the drawing (crop region), not the box with the markers past it, goes where the source drawing sits, and
+        # the title right under it
+        place = {"view_id": vid, "sheet_id": sheet_data["sheet_id"], "anchor": "crop", "title_below_crop": True,
+                 "title_gap_mm": TITLE_GAP_MM}
         if at:
             place |= {"x_mm": at[0], "y_mm": at[1]}
         vp = ex.call("place_view_on_sheet", place, s.file, "viewport")
         if vp:
             ex.keep(f"DWG-VP-{vp['viewport_id']}", vp["viewport_id"])
     return out
+
+
+def _room_for_heads(v: PlannedView) -> Point:
+    """Grow the view's crop region so the grid heads set_grid_heads puts past the building fit in it (Revit stops
+    datums at the crop region), at the view's final scale. Returns how far the crop's centre moved on paper (mm), so
+    the drawing stays where the source has it."""
+    step = next((st for st in v.after_create if st.command == "set_grid_heads"), None)
+    scale = v.create.get("scale")
+    if step is None or not scale:
+        return 0.0, 0.0
+    b, reach, c = step.params["bounds"], (GRID_HEAD_MM + GRID_ROOM_MM) * scale, v.create
+    if v.kind in ("floor_plan", "structural_plan") and {"cropMinX", "cropMinY", "cropMaxX", "cropMaxY"} <= c.keys():
+        grown = {"cropMinX": _r(min(c["cropMinX"], b["min_x_mm"] - reach)),
+                 "cropMinY": _r(min(c["cropMinY"], b["min_y_mm"] - reach)),
+                 "cropMaxX": _r(max(c["cropMaxX"], b["max_x_mm"] + reach)),
+                 "cropMaxY": _r(max(c["cropMaxY"], b["max_y_mm"] + reach))}
+        moved = ((grown["cropMinX"] + grown["cropMaxX"] - c["cropMinX"] - c["cropMaxX"]) / 2,
+                 (grown["cropMinY"] + grown["cropMaxY"] - c["cropMinY"] - c["cropMaxY"]) / 2)
+        v.create = {**c, **grown}
+        return moved[0] / scale, moved[1] / scale
+    if v.kind == "section" and "top" in c:
+        top = max(c["top"], b["max_z_mm"] + reach)
+        v.create = {**c, "top": _r(top)}
+        return 0.0, (top - c["top"]) / 2 / scale
+    crop = next((st for st in v.after_create if st.command == "set_view_crop"), None)
+    if v.kind == "elevation" and crop is not None:
+        old = crop.params["bounds"]["max_z_mm"]
+        top = max(old, b["max_z_mm"] + reach)
+        grown_crop = crop.model_copy(update={"params": {**crop.params, "bounds": {**crop.params["bounds"],
+                                                                                    "max_z_mm": _r(top)}}})
+        v.after_create = [grown_crop if st is crop else st for st in v.after_create]
+        return 0.0, (top - old) / 2 / scale
+    return 0.0, 0.0
+
+
+def _marker_plan(ex: _Exec, s: PlannedSheet, v: PlannedView) -> None:
+    """Revit hangs an elevation's marker on a floor plan of its level: when the document has none there, B2M makes
+    one (its own view, recorded with the set, so a remake or removing the run deletes it)."""
+    level = v.create.get("level")
+    plans = (ex.call("list_views", {"viewType": "FloorPlan"}, s.file, "a plan to hold the elevation marker")
+             or {}).get("views")
+    if plans is None or any(p.get("levelName") == level and not p.get("isTemplate") for p in plans):
+        return
+    made = ex.call("create_view", {"viewType": "floor_plan", "level": level, "name": f"{level} - plan for {v.name}"},
+                   s.file, f"plan on {level} for the elevation marker")
+    if made:
+        ex.keep(f"DWG-VIEW-{s.number}-{v.key}-PLAN", made["viewId"])
 
 
 def _keep_step(ex: _Exec, s: PlannedSheet, step: Step, data: dict[str, Any], entry: dict[str, Any]) -> None:
