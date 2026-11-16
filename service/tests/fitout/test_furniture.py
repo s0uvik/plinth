@@ -198,4 +198,12 @@ def test_a_small_toilet_keeps_the_door_clear_and_says_what_is_left_out(wb_rules)
     _, layout = solve(room_plan(1700, 2600, "Toilet", door={"offset_mm": 850}), wb_rules)
     assert [p.item for p in layout.placed] == ["wc", "basin"]
     assert [(u.item, u.status) for u in layout.unplaced] == [("shower", "no_fit")]
-    assert "door's swing" in layout.unplaced[0].reason
+    # the shower area may lie under the door's swing (open wet area): what keeps it out is the WC and basin
+    assert "door's swing" not in layout.unplaced[0].reason and "water closet" in layout.unplaced[0].reason
+
+
+def test_a_shower_area_may_lie_under_the_door_swing_but_not_in_its_approach(wb_rules):
+    # 1800 x 2400 inside: with the leaf's swing kept clear there is no corner left for the shower area
+    model, layout = solve(room_plan(2000, 2600, "Toilet", door={"offset_mm": 1000}), wb_rules)
+    assert "shower" in [p.item for p in layout.placed]
+    assert furniture.problems(layout, model, wb_rules) == []

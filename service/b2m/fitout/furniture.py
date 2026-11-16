@@ -288,6 +288,7 @@ class _RoomSolver:
                 approaches.append(_rect(p0, along, inward, o.width_mm, approach))
             self.door_points.append(_add(o.center, inward, self.circ / 2 + 10))
         self.swing_zone = unary_union(swings) if swings else None
+        self.approach_zone = unary_union(approaches) if approaches else None
         keep = swings + approaches
         self.keep = unary_union(keep) if keep else None
         self.keep_prep = prepared.prep(self.keep) if self.keep is not None else None
@@ -607,7 +608,10 @@ class _RoomSolver:
         body = c.body
         if not self.usable_in.contains(body):
             return "it would stand outside the room or on a column"
-        if self.keep is not None and self.keep_prep.intersects(body) and body.intersection(self.keep).area > AREA_TOL:
+        if item.under_door_swing:  # an open wet area may lie under a leaf's swing, never in a door's approach
+            if self.approach_zone is not None and body.intersection(self.approach_zone).area > AREA_TOL:
+                return "it would block a door's approach"
+        elif self.keep is not None and self.keep_prep.intersects(body) and body.intersection(self.keep).area > AREA_TOL:
             return "it would block a door's swing or approach"
         for zone, sill, _, _, _ in self.windows:
             if self.is_tall(item, size, sill) and _overlap(body, zone):
@@ -806,10 +810,10 @@ def problems(layout: FurnitureLayout, model: RoomModel, rules: FitoutRules) -> l
         for p, b in bodies:
             if not inside.contains(b):
                 out.append(f"{p.key}: outside its room or on a column")
-            for o in room.doors:
-                if o.swing and _overlap(b, Polygon(o.swing)):
-                    out.append(f"{p.key}: in the swing of door {o.key}")
             item = rules.furniture.items[p.item]
+            for o in room.doors:
+                if o.swing and not item.under_door_swing and _overlap(b, Polygon(o.swing)):
+                    out.append(f"{p.key}: in the swing of door {o.key}")
             for o in room.windows:
                 if o.face is None:
                     continue

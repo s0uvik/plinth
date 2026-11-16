@@ -139,6 +139,7 @@ class FurnitureItem(Sourced):
     fixtures: list[str] = []  # counter: items set on it, in order (sink before hob)
     on_counter: OnCounter | None = None
     tall: bool | None = None  # None: tall when higher than a window's sill (then kept clear of windows)
+    under_door_swing: bool = False  # may lie under a door leaf's swing (an open wet area, nothing standing up)
 
     @model_validator(mode="after")
     def _shape(self) -> "FurnitureItem":
