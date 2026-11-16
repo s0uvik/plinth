@@ -528,7 +528,7 @@ Every tool in rvt-mcp at commit `b44ee0b`, grouped by toolset. The add-in comman
 | `create_group_from_elements` | W | Create a Revit group from two or more element ids |  |  |
 | `create_level` | W | Create a level at specified elevation | ✓ |  |
 | `create_line_based_element` | W | Create a line-based element (wall) | ✓ | Add location line, base and top offsets and a top level, so the engine's centreline walls land exactly. |
-| `create_point_based_element` | W | Create a OneLevelBased or OneLevelBasedHosted family (door, window, furniture) | ✓ | Add sill height and placement by host plus offset along the wall, so the client stops computing points. |
+| `create_point_based_element` | W | Create a OneLevelBased or OneLevelBasedHosted family (door, window, furniture) | ✓ | Add sill height and placement by host plus offset along the wall, so the client stops computing points. Step 10 (F5): `offset` above the level, `rotation`, `wallSide`/`towardX,towardY` for wall-hosted and face-based families, face-based families on wall, ceiling and floor faces, `faceDown` (no host: on a downward reference plane at the height); returns `placement_mode`, `side`, `created_ids`. |
 | `create_room` | W | Create and place a room | ✓ | Accept department (flat ID) and phase in the same call; replaces the planned `set_room_data`. |
 | `create_surface_based_element` | W | Create a surface-based element (floor, ceiling) | ✓ |  |
 
@@ -688,6 +688,9 @@ Every tool in rvt-mcp at commit `b44ee0b`, grouped by toolset. The add-in comman
 | `export_family_to_path` | D | Save a loadable family from the current project back to an .rfa file at outputPath |  |  |
 | `get_family_instances` | R | List placed instances of a Family (or a specific type within it) with location/host/level DTOs in mm |  |  |
 | `list_family_types_in_family` | R | List a bounded page of types in one family |  |  |
+| `list_template_files` | R | Revit's installed templates for the running year (.rte), per language folder |  | New in B2M, Step 10 (F1): Revit 2026 installs no family library; fit-out types come from these. |
+| `list_types_in_file` | R | Family types and MEP types (pipe, duct, conduit, cable tray, piping/duct/electrical distribution system types) in an .rte/.rvt, opened in the background and closed unsaved |  | New in B2M, Step 10 (F1). Cached per file and year; not in `batch_execute`. |
+| `copy_types_from_file` | W | Copy chosen types from an .rte/.rvt into the project as new types (CopyElements, dependents use the project's types) |  | New in B2M, Step 10 (F1). Never overwrites or edits a type: per item copied / already_there / not_found; `created_ids`; not in `batch_execute`. |
 | `list_loaded_families` | R | List all loaded families (loadable + in-place + system) in the active document grouped by category |  |  |
 | `load_family_from_path` | D | Load or replace family definitions; restore model changes with Revit Undo |  |  |
 | `rename_family_type` | D | Rename an existing type; restore its name with Revit Undo |  |  |
@@ -842,12 +845,14 @@ Every tool in rvt-mcp at commit `b44ee0b`, grouped by toolset. The add-in comman
 | --- | --- | --- | --- | --- |
 | `analyze_mep_network` | R | Analyze one MEP system |  |  |
 | `connect_mep_elements` | D | Change MEP connectivity; restore connections with Revit Undo |  |  |
-| `create_air_terminal` | W | Place an air terminal (diffuser/grille) family instance at a point (mm) |  |  |
+| `create_air_terminal` | W | Place an air terminal (diffuser/grille) family instance at a point (mm) |  | Step 10 (F5): same placement options as `create_point_based_element` in snake_case (`offset`, `rotation`, `host_offset`, `wall_side`, `toward_x/y`, `face_down`); `created_ids`. |
 | `create_cable_tray` | W | Create an electrical cable tray between two points (mm) |  |  |
 | `create_conduit` | W | Create an electrical conduit between two points (mm) |  |  |
 | `create_duct` | W | Create an HVAC duct between two points (mm) |  |  |
-| `create_lighting_fixture` | W | Place a lighting fixture family instance at a point (mm) |  |  |
+| `create_lighting_fixture` | W | Place a lighting fixture family instance at a point (mm) |  | Step 10 (F5): face-based on a ceiling's bottom face or a wall side; without a ceiling at `offset` with `face_down`; `rotation`; `created_ids`. |
 | `create_mep_fitting` | W | Insert an MEP fitting at connectors of existing MEP elements |  |  |
+| `create_mep_run` | W | Pipe, duct, conduit or cable tray run along 3D points with elbows at bends; ends joined to a fixture's free connector of the run's domain and system, a free curve end, or a pipe/duct main (tee) |  | New in B2M, Step 10 (F5). One transaction; refused joins listed in `failed_connections` (or `require_connections` undoes all); returns `segment_ids`, `fitting_ids`, `created_ids`, `modified_ids`. |
+| `create_electrical_circuit` | W | Put devices and fixtures on one circuit and assign a panel |  | New in B2M, Step 10 (F5). Elements without a free electrical connector of the circuit type are named and nothing is created. |
 | `create_pipe` | W | Create a pipe (mm) |  |  |
 | `detect_system_elements` | R | Walk an MEP system and page IDs per category with startElement + maxElements (hard max 5000) |  |  |
 | `find_mep_disconnects` | R | Find MEP elements with open/unconnected End connectors (potential gaps in ductwork, piping, conduit) |  |  |
