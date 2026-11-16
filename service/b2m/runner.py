@@ -2,8 +2,10 @@
 
 Splits a build plan into batch_execute calls of at most 20 ops, one build phase per batch, in
 dependency order. Each batch is one Revit undo step and either builds completely or not at all.
-Stairs and railings are the exception: the add-in will not run create_stair inside a batch, so each of
-those ops is its own direct call (and undo step). Keys are swapped for element ids as batches return;
+Stairs, railings and type pre-steps are the exception: the add-in will not run create_stair inside a batch,
+and a type pre-step (ensure_wall_type, ensure_floor_type, ensure_family_type) returns the project type every later
+op must use, so each of those ops is its own direct call (and undo step); a type the add-in cannot find or copy
+without the user stops the run as needs_input. Keys are swapped for element ids as batches return;
 an op that creates several elements (a stair and the railings Revit gives it) records them as key,
 key#2, key#3... The first failed batch stops the run; what was
 built so far is reported and can be removed. After a build, element counts and warnings are read back
@@ -30,6 +32,13 @@ ENSURE_TIMEOUT_SECONDS = 600  # creating a family from its template can take a w
 # Logical frame types carry their section in the name ("RCC Column 230x450": b 230, h 450).
 SECTION = re.compile(r"(\d+)\s*[xX×]\s*(\d+)")
 ENSURE_CATEGORY = {"column": "structural_column", "beam": "structural_framing"}
+# Errors of a type pre-step (ensure_wall_type, ensure_floor_type, ensure_family_type) that need the user's answer:
+# nothing to find or copy (no foundation slab type to copy, no family), a tie to choose from, a mark or size clash,
+# a material that is not in the project. The run stops before anything is built, as needs_input.
+TYPE_QUESTIONS = frozenset({
+    "FAMILY_NOT_FOUND", "FAMILY_CHOICE_NEEDED", "TYPE_MARK_IN_USE", "TYPE_MARK_MISMATCH",
+    "BASE_TYPE_NOT_FOUND", "TYPE_CHOICE_NEEDED", "TYPE_DIMENSION_MISMATCH", "MATERIAL_NOT_FOUND",
+})
 
 log = logging.getLogger(__name__)
 
@@ -156,9 +165,8 @@ class Runner:
         except RevitTimeout as e:
             return self._stop(result, "unknown", e, op.key)
         except RevitError as e:
-            # A door/window family that cannot be found or chosen is the user's call (ask), not a failure.
-            asks = e.code in ("FAMILY_NOT_FOUND", "FAMILY_CHOICE_NEEDED", "TYPE_MARK_IN_USE", "TYPE_MARK_MISMATCH")
-            return self._stop(result, "needs_input" if type_op and asks else "failed", e, op.key)
+            # A type that cannot be found, copied or chosen without the user is a question, not a failure.
+            return self._stop(result, "needs_input" if type_op and e.code in TYPE_QUESTIONS else "failed", e, op.key)
         if type_op:
             self._active = commands.resolved_type(op, data, self._active)
             log.info("%s %s: %s %r", op.op, op.name, data.get("action"), data.get("type_name"))

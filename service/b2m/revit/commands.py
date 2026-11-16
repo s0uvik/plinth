@@ -150,9 +150,7 @@ def to_command(op: Op, plan: dict[str, Op], ids: dict[str, int], types: TypeMap 
             return {"command": "create_room_separator", "params": {
                 "points": _points(op.points), "level_name": op.level, "close_loop": op.close_loop}}
         case FoundationSlabOp():
-            params = {"level": op.level, "points": _points(op.points), "type_name": types.floor(op.type)}
-            if op.thickness_mm is not None:
-                params["thickness_mm"] = op.thickness_mm
+            params = {"level": op.level, "points": [list(pt) for pt in op.points], "type_name": types.floor(op.type)}
             if op.offset_mm:
                 params["height_offset_mm"] = op.offset_mm
             return {"command": "create_foundation_slab", "params": params}
@@ -165,8 +163,12 @@ def to_command(op: Op, plan: dict[str, Op], ids: dict[str, int], types: TypeMap 
             return {"command": "ensure_wall_type", "params": params}
         case FloorTypeOp():
             params = {"thickness_mm": op.thickness_mm, "name": op.name, "structural": op.structural}
+            if op.foundation:
+                params["foundation"] = True
             if op.base_type_name:
                 params["base_type_name"] = op.base_type_name
+            if op.layers:
+                params["layers"] = [layer.model_dump(exclude_none=True) for layer in op.layers]
             return {"command": "ensure_floor_type", "params": params}
         case OpeningTypeOp():
             params = {"category": op.category, "dimensions": {"width_mm": op.width_mm, "height_mm": op.height_mm}}
