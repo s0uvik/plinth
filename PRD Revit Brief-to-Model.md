@@ -462,6 +462,40 @@ A second way in, beside the brief: the office's own CAD drawing set (DWG) become
 
 - **Gate:** the sample goes DWG → approved review → Revit with zero warnings → self-check with zero unexplained differences → sheet set matching the source list and dimensions → estimate matching the source Excel; the pipeline code has no sample-specific branches.
 
+### Step 10 · Fit-out: furniture and MEP (F14)
+
+After a building is modelled (from a brief or from DWGs), B2M furnishes it and lays out its MEP: plumbing and drainage, electrical, HVAC and fire safety. When the office has no MEP or furniture drawings (the G+4 sample has none), the layout comes **from rules**: NBC 2016 and typical Indian residential practice for the project's location. The result is an indicative coordination model, and every output says so: an MEP engineer designs and checks the real systems. Decided with the user on 2026-11-16: all four systems, standard furniture per room, MEP system types from Revit's installed Systems template.
+
+**Rules.** The same as Step 9: no guessing, location first, then assumptions from that location's rule set, listed back for review. Nothing is built before approval. Families: find, adapt a copy, ask. Revit 2026 installs no local family library, so B2M looks in the open project, then in Revit's installed templates (Systems, Plumbing, Electrical, Mechanical, Multi-Discipline, Residential, Default Metric). It matches by category and keywords at planning time, copies in only the types it uses, as new types, and asks when nothing fits. It never edits a type in place. Rule values (fixture units, points per room, tank sizes, fire provisions) carry their source and are **unverified placeholders** until checked.
+
+**Pipeline**
+
+| # | Stage | Output | Proof |
+| --- | --- | --- | --- |
+| 1 | Rooms | Each built room, per storey: class (bedroom, living/dining, kitchen, toilet, balcony, lobby, stair, lift, shaft, utility…) from its name, with its polygon, bounding wall faces, doors (width, hinge, swing) and windows | Every room classed or asked |
+| 2 | Families | Each item the rules need is matched to a family type in the project or an installed template; anything unmatched becomes a question | Every item resolved or asked |
+| 3 | Furniture | A standard set per room class, placed against walls, clear of door swings, windows and circulation, with clearances | No overlaps or blocked doors; items that do not fit are listed |
+| 4 | Plumbing and drainage | Fixtures per toilet and kitchen; soil, waste, vent and rainwater stacks in the ducts; branches to the stacks; cold and hot water from the overhead tank; the underground tank and pump; tanks sized from occupancy | Every fixture connected; no disconnects |
+| 5 | Electrical | Light, fan, switchboard and socket points per room (6 A / 16 A); one distribution board per flat, plus the meter room; circuits; conduit runs | Every device on a circuit |
+| 6 | HVAC | Split AC indoor units on outside walls (bedrooms, living) and outdoor units outside; exhaust fans in toilets and kitchens | Each unit placed or listed |
+| 7 | Fire safety | Provisions for the building's height and occupancy per NBC Part 4 (extinguishers, detectors, riser/hydrant when required) | Rule → provision list |
+| 8 | Review and build | Questions, assumptions, plan preview; approval; build as its own run, so it is removable apart from the building | Zero Revit warnings |
+| 9 | Self-check and schedules | Read-back against the plan; clashes with walls/doors; MEP disconnects; furniture and MEP schedules | Difference report; schedules |
+
+**Tasks**
+
+| Task | Scope | Depends on |
+| --- | --- | --- |
+| F1 | Add-in: list the family types and MEP system types in an installed template or other file; copy chosen types into the project as new types (never overwriting) | — |
+| F2 | Rules and room model: room classes from names, furniture sets, fixture/point/provision rules per location profile; rooms with polygon, wall faces, doors, windows from a built run | — |
+| F3 | Furniture layout solver | F2 |
+| F4 | MEP layout: plumbing/drainage, electrical, HVAC, fire | F2, F3 |
+| F5 | Plan ops, command mapping and add-in commands: placed families (free, wall-hosted, level-based), pipe/duct/conduit runs with fittings, connections to fixtures, electrical circuits | F1 |
+| F6 | API, review page and MCP: fit-out questions, preview, approval, build, remove | F3–F5 |
+| F7 | Self-check, clash and disconnect checks, schedules; live gate on the sample | all |
+
+- **Gate:** the G+4 sample model furnished and fitted out with zero Revit warnings, every fixture connected, every device on a circuit, no furniture clashing or blocking a door, every rule value listed with its source.
+
 ## Testing and acceptance
 
 Four test layers, from fast to slow. Only the last two need Revit.
