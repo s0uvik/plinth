@@ -13,8 +13,8 @@ namespace B2M.Revit.Commands.Mep
     {
         public string Name => "create_air_terminal";
         public string Description =>
-            "Place an air terminal (diffuser, grille) at x, y in mm on a named level; z is the absolute elevation in mm (default the level). "
-            + "Type by type_id or type_name (+ family_name). Hosted and face-based families need host_id (a ceiling or duct).";
+            "Place an air terminal (diffuser, grille) on a named level. Type by type_id or type_name (+ family_name). "
+            + "Level-hosted families may take host_id of a duct. " + MepFixturePlacement.OptionsText;
         public string ParametersSchema => MepFixturePlacement.Schema;
         public bool ReadOnly => false;
 

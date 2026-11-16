@@ -1,6 +1,7 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Mep/CreateLightingFixtureHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: placement shared with create_air_terminal in MepFixturePlacement (see there for the changes).
+// Modified for B2M: placement shared with create_air_terminal in MepFixturePlacement (see there for the changes);
+// Step 10 (F5): face-based on ceilings and walls, without a ceiling at an offset facing down, rotation, created_ids.
 
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
@@ -13,8 +14,7 @@ namespace B2M.Revit.Commands.Mep
     {
         public string Name => "create_lighting_fixture";
         public string Description =>
-            "Place a lighting fixture at x, y in mm on a named level; z is the absolute elevation in mm (default the level). "
-            + "Type by type_id or type_name (+ family_name). Hosted and face-based families need host_id (a ceiling).";
+            "Place a lighting fixture on a named level. Type by type_id or type_name (+ family_name). " + MepFixturePlacement.OptionsText;
         public string ParametersSchema => MepFixturePlacement.Schema;
         public bool ReadOnly => false;
 

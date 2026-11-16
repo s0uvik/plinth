@@ -10,7 +10,7 @@ using Xunit;
 
 namespace B2M.Revit.Core.Tests
 {
-    /// <summary>Revit-free parts of the Step 10 fit-out commands (list/copy template types, create_mep_run).</summary>
+    /// <summary>Revit-free parts of the Step 10 fit-out commands (list/copy template types, family placement, create_mep_run).</summary>
     public class FitOutTests
     {
         private static double[] P(double x, double y, double z) => new[] { x, y, z };
@@ -171,6 +171,58 @@ namespace B2M.Revit.Core.Tests
         {
             var outcome = BatchExecutor.Precheck(new JArray(new JObject { ["command"] = name }), _ => "{}");
             Assert.Contains("NOT_ALLOWED_IN_BATCH", outcome.FirstError);
+        }
+
+        // ---- PlacementRules ---------------------------------------------------------------------------
+
+        private static PlacementRules.Mode? Choose(string type, PlacementRules.HostKind host, PlacementRules.Options o, out string error) =>
+            PlacementRules.Choose(type, host, o, out error, out _);
+
+        [Fact]
+        public void PlacementModesFollowFamilyAndHost()
+        {
+            var none = new PlacementRules.Options();
+            var side = new PlacementRules.Options { HasSide = true };
+            Assert.Equal(PlacementRules.Mode.Level, Choose("OneLevelBased", PlacementRules.HostKind.None, new PlacementRules.Options { HasRotation = true, HasHeight = true }, out _));
+            Assert.Equal(PlacementRules.Mode.WallHosted, Choose("OneLevelBasedHosted", PlacementRules.HostKind.Wall, side, out _));
+            Assert.Equal(PlacementRules.Mode.Hosted, Choose("OneLevelBasedHosted", PlacementRules.HostKind.Horizontal, none, out _));
+            Assert.Equal(PlacementRules.Mode.WallFace, Choose("WorkPlaneBased", PlacementRules.HostKind.Wall, side, out _));
+            Assert.Equal(PlacementRules.Mode.HorizontalFace, Choose("WorkPlaneBased", PlacementRules.HostKind.Horizontal, new PlacementRules.Options { HasRotation = true }, out _));
+            Assert.Equal(PlacementRules.Mode.LevelPlane, Choose("WorkPlaneBased", PlacementRules.HostKind.None, new PlacementRules.Options { HasHeight = true }, out _));
+            Assert.Equal(PlacementRules.Mode.FaceDownPlane, Choose("WorkPlaneBased", PlacementRules.HostKind.None, new PlacementRules.Options { FaceDown = true, HasHeight = true }, out _));
+        }
+
+        [Fact]
+        public void LevelBasedFamilyIgnoresAHostWithAWarning()
+        {
+            var mode = PlacementRules.Choose("OneLevelBased", PlacementRules.HostKind.Wall, new PlacementRules.Options(), out var error, out var warning);
+            Assert.Equal(PlacementRules.Mode.Level, mode);
+            Assert.Null(error);
+            Assert.Contains("ignored", warning);
+        }
+
+        [Theory]
+        [InlineData("OneLevelBased", PlacementRules.HostKind.None, "offset", "INVALID_PARAMS")]
+        [InlineData("OneLevelBased", PlacementRules.HostKind.None, "side", "INVALID_PARAMS")]
+        [InlineData("OneLevelBasedHosted", PlacementRules.HostKind.None, "", "HOST_REQUIRED")]
+        [InlineData("OneLevelBasedHosted", PlacementRules.HostKind.Wall, "rotation", "INVALID_PARAMS")]
+        [InlineData("OneLevelBasedHosted", PlacementRules.HostKind.Horizontal, "side", "HOST_NOT_WALL")]
+        [InlineData("WorkPlaneBased", PlacementRules.HostKind.Wall, "", "SIDE_REQUIRED")]
+        [InlineData("WorkPlaneBased", PlacementRules.HostKind.Horizontal, "height", "INVALID_PARAMS")]
+        [InlineData("WorkPlaneBased", PlacementRules.HostKind.None, "offset", "INVALID_PARAMS")]
+        [InlineData("WorkPlaneBased", PlacementRules.HostKind.Other, "", "UNSUPPORTED_HOST")]
+        [InlineData("TwoLevelsBased", PlacementRules.HostKind.None, "", "UNSUPPORTED_PLACEMENT")]
+        public void PlacementCombinationsAreRefused(string type, PlacementRules.HostKind host, string option, string code)
+        {
+            var o = new PlacementRules.Options
+            {
+                HasHostOffset = option == "offset",
+                HasSide = option == "side",
+                HasRotation = option == "rotation",
+                HasHeight = option == "height"
+            };
+            Assert.Null(Choose(type, host, o, out var error));
+            Assert.StartsWith(code + ":", error);
         }
     }
 }
