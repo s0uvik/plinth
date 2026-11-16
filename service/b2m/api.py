@@ -25,6 +25,7 @@ from b2m import imports_api, logs
 from b2m.cad import overlay, reader as cad_reader, sheet as cad_sheet
 from b2m.cad.building import PlanRecognition, RecognisedBuilding
 from b2m.cad.project import ImportProject, ImportStore, LocationRequired, analyse, collect
+from b2m.cad.assumptions import ProfileRequired
 from b2m.imports_api import NotWired
 from b2m.brief.agent import BriefFailed, BriefSession, MessagesClient, Questions, SpecReady, anthropic_client
 from b2m.builds import BuildService, Busy, product_version
@@ -828,6 +829,8 @@ def add_import_routes(app: FastAPI, service: BuildService, imports: Imports) -> 
             try:
                 made = engine(imports_api.assume, project, ids)
             except LocationRequired as e:
+                raise HTTPException(409, str(e)) from e
+            except ProfileRequired as e:  # no location profile covers this place: ask which values apply
                 raise HTTPException(409, str(e)) from e
             except KeyError as e:
                 raise HTTPException(404, str(e)) from e
