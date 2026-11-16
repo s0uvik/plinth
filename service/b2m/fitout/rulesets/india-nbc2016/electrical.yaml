@@ -137,6 +137,18 @@ electrical:
       value: 2400
       source: "NBC 2016 Part 8 Section 2: ceiling fan blades not less than 2.4 m above floor, as recalled"
       verified: false
+    socket_16a:
+      value: 1100
+      source: "Typical practice: power sockets (kitchen appliances, washing machine) above worktop height"
+      verified: false
+    data_point:
+      value: 300
+      source: "Typical practice: beside the TV or study table"
+      verified: false
+    meter_board:
+      value: 1500
+      source: "Supply licensee practice: meters readable at eye level, as recalled"
+      verified: false
 
   distribution_board:
     per_flat: 1
@@ -150,7 +162,17 @@ electrical:
     lighting_max_points: 10
     lighting_max_w: 800
     power_16a_max_outlets: 2
-    source: "NBC 2016 Part 8 Section 2 / IS 732: at most 10 points or 800 W per lighting final circuit; at most two 16 A outlets per power circuit; as recalled"
+    socket_max_points: 10
+    dedicated: [ac, geyser]
+    source: "NBC 2016 Part 8 Section 2 / IS 732: at most 10 points or 800 W per lighting final circuit (6 A sockets likewise); at most two 16 A outlets per power circuit; an air conditioner and a water heater each on a circuit of its own (typical practice); as recalled"
+    verified: false
+
+  wiring:
+    conduit_mm: 20
+    feeder_mm: 32
+    riser_mm: 50
+    riser_above_top_floor_mm: 2400
+    source: "Typical Indian practice: 20 mm PVC conduit concealed in the slab and walls for final circuits, 32 mm for a flat's feeder, a 50 mm riser in the common area; simplified for coordination (one conduit per point)"
     verified: false
 
   loads_w:
@@ -170,8 +192,98 @@ electrical:
       value: 1000
       source: "NBC 2016 Part 8 Section 2: 16 A socket outlet 1000 W, as recalled"
       verified: false
+    exhaust_fan:
+      value: 40
+      source: "Typical domestic exhaust fan rating"
+      verified: false
+    ac:
+      value: 1800
+      source: "Typical 1.5 TR inverter split AC input power (BEE star-rated units 1.3-2 kW)"
+      verified: false
+    geyser:
+      value: 2000
+      source: "Typical 25 L storage water heater element (IS 2082)"
+      verified: false
+    pump:
+      value: 1100
+      source: "Typical 1.5 HP domestic transfer pump (underground tank to overhead tank)"
+      verified: false
+    exit_sign:
+      value: 10
+      source: "Typical LED exit sign"
+      verified: false
 
   meter_room:
     value: "a meter space on the ground floor near the entrance, one meter per flat plus the common meter"
     source: "Typical Indian multi-dwelling practice; the supply authority decides"
     verified: false
+
+  # What F1/F5 match a family type by; sizes are nominal (width along the wall, depth from it, height).
+  devices:
+    light:
+      label: Ceiling light point
+      category: Lighting Fixtures
+      keywords: [ceiling light, downlight, light, luminaire, lamp]
+      size: {width_mm: 300, depth_mm: 300, height_mm: 100}
+      load: light
+      source: "Typical residential light point"
+      verified: false
+    fan:
+      label: Ceiling fan
+      category: Electrical Fixtures
+      keywords: [ceiling fan, fan]
+      size: {width_mm: 1200, depth_mm: 1200, height_mm: 400}
+      load: fan
+      source: "Typical 1200 mm sweep ceiling fan"
+      verified: false
+    switchboard:
+      label: Switchboard
+      category: Lighting Devices
+      keywords: [switch, switchboard, switch plate, lighting switch]
+      size: {width_mm: 250, depth_mm: 50, height_mm: 150}
+      source: "Typical modular switchboard (8 module)"
+      verified: false
+    socket_6a:
+      label: 6 A socket outlet
+      category: Electrical Fixtures
+      keywords: [receptacle, socket, outlet, duplex, 6a]
+      size: {width_mm: 100, depth_mm: 50, height_mm: 100}
+      load: socket_6a
+      source: "IS 1293 6 A socket outlet"
+      verified: false
+    socket_16a:
+      label: 16 A power socket
+      category: Electrical Fixtures
+      keywords: [receptacle, power, socket, 16a, outlet]
+      size: {width_mm: 100, depth_mm: 50, height_mm: 100}
+      load: socket_16a
+      source: "IS 1293 16 A socket outlet"
+      verified: false
+    tv_outlet:
+      label: TV outlet
+      category: Communication Devices
+      keywords: [tv, television, communication, outlet]
+      size: {width_mm: 100, depth_mm: 50, height_mm: 100}
+      source: "Typical practice"
+      verified: false
+    data_outlet:
+      label: Data outlet
+      category: Data Devices
+      keywords: [data, network, rj45, outlet]
+      size: {width_mm: 100, depth_mm: 50, height_mm: 100}
+      source: "Typical practice"
+      verified: false
+    distribution_board:
+      label: Distribution board
+      category: Electrical Equipment
+      keywords: [panelboard, distribution board, db, panel, consumer unit]
+      size: {width_mm: 400, depth_mm: 100, height_mm: 450}
+      source: "IS 8623 / typical 12-way single-phase DB"
+      verified: false
+    meter_board:
+      label: Meter board
+      category: Electrical Equipment
+      keywords: [meter, meter board, panel, switchboard]
+      size: {width_mm: 1500, depth_mm: 250, height_mm: 900}
+      source: "Supply licensee practice: one meter per flat plus the common meter on a board"
+      verified: false
