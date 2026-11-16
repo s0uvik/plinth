@@ -68,7 +68,10 @@ def build_server(api: Api | None = None, config: dict[str, Any] | None = None) -
             "B2M turns a written brief for a G+3/G+4 Kolkata apartment block into a native Revit model. "
             "Call b2m_plan_from_brief with the brief; if it returns questions, ask the user and call it again with "
             "brief_id and answers. Show the user the defaults and layout before calling b2m_build, and build only "
-            "into the Revit document title the user confirms."),
+            "into the Revit document title the user confirms. "
+            "To model from the office's CAD drawings, use the b2m_import_ tools: start, follow the status, put every "
+            "question to the user (never answer one yourself), and point them to the review page "
+            f"(http://{HOST}:{PORT}/import) to check the overlay before they approve."),
     )
 
     @server.tool()
@@ -119,9 +122,68 @@ def build_server(api: Api | None = None, config: dict[str, Any] | None = None) -
         """Delete everything a build run created, as one Revit undo step. Only that run's elements are touched."""
         return api.call("POST", f"/runs/{run_id}/remove", {})
 
+    add_import_tools(server, api)
     add_gateway_tools(server, api, config["read_only"])
     add_catalog_tools(server, api, config)
     return server
+
+
+def add_import_tools(server: MCPServer, api: Api) -> None:
+    """Drawing import (PRD Step 9): DWG set -> review -> approved build. Nothing is guessed: what the drawings do not
+    settle is a question for the user."""
+
+    @server.tool()
+    def b2m_import_start(folder: str) -> dict[str, Any]:
+        """Start importing the DWG/DXF drawing set in this folder (on this PC). Returns an import_id; follow it with
+        b2m_import_status until status is ready (or failed, with the error and a hint)."""
+        return api.call("POST", "/imports", {"folder": folder})
+
+    @server.tool()
+    def b2m_import_status(import_id: str) -> dict[str, Any]:
+        """Import progress and what was understood: each sheet's role, storeys, title, scale and page, recognition
+        counts per sheet, cross-sheet registrations, the location, approval state and the readiness report."""
+        return api.call("GET", f"/imports/{import_id}")
+
+    @server.tool()
+    def b2m_import_questions(import_id: str) -> dict[str, Any]:
+        """The open and answered questions grouped by severity (blocking first), each with its options and evidence
+        (sheet and drawing entity handles), plus the location, every assumption made so far and readiness. Put the
+        questions to the user as written; never answer them yourself."""
+        return api.call("GET", f"/imports/{import_id}/questions")
+
+    @server.tool()
+    def b2m_import_answer(import_id: str, question_id: str, answer: str) -> dict[str, Any]:
+        """Record the user's own answer to one question (the value they gave, e.g. "3000" or one of the options).
+        Only pass what the user said; an answer after approval withdraws the approval."""
+        return api.call("POST", f"/imports/{import_id}/answers", {"question_id": question_id, "answer": answer})
+
+    @server.tool()
+    def b2m_import_set_location(import_id: str, city: str, state: str, country: str,
+                                municipality: str = "") -> dict[str, Any]:
+        """Set the project location as the user gave it (city, state, country, and the municipality if they know
+        it). Assumptions come from that location's rules, so it is needed before anything can be assumed."""
+        return api.call("POST", f"/imports/{import_id}/location", {"city": city, "municipality": municipality or None,
+                                                                   "state": state, "country": country})
+
+    @server.tool()
+    def b2m_import_assume(import_id: str, question_ids: list[str] | str) -> dict[str, Any]:
+        """Assume answers for these questions (a list of ids, or "all" for every open one) from the location's rules
+        and typical practice. NEVER call this unless the user explicitly said "assume", and only after the location
+        is set (ask the user for it first and call b2m_import_set_location; without it this fails with 409). Read
+        every assumption in the response back to the user."""
+        return api.call("POST", f"/imports/{import_id}/assume", {"question_ids": question_ids})
+
+    @server.tool()
+    def b2m_import_approve(import_id: str, note: str = "") -> dict[str, Any]:
+        """Record the user's approval of the review (what B2M understood from the drawings, the answers and the
+        assumptions). Call it only when the user says they approve; it is refused while blocking questions remain."""
+        return api.call("POST", f"/imports/{import_id}/approve", {"note": note or None})
+
+    @server.tool()
+    def b2m_import_build(import_id: str, document_title: str) -> dict[str, Any]:
+        """Build the approved import in the open Revit document with this title (confirm the title with the user).
+        If inputs are still missing it fails and lists them: ask the user. Returns a run_id for b2m_run_status."""
+        return api.call("POST", f"/imports/{import_id}/build", {"document_title": document_title})
 
 
 def add_gateway_tools(server: MCPServer, api: Api, read_only: bool) -> None:
