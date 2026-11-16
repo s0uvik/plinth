@@ -230,6 +230,13 @@ def normalise(q: Question, value: Any) -> Any:
             raise AnswerError(f"{q.id}: answer \"skip\" or {{'mode': 'new_wall', 'thickness_mm': ..., "
                               "'function': 'interior'}")
         if t == "plan_input":
+            members = q.key.get("members") or []
+            if isinstance(value, dict) and value and members and set(value) <= set(members):
+                missing = [m for m in members if m not in value]
+                if missing:
+                    raise AnswerError(f"{q.id}: answer every place, or once for all: {missing} not answered")
+                one = q.model_copy(update={"key": {k: v for k, v in q.key.items() if k != "members"}})
+                return {m: normalise(one, v) for m, v in value.items()}
             raw = q.key.get("options_raw") or []
             if isinstance(value, str):
                 for text, o in zip(q.options, raw):
