@@ -574,7 +574,20 @@ namespace B2M.Revit.Commands.Families
             var material = extrusion.get_Parameter(BuiltInParameter.MATERIAL_ID_PARAM);
             if (material == null || !Manager.CanElementParameterBeAssociated(material))
                 throw new InvalidOperationException("the extrusion's material cannot be bound to a family parameter");
+            // Binding geometry to a material parameter that holds no material fails with "Document regeneration
+            // failed" (the beam template's built-in Structural Material starts empty; found live). Give it Concrete.
+            EnsureMaterialValue(parameter);
             Manager.AssociateElementParameterToFamilyParameter(material, parameter);
+        }
+
+        private void EnsureMaterialValue(FamilyParameter parameter)
+        {
+            var current = Manager.CurrentType?.AsElementId(parameter);
+            if (current != null && current != ElementId.InvalidElementId && Doc.GetElement(current) is Material) return;
+            var concrete = new FilteredElementCollector(Doc).OfClass(typeof(Material)).Cast<Material>()
+                .FirstOrDefault(m => string.Equals(m.Name, "Concrete", StringComparison.OrdinalIgnoreCase));
+            var id = concrete?.Id ?? Material.Create(Doc, "Concrete");
+            Manager.Set(parameter, id);
         }
 
         private FamilyParameter FindParameter(string name)
