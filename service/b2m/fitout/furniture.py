@@ -105,7 +105,7 @@ class Unplaced(_Model):
     item: str
     label: str
     optional: bool
-    status: Literal["no_fit", "anchor_missing", "not_needed"]
+    status: Literal["no_fit", "anchor_missing", "not_needed", "left_out"]
     reason: str
 
 
@@ -174,7 +174,17 @@ class _Item:
 
 # ------------------------------------------------------------------------------------------------ the solver
 
-def solve(model: RoomModel, rules: FitoutRules) -> FurnitureLayout:
+def with_sizes(rules: FitoutRules, sizes: dict[str, list[Size]]) -> FitoutRules:
+    """The rule set with these items' sizes replaced, preferred first (the footprints of the family types chosen for
+    them); placement, clearances and preferences stay the rule's."""
+    items = {k: (v.model_copy(update={"sizes": list(sizes[k])}) if sizes.get(k) else v)
+             for k, v in rules.furniture.items.items()}
+    return rules.model_copy(update={"furniture": rules.furniture.model_copy(update={"items": items})})
+
+
+def solve(model: RoomModel, rules: FitoutRules, *, leave_out: dict[str, str] | None = None) -> FurnitureLayout:
+    """Lay out every furnished room. ``leave_out``: items not placed at all, with why (the user left them out, or a
+    family chosen for another item includes them, as a bed set its side tables); each room's are listed."""
     by_key = model.by_key()
     placed: list[Placed] = []
     unplaced: list[Unplaced] = []
@@ -197,6 +207,13 @@ def solve(model: RoomModel, rules: FitoutRules) -> FurnitureLayout:
             unplaced.append(Unplaced(room_key=room.key, level=room.level, item=e.item,
                                      label=rules.furniture.items[e.item].label, optional=e.optional,
                                      status="not_needed", reason=why))
+        if leave_out:
+            for e in entries:
+                if e.item in leave_out:
+                    unplaced.extend(Unplaced(room_key=room.key, level=room.level, item=e.item,
+                                             label=rules.furniture.items[e.item].label, optional=e.optional,
+                                             status="left_out", reason=leave_out[e.item]) for _ in range(e.count))
+            entries = [e for e in entries if e.item not in leave_out]
         if not entries:
             continue
         sig = _signature(room, entries)

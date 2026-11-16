@@ -25,7 +25,8 @@ def _fail(error: str, data: Any = None) -> RevitError:
 
 
 class FitoutRevit:
-    """The fake document. ``types``: project family types {category, family, type, dims (mm), writable (names)};
+    """The fake document. ``types``: project family types {category, family, type, dims (mm), writable (names),
+    placement, box: what measure_family_types answers for it {min, max, base_offset_mm} (mm, about the point asked)};
     ``mep``: project MEP types {kind, name}; ``templates``: {path: {"family_types": [...], "mep_types": {kind: [...]}}}
     in list_types_in_file's shape; ``elements``: id -> {category, level, ...} already in the model (a built run)."""
 
@@ -33,8 +34,10 @@ class FitoutRevit:
         self.next_id = 50000
         self.elements: dict[int, dict[str, Any]] = {}
         for t in types or []:
-            self._add_type("family_type", t["type"], t["family"], t["category"], dims=t.get("dims") or {},
-                           writable=t.get("writable"), placement=t.get("placement", "OneLevelBased"))
+            type_id = self._add_type("family_type", t["type"], t["family"], t["category"], dims=t.get("dims") or {},
+                                     writable=t.get("writable"), placement=t.get("placement", "OneLevelBased"))
+            if t.get("box"):  # what measure_family_types answers for it: {min, max, base_offset_mm?} (mm)
+                self.elements[type_id]["box"] = dict(t["box"])
         for m in mep or []:
             self._add_type(m["kind"], m["name"])
         for element_id, element in (elements or {}).items():
@@ -120,6 +123,14 @@ class FitoutRevit:
 
     def _get_available_family_types(self, p):
         bic = p.get("builtInCategory")
+        if bic is None:  # every loadable family type, grouped by category (the add-in lists FamilySymbols)
+            groups: dict[str, list] = {}
+            for i, e in self.elements.items():
+                if e.get("is_type") and e["kind"] == "family_type":
+                    groups.setdefault(e["category"], []).append({"typeId": i, "familyName": e["family"], "typeName": e["type"]})
+            return {"totalCategories": len(groups), "totalTypes": sum(len(v) for v in groups.values()),
+                    "categories": [{"category": c, "builtInCategory": c, "count": len(v), "types": v}
+                                   for c, v in sorted(groups.items())]}
         rows = [(i, e) for i, e in self.elements.items() if e.get("is_type") and e["category"] == bic]
         types = [{"typeId": i, "familyName": e["family"] or e["kind"], "typeName": e["type"]} for i, e in rows]
         return {"totalCategories": 1 if types else 0, "totalTypes": len(types),
@@ -134,6 +145,26 @@ class FitoutRevit:
             out.append({"typeId": type_id, "typeName": e["type"], "familyName": e["family"],
                         "builtInCategory": e["category"], "parameters": parameters})
         return {"count": len(out), "types": out}
+
+    def _measure_family_types(self, p):
+        """One instance per type at the level's origin, measured and rolled back (as the add-in): nothing changes."""
+        level = p.get("level") or "L1"
+        types, skipped = [], []
+        for type_id in p["type_ids"]:
+            e = self.elements.get(type_id)
+            if e is None or not e.get("is_type") or e["kind"] != "family_type":
+                skipped.append({"type_id": type_id, "reason": "not a family type in this document"})
+            elif e["placement"] not in ("OneLevelBased", "WorkPlaneBased"):
+                skipped.append({"type_id": type_id, "reason": f"placement {e['placement']}: it needs a host to be measured"})
+            elif not e.get("box"):
+                skipped.append({"type_id": type_id, "reason": "no box in the fake"})
+            else:
+                box = e["box"]
+                types.append({"type_id": type_id, "family": e["family"], "type": e["type"], "placement": e["placement"],
+                              "min": list(box["min"]), "max": list(box["max"]),
+                              "base_offset_mm": box.get("base_offset_mm", 0.0), "facing": [0.0, 1.0, 0.0],
+                              "hand": [1.0, 0.0, 0.0], "level": level})
+        return {"level": level, "level_elevation_mm": 3000.0, "measured": len(types), "types": types, "skipped": skipped}
 
     def _analyze_model_statistics(self, p):
         ids = p.get("elementIds") or []

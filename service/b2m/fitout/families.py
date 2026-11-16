@@ -30,12 +30,24 @@ How it decides, per need:
   options; the answer {"family", "type"} (any type of the category, project or template) or "skip".
 
 Category names in the rules are Revit's English display names ("Plumbing Fixtures"); ``CATEGORIES`` maps them to
-built-in categories, so matching does not depend on Revit's language.
+built-in categories, so matching does not depend on Revit's language. A type the user names is looked for in the
+rule's category, then in any category of the project (a TV unit family drawn as Furniture), then in the templates.
+
+Families first (``resolve_items``, used by ``to_plan.plan_furniture``): before the layout, a family type is chosen per
+rule item and each project type is measured (``Measurer``: measurements given, e.g. a saved file, else the add-in's
+measure_family_types, which places one unrotated instance per type at a level's origin, reads its box and rolls back;
+cached per document and type). The layout then uses the family's real footprint (its smaller types when it does not
+fit), and the plan inserts it from its measured box. A measurement's ``base_offset_mm`` makes a Revit quirk explicit:
+some level-based families take the point's z (the level's elevation) as an offset above the level, so their box
+starts that far up; the family's own base is the box less it.
 """
 
 from __future__ import annotations
 
+import json
+import math
 import re
+from pathlib import Path
 from typing import Any, Iterable, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict
@@ -110,9 +122,75 @@ class Candidate(_Model):
     score: float = 0
 
 
+Front = Literal["-y", "+y", "-x", "+x"]
+# The turn (degrees, anticlockwise) that brings a family's front to -Y, the way the layout's rotation assumes.
+FRONT_TURN: dict[str, float] = {"-y": 0.0, "+y": 180.0, "+x": 270.0, "-x": 90.0}
+BASE_TOL_MM = 50.0  # a box this close to a level's elevation was measured with the point's z taken as an offset
+
+
+def turn(p: tuple[float, float], deg: float) -> tuple[float, float]:
+    """``p`` turned anticlockwise by ``deg`` about the origin."""
+    r = math.radians(deg)
+    c, s = math.cos(r), math.sin(r)
+    return (p[0] * c - p[1] * s, p[0] * s + p[1] * c)
+
+
+class Measurement(_Model):
+    """A family type's box, measured on one instance placed unrotated at a level's origin (add-in command
+    measure_family_types, or given): ``min``/``max`` in mm relative to the point asked for, as Revit placed it.
+    ``base_offset_mm``: how far above that point Revit put the family's own origin (some level-based families take
+    the point's z, the level's elevation, as an offset above the level); the family's own box is the box less it."""
+
+    type_id: int | None = None
+    family: str | None = None
+    type: str
+    placement: str | None = None
+    min: tuple[float, float, float]
+    max: tuple[float, float, float]
+    base_offset_mm: float = 0.0
+    facing: tuple[float, float, float] | None = None
+    hand: tuple[float, float, float] | None = None
+    level: str | None = None
+    source: str = "measure_family_types"
+
+    @property
+    def base_mm(self) -> float:
+        """The lowest point of the family below (negative) or above its own origin."""
+        return self.min[2] - self.base_offset_mm
+
+    @property
+    def height_mm(self) -> float:
+        return self.max[2] - self.min[2]
+
+    def item_box(self, front: str = "-y") -> tuple[float, float, float, float]:
+        """The family's plan box (x0, y0, x1, y1) turned so its front faces -Y: width along X, its back at y1."""
+        xs, ys = [], []
+        for x in (self.min[0], self.max[0]):
+            for y in (self.min[1], self.max[1]):
+                tx, ty = turn((x, y), FRONT_TURN[front])
+                xs.append(tx)
+                ys.append(ty)
+        return (min(xs), min(ys), max(xs), max(ys))
+
+    def size(self, front: str = "-y") -> tuple[float, float, float]:
+        """Width (along its back), depth and height, mm."""
+        x0, y0, x1, y1 = self.item_box(front)
+        return (round(x1 - x0, 1), round(y1 - y0, 1), round(self.height_mm, 1))
+
+    def describe(self) -> str:
+        lo, hi = self.min, self.max
+        text = (f"box x {lo[0]:g}..{hi[0]:g}, y {lo[1]:g}..{hi[1]:g}, z {lo[2] - self.base_offset_mm:g}.."
+                f"{hi[2] - self.base_offset_mm:g} mm about its origin")
+        if self.base_offset_mm:
+            text += f" (measured {self.base_offset_mm:g} mm up: the family took the point's z as its offset)"
+        return text
+
+
 class Choice(_Model):
     """The family type a need is placed with. ``type`` is the type to place: the size copy's name when one is made
-    (from ``base_type``, setting ``values_mm``)."""
+    (from ``base_type``, setting ``values_mm``). ``measured``: the type's measured box, when known (the layout then
+    used its footprint, and the insertion point is worked out from it); ``front``: which way the family's front faces
+    in its own coordinates (-Y, the Revit way, unless the user says otherwise)."""
 
     need: str
     category: str
@@ -128,6 +206,9 @@ class Choice(_Model):
     depth_mm: float | None = None
     differences: list[str] = []
     answered: bool = False
+    type_id: int | None = None
+    measured: Measurement | None = None
+    front: Front = "-y"
 
 
 class Resolution(_Model):
@@ -320,6 +401,15 @@ class _Search:
                 self.searched.append("project")
         return self._project[category]
 
+    def project_all(self) -> list[dict[str, Any]]:
+        """Every loadable family type in the project, each row with its builtInCategory (a type the user names may
+        be in another category than the rule's: a TV unit drawn as Furniture, not Casework)."""
+        if "*" not in self._project:
+            listing = self.revit.call("get_available_family_types", {})
+            self._project["*"] = [{**t, "builtInCategory": g.get("builtInCategory")}
+                                  for g in listing.get("categories") or [] for t in g.get("types") or []]
+        return self._project["*"]
+
     def project_candidates(self, need: Need, rows: list[dict[str, Any]] | None = None, scored: bool = True) -> list[Candidate]:
         rows = self.project_rows(need.category) if rows is None else rows
         if need.mep:
@@ -413,18 +503,19 @@ class _Search:
 # ------------------------------------------------------------------------------------------------ resolve
 
 def resolve(needs: list[Need], revit: Revit, answers: dict[str, Any] | None = None, *, year: int | str | None = None,
-            language: str | None = None, templates: list[str] | None = None) -> Resolution:
+            language: str | None = None, templates: list[str] | None = None, search: "_Search | None" = None) -> Resolution:
     """Match every need to a family type (or MEP type), adapt a copy for a size, or ask. ``templates``: the template
     files to search instead of the installed ones for the running Revit year (``year`` for another installed year,
-    ``language`` for another language folder)."""
+    ``language`` for another language folder). An answer is looked up by the need's question id, then by its item
+    (``fitout:family:<item>``, so one answer serves every size of an item)."""
     answers = answers or {}
-    search = _Search(revit, year, language, templates)
+    search = search or _Search(revit, year, language, templates)
     choices: dict[str, Choice] = {}
     questions: list[Question] = []
     assumptions: list[Assumption] = []
     skipped: list[str] = []
     for need in needs:
-        answer = answers.get(question_id(need))
+        answer = answer_for(need, answers)
         if answer == "skip":
             skipped.append(need.id)
             continue
@@ -455,16 +546,33 @@ def question_id(need: Need) -> str:
     return f"fitout:family:{need.id}"
 
 
+def answer_for(need: Need, answers: dict[str, Any]) -> Any:
+    """The user's answer for a need: by its question id, else by its item ("fitout:family:bed" answers every bed
+    size; the item's id as the rules write it, "side_table", or slugged, "side-table")."""
+    for key in (question_id(need), f"fitout:family:{need.item}", f"fitout:family:{_slug(need.item)}"):
+        if key in answers:
+            return answers[key]
+    return None
+
+
 def _fits(need: Need, c: Candidate) -> bool:
     miss = _miss(need, c)
     return miss is not None and miss <= SIZE_TOL_MM
 
 
 def _answered(need: Need, answer: dict[str, Any], search: _Search) -> Candidate | None:
-    family, type_ = answer.get("family"), answer.get("type")
+    family, type_ = answer.get("family"), answer.get("type") or next(iter(answer.get("types") or []), None)
     if not type_:
         return None
     pool = search.project_candidates(need, scored=False)
+    if not any(_same(c, family, type_) for c in pool) and not need.mep:
+        # the type named may be in another category (a TV unit family drawn as Furniture): the project's, any category
+        rows = [r for r in search.project_all() if r.get("typeName", "").casefold() == type_.casefold()
+                and (family is None or (r.get("familyName") or "").casefold() == family.casefold())]
+        for r in rows[:1]:
+            if r.get("builtInCategory"):
+                other = need.model_copy(update={"category": r["builtInCategory"]})
+                pool += search.project_candidates(other, rows=[r], scored=False)
     if not any(_same(c, family, type_) for c in pool):
         pool += search.template_candidates(need, scored=False)
     if answer.get("path"):
@@ -482,8 +590,9 @@ def _size(w: float | None, d: float | None) -> str:
 
 def _choose(need: Need, c: Candidate, answered: bool) -> tuple[Choice, list[Assumption]]:
     kind = "family_type" if not need.mep else need.category
-    base = dict(need=need.id, category=need.category if not need.mep else MEP_KIND_CATEGORY.get(need.category, need.category),
-                family=c.family, source=c.source, path=c.path, placement=c.placement, kind=kind, answered=answered)
+    base = dict(need=need.id, category=c.category if not need.mep else MEP_KIND_CATEGORY.get(need.category, need.category),
+                family=c.family, source=c.source, path=c.path, placement=c.placement, kind=kind, answered=answered,
+                type_id=c.type_id if c.source == "project" else None)
     notes: list[Assumption] = []
     where = "the project" if c.source == "project" else (c.path or "").rsplit("\\", 1)[-1]
     name = f"{c.family}: {c.type}" if c.family else c.type
@@ -535,3 +644,308 @@ def _question(need: Need, search: _Search, why: str | None = None) -> Question:
                    f"(looked for {', '.join(need.keywords)} in {need.category}). Choose a type to use (it may be "
                    f"copied to the size), load a family into the project and plan again, or leave it out.")
     return Question(id=question_id(need), topic="families", text=text, options=options, instances=need.keys)
+
+
+# ------------------------------------------------------------------------------------------------ measurements
+
+MEASURE_COMMAND = "measure_family_types"
+MEASURE_TIMEOUT_SECONDS = 300
+# (document title, type id) -> measurement, for this process: a type is measured once per document.
+MEASURED: dict[tuple[str, int], Measurement] = {}
+
+
+def parse_measurement(row: dict[str, Any], source: str = MEASURE_COMMAND,
+                      level_elevations: Iterable[float] = ()) -> Measurement:
+    """A measure_family_types row (or one in its shape). A row without ``base_offset_mm`` whose box starts within
+    ``BASE_TOL_MM`` of one of ``level_elevations`` (other than 0) was measured on that level with the point's z taken
+    as an offset: that elevation is its base offset."""
+    lo = tuple(float(v) for v in row["min"])
+    hi = tuple(float(v) for v in row["max"])
+    base = row.get("base_offset_mm")
+    if base is None:
+        base = next((e for e in level_elevations if abs(e) > BASE_TOL_MM and abs(lo[2] - e) <= BASE_TOL_MM), 0.0)
+
+    def vec(name: str) -> tuple[float, float, float] | None:
+        v = row.get(name)
+        return tuple(float(x) for x in v) if v else None
+
+    return Measurement(type_id=row.get("type_id"), family=row.get("family"), type=row["type"],
+                       placement=row.get("placement"), min=lo, max=hi, base_offset_mm=float(base), facing=vec("facing"),
+                       hand=vec("hand"), level=row.get("level"), source=source)
+
+
+def load_measurements(data: str | Path | dict[str, Any] | list[dict[str, Any]],
+                      level_elevations: Iterable[float] = ()) -> list[Measurement]:
+    """Measurements given instead of measured now: a saved measure_family_types answer or a file in its shape
+    ({"types": [rows]} or [rows]). A file's own ``level_elevation_mm`` (the level it was measured on) is used for rows
+    without ``base_offset_mm``; else ``level_elevations`` (the building's levels) are tried, see parse_measurement."""
+    source = "measured, given"
+    if isinstance(data, (str, Path)):
+        path = Path(data)
+        source = f"measured, from {path.name}"
+        data = json.loads(path.read_text(encoding="utf-8"))
+    rows = data.get("types") if isinstance(data, dict) else data
+    elevations = list(level_elevations)
+    if isinstance(data, dict) and data.get("level_elevation_mm") is not None:
+        elevations = [float(data["level_elevation_mm"])]
+    return [parse_measurement(r, source, elevations) for r in rows or []]
+
+
+class Measurer:
+    """Measurements per family type: the given ones first (by type id, then by family and type name), then the
+    add-in's measure_family_types (one call for all, rolled back by the add-in: nothing stays in the model), cached
+    per document and type. A type that cannot be measured keeps why (face-based, the add-in lacks the command...)."""
+
+    def __init__(self, revit: Revit, given: list[Measurement] | None = None, *, document: str | None = None,
+                 level: str | None = None, cache: dict[tuple[str, int], Measurement] | None = None):
+        self.revit = revit
+        self.given = list(given or [])
+        self.document = document or ""
+        self.level = level
+        # the process-wide cache only for a named document (type ids are only unique within one)
+        self.cache = cache if cache is not None else (MEASURED if document else {})
+        self.why: dict[int, str] = {}
+        self.unavailable: str | None = None
+
+    def _given(self, type_id: int | None, family: str | None, type_: str) -> Measurement | None:
+        for m in self.given:
+            if type_id is not None and m.type_id == type_id:
+                return m
+        for m in self.given:
+            if m.type.casefold() == type_.casefold() and (family is None or (m.family or "").casefold() == family.casefold()):
+                return m.model_copy(update={"type_id": type_id}) if type_id is not None else m
+        return None
+
+    def measure(self, wanted: list[tuple[int | None, str | None, str]]) -> dict[tuple, Measurement]:
+        """(type id, family, type) -> measurement, for those that are measured."""
+        out: dict[tuple, Measurement] = {}
+        ask: list[int] = []
+        for w in dict.fromkeys(wanted):
+            type_id, family, type_ = w
+            m = self._given(type_id, family, type_)
+            if m is None and type_id is not None:
+                m = self.cache.get((self.document, type_id))
+            if m is not None:
+                out[w] = m
+            elif type_id is not None:
+                ask.append(type_id)
+            else:
+                self.why.setdefault(-1, "not in the project (a template's type is measured only once it is copied in)")
+        if ask and self.unavailable is None:
+            params: dict[str, Any] = {"type_ids": sorted(set(ask))}
+            if self.level:
+                params["level"] = self.level
+            try:
+                result = self.revit.call(MEASURE_COMMAND, params, timeout_seconds=MEASURE_TIMEOUT_SECONDS)
+            except Exception as e:  # an older add-in without the command, or Revit refusing: lay out by the rules
+                self.unavailable = f"{MEASURE_COMMAND} failed: {getattr(e, 'error', None) or e}"
+            else:
+                for row in result.get("types") or []:
+                    m = parse_measurement(row, f"{MEASURE_COMMAND} on {result.get('level') or row.get('level') or 'a level'}")
+                    if m.type_id is not None:
+                        self.cache[(self.document, m.type_id)] = m
+                for row in result.get("skipped") or []:
+                    self.why[int(row["type_id"])] = str(row.get("reason") or "not measured")
+        for w in wanted:
+            if w in out or w[0] is None:
+                continue
+            m = self.cache.get((self.document, w[0]))
+            if m is not None:
+                out[w] = m
+            else:
+                self.why.setdefault(w[0], self.unavailable or "the add-in did not measure it")
+        return out
+
+    def reason(self, type_id: int | None) -> str:
+        if type_id is None:
+            return "not in the project (a template's type is measured only once it is copied in)"
+        return self.why.get(type_id) or self.unavailable or "not measured"
+
+
+# ------------------------------------------------------------------------------------------------ families first
+
+class ItemFamily(_Model):
+    """The family type chosen for a rule item before the layout. ``options``: the measured types the layout may use,
+    preferred first (the type chosen, then the family's smaller types or the types the answer lists); each is laid
+    out at its own footprint. Empty: the item is laid out at the rule's sizes (nothing measured)."""
+
+    item: str
+    need: Need
+    choice: Choice
+    options: list[Choice] = []
+
+
+class ItemFamilies(_Model):
+    items: dict[str, ItemFamily] = {}
+    left_out: dict[str, str] = {}  # item -> why it is not placed at all (the user's skip, or included in another)
+    questions: list[Question] = []
+    asked: dict[str, str] = {}  # item -> its question's id
+    assumptions: list[Assumption] = []
+    searched: list[str] = []
+
+    def sizes(self) -> dict[str, list[Any]]:
+        """Item -> its sizes for the layout (rules.Size), from the measured types; items without stay as the rules."""
+        from b2m.fitout.rules import Size
+
+        out = {}
+        for item, fam in self.items.items():
+            sizes = []
+            for c in fam.options:
+                w, d, h = c.measured.size(c.front)
+                sizes.append(Size(width_mm=w, depth_mm=d, height_mm=max(h, 1.0)))
+            if sizes:
+                out[item] = sizes
+        return out
+
+    def question_for(self, item: str) -> Question | None:
+        qid = self.asked.get(item)
+        return next((q for q in self.questions if q.id == qid), None)
+
+
+def item_needs(model: Any, rules: Any) -> list[Need]:
+    """One need per rule item the model's rooms are furnished with (and the fixtures set on a counter), at the item's
+    preferred size; keys: the rooms that have it. A counter is left to the layout (its legs' lengths)."""
+    rooms_of: dict[str, set[str]] = {}
+    for room in model.rooms:
+        if not room.classes:
+            continue
+        for e in rules.set_for(list(room.classes)):
+            item = rules.furniture.items[e.item]
+            for item_id in [e.item, *item.fixtures]:
+                rooms_of.setdefault(item_id, set()).add(room.key)
+    needs = []
+    for item_id in sorted(rooms_of):
+        item = rules.furniture.items[item_id]
+        if item.placement == "counter":
+            continue
+        category = builtin_category(item.category)
+        if category is None:
+            raise ValueError(f"{item_id}: unknown Revit category {item.category!r}")
+        size = item.sizes[0]
+        needs.append(Need(id=_slug(item_id), item=item_id, label=item.label, category=category,
+                          keywords=list(item.keywords), width_mm=size.width_mm, depth_mm=size.depth_mm,
+                          keys=sorted(rooms_of[item_id])))
+    return needs
+
+
+def resolve_items(model: Any, rules: Any, revit: Revit, answers: dict[str, Any] | None = None, *,
+                  measurements: list[Measurement] | None = None, document: str | None = None, level: str | None = None,
+                  cache: dict[tuple[str, int], Measurement] | None = None, year: int | str | None = None,
+                  language: str | None = None, templates: list[str] | None = None,
+                  search: "_Search | None" = None) -> ItemFamilies:
+    """Families first: a family type per rule item (the answer ``fitout:family:<item>``, else the best match), each
+    project type measured (``measurements`` given, else the add-in's measure_family_types), so the layout uses the
+    chosen family's real footprint. An answer may be {"family", "type"} (the family's smaller types are tried when it
+    does not fit), {"family", "types": [preferred first]}, either with "front" ("-y" the Revit way, "+y", "-x", "+x":
+    which way the family's front faces in its own coordinates) and "includes" (items the family already has, as a
+    bed set its side tables: not placed apart), or "skip". Types are used as they are, never edited."""
+    answers = answers or {}
+    search = search or _Search(revit, year, language, templates)
+    needs = item_needs(model, rules)
+    found = resolve(needs, revit, answers, search=search)
+    left_out: dict[str, str] = {}
+    by_item = {n.item: n for n in needs}
+    for nid in found.skipped:
+        need = next(n for n in needs if n.id == nid)
+        left_out[need.item] = "left out by the user's answer"
+    for need in needs:
+        answer = answer_for(need, answers)
+        choice = found.choices.get(need.id)
+        if isinstance(answer, dict) and choice is not None:
+            for inc in answer.get("includes") or []:
+                if inc not in rules.furniture.items:
+                    raise ValueError(f"fitout:family:{need.item}: includes an unknown item {inc!r}")
+                left_out.setdefault(inc, f"included in the {need.label.lower()} family ({choice.family}: {choice.type})")
+    asked = {n.item: question_id(n) for n in needs
+             if n.item not in left_out and any(q.id == question_id(n) for q in found.questions)}
+    questions = [q for q in found.questions if q.id in asked.values()]
+
+    # what to measure: each chosen project type and the other types of its family (or the types the answer lists)
+    measurer = Measurer(revit, measurements, document=document, level=level, cache=cache)
+    plans: dict[str, tuple[Choice, list[tuple[int | None, str | None, str]], str, bool]] = {}
+    for need in needs:
+        choice = found.choices.get(need.id)
+        if choice is None or need.item in left_out:
+            continue
+        answer = answer_for(need, answers)
+        answer = answer if isinstance(answer, dict) else {}
+        front = str(answer.get("front") or "-y").lower()
+        if front not in FRONT_TURN:
+            raise ValueError(f"fitout:family:{need.item}: front {front!r} is not one of {', '.join(FRONT_TURN)}")
+        name = choice.base_type or choice.type
+        wanted = [(choice.type_id, choice.family, name)]
+        listed = bool(answer.get("types"))
+        if choice.source == "project":
+            rows = [r for r in search.project_rows(choice.category)
+                    if (r.get("familyName") or "").casefold() == (choice.family or "").casefold()]
+            names = [str(t) for t in answer.get("types") or []] or [r["typeName"] for r in rows]
+            for t in names:
+                row = next((r for r in rows if r["typeName"].casefold() == t.casefold()), None)
+                if row is not None and row["typeName"].casefold() != name.casefold():
+                    wanted.append((row["typeId"], choice.family, row["typeName"]))
+        plans[need.item] = (choice, wanted, front, listed)
+    measured = measurer.measure([w for _, ws, _, _ in plans.values() for w in ws])
+
+    items: dict[str, ItemFamily] = {}
+    notes: list[Assumption] = []
+    for item_id, (choice, wanted, front, listed) in plans.items():
+        need = by_item[item_id]
+        first = measured.get(wanted[0])
+        options: list[Choice] = []
+        if first is not None:
+            pref = _measured_choice(choice, wanted[0], first, front)
+            others = [(w, measured[w]) for w in wanted[1:] if w in measured]
+            if not listed:  # the family's smaller types, largest first, when the chosen one does not fit
+                area = _area(first, front)
+                others = sorted([(w, m) for w, m in others if _area(m, front) < area - 1.0],
+                                key=lambda t: (-_area(t[1], front), t[0][2]))
+            options = [pref] + [_measured_choice(choice, w, m, front) for w, m in others]
+            notes.append(_measured_note(need, rules.furniture.items[item_id], options))
+        else:
+            name = f"{choice.family}: {choice.base_type or choice.type}" if choice.family else choice.type
+            notes.append(Assumption(
+                id=f"fitout:family-unmeasured:{need.id}",
+                text=f"{need.label}: {name} is not measured ({measurer.reason(choice.type_id if choice.source == 'project' else None)}); "
+                     f"laid out at the rule's sizes, its origin taken as the middle of its back with its front towards -Y",
+                value={"family": choice.family, "type": choice.base_type or choice.type}, source="family match",
+                instances=need.keys))
+        items[item_id] = ItemFamily(item=item_id, need=need, choice=choice, options=options)
+    for item_id, why in sorted(left_out.items()):
+        notes.append(Assumption(id=f"fitout:left-out:{_slug(item_id)}", text=f"{rules.furniture.items[item_id].label}: "
+                                f"not placed ({why})", value=why, source="user's answer",
+                                instances=sorted(by_item[item_id].keys) if item_id in by_item else []))
+    return ItemFamilies(items=items, left_out=left_out, questions=questions, asked=asked, assumptions=notes,
+                        searched=search.searched)
+
+
+def _area(m: Measurement, front: str) -> float:
+    w, d, _ = m.size(front)
+    return w * d
+
+
+def _measured_choice(choice: Choice, wanted: tuple[int | None, str | None, str], m: Measurement, front: str) -> Choice:
+    w, d, _ = m.size(front)
+    return choice.model_copy(update={
+        "type": wanted[2], "type_id": wanted[0], "base_type": None, "values_mm": {}, "width_mm": w, "depth_mm": d,
+        "differences": [], "placement": m.placement or choice.placement, "measured": m, "front": front})
+
+
+def _measured_note(need: Need, item: Any, options: list[Choice]) -> Assumption:
+    first = options[0]
+    m = first.measured
+    w, d, h = m.size(first.front)
+    rule = item.sizes[0]
+    name = f"{first.family}: {first.type}" if first.family else first.type
+    diff = []
+    for label, have, want in (("width", w, rule.width_mm), ("depth", d, rule.depth_mm)):
+        if abs(have - want) > SIZE_TOL_MM:
+            diff.append(f"{label} {have:g} instead of the rule's {want:g}")
+    text = (f"{need.label}: {name} laid out at its own measured size, {w:g} x {d:g} mm, {h:g} high"
+            f"{' (' + '; '.join(diff) + ')' if diff else ''}, with the rule's clearances; used as it is (types are "
+            f"never edited); {m.describe()}; its front taken as {first.front.upper()}")
+    if len(options) > 1:
+        text += "; when it does not fit: " + ", ".join(f"{c.type} ({c.width_mm:g} x {c.depth_mm:g})" for c in options[1:])
+    return Assumption(id=f"fitout:family-measured:{need.id}", text=text,
+                      value={"family": first.family, "types": [c.type for c in options],
+                             "measurements": [c.measured.model_dump(mode="json") for c in options]},
+                      source=m.source, instances=need.keys)
