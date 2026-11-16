@@ -6,9 +6,11 @@
     model.questions, model.assumptions              # what the plan does not tell (asked) / took from the rules (listed)
     layout = furniture.solve(model, ruleset)        # standard furniture per room; what does not fit is listed
     furniture.problems(layout, model, ruleset)      # an independent audit: overlaps, door swings, windows
+    services = mep.layout(plan, model, layout, ruleset, answers, shaft_kinds)   # plumbing, electrical, HVAC, fire
+    mep.problems(services, model, layout)           # an independent audit: connections, circuits, doors, tees
 
 Everything works from a ``BuildPlan`` alone, so a model made from a brief and one made from DWGs fit out the same
-way; the MEP layout (F4) works on the same room model and rule set, on top of the furniture (fixtures by their
-``furniture_item``). Rule values are unverified placeholders until checked (each carries its source); the result is
+way; the MEP layout (F4: ``mep`` over ``plumbing``, ``electrical``, ``hvac``, ``fire``, sharing ``mepcore``) works on
+the same room model and rule set, on top of the furniture (fixtures by their ``furniture_item``). Rule values are unverified placeholders until checked (each carries its source); the result is
 an indicative coordination model, never an engineer's design.
 """

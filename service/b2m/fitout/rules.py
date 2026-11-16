@@ -295,7 +295,8 @@ class Branches(Sourced):
 
 
 class Supply(Sourced):
-    """Water supply: down-takes from the overhead tank in the ducts, branches at ceiling height, hot water from geysers."""
+    """Water supply: down-takes from the overhead tank in the ducts, branches at ceiling height, hot water from
+    geysers."""
 
     sizes_mm: dict[str, float]  # downtake, branch, fixture, hot, rising_main
     below_ceiling_mm: float = Field(ge=0)  # cold water branches run this far under the ceiling
