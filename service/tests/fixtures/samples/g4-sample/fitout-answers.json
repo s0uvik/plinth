@@ -1,0 +1,10 @@
+{
+  "_note": "The user's fit-out (MEP) answers for the G+4 sample, given on 2026-11-17: the large living/dining rooms (about 39.5 m², beyond the AC sizing table) get two 1.5 TR split units each; the electricity meters and the common board go on the ground floor under the stair (the stilt floor has no meter room); the underground tank (10,800 L) and its pump go in the front setback near the gate, the front being the building's south face (answered during the import for the elevation); the overhead tanks are raised onto the stair/lift roof (mumty roof) for pressure on the top floor. The ground floor's extinguishers are not answered: with no common room on the stilt floor they hang by the stair (an assumption the layout lists).",
+  "fitout:ac:living dining:39.4": [1.5, 1.5],
+  "fitout:ac:living dining:39.6": [1.5, 1.5],
+  "fitout:meter_room": {"near": "stair"},
+  "fitout:common_board": "meter_board",
+  "fitout:front_side": "south",
+  "fitout:underground_tank": {"side": "front", "near": "entrance"},
+  "fitout:overhead_tank_on": "stair_roof"
+}

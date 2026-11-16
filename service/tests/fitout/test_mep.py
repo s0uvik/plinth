@@ -3,20 +3,26 @@
 On the G+4 sample (stilt + 4 floors of 4 flats, two ducts, two roof terraces, 13.5 m): every WC drains to a soil stack
 in a duct, every fixture is fed, every bedroom gets a split AC on an outside wall with its outdoor unit outside, every
 electrical load is on a circuit of its flat's board or the common board, the fire band below 15 m gives extinguishers
-and exit signs (on the stilt floor, by the stair: assumed), and what the plan does not tell (meter room, underground
-tank, the large living rooms' AC) is asked; the audit finds nothing. A small synthetic flat (bedroom, kitchen, toilet beside a
+(on the stilt floor, by the stair: assumed) and exit signs, and what the plan does not tell (meter room, underground
+tank, the large living rooms' AC) is asked; the audit finds nothing. With the user's answers of 2026-11-17
+(``fitout-answers.json``): two 1.5 TR units in each living/dining, the meters and common board by the ground-floor
+stair, the underground tank in the south (front) setback near the gate clear of the footings, the overhead tanks on
+the stair/lift roof; nothing is asked or left unrouted. A small synthetic flat (bedroom, kitchen, toilet beside a
 duct, a stair, a roof terrace) pins the conventions: switchboard at the latch side at 1200 mm, the tees beside their
-mains, the answers that place the underground tank and set a taller building's fire band.
+mains, the answers that place the underground tank and set a taller building's fire band, and each answer shape.
 """
 
+import json
 import math
 from collections import Counter
 
 import pytest
 from shapely.geometry import Point, Polygon
+from shapely.ops import unary_union
 
-from b2m.fitout import furniture, mep, rooms
+from b2m.fitout import furniture, mep, rooms, siting
 from b2m.fitout.mepcore import TEE_GAP_MM
+from tests.cad.conftest import SAMPLE
 from tests.fitout.conftest import box_walls, plan_of
 
 
@@ -304,3 +310,220 @@ def test_a_shaft_of_unknown_kind_and_a_large_living_room_are_asked(wb_rules):
     assert q["fitout:shaft_kind:SH"].options == ["duct", "lift", "stair", "other"]
     model2, lay2, layout2 = fit(wb_rules, {"fitout:shaft_kind:SH": "lift"}, shaft)
     assert "fitout:shaft_kind:SH" not in {q.id for q in layout2.questions}
+
+
+# ------------------------------------------------------------------------------------------------ the user's answers
+
+SAMPLE_ANSWERS = SAMPLE / "fitout-answers.json"
+
+
+@pytest.fixture(scope="module")
+def sample_answered(sample_import, wb_rules):
+    """The sample laid out with the user's MEP answers of 2026-11-17 (the file the live build uses)."""
+    _, result = sample_import
+    answers = {k: v for k, v in json.loads(SAMPLE_ANSWERS.read_text(encoding="utf-8")).items()
+               if not k.startswith("_")}
+    model = rooms.build(result.plan, wb_rules, answers)
+    lay = furniture.solve(model, wb_rules)
+    kinds = mep.shaft_kinds_from_sources(result.sources)
+    return result, model, lay, mep.layout(result.plan, model, lay, wb_rules, answers, shaft_kinds=kinds), answers
+
+
+def test_the_users_answers_leave_nothing_asked(sample_mep, sample_answered):
+    _, model, lay, layout, answers = sample_answered
+    assert answers == {
+        "fitout:ac:living dining:39.4": [1.5, 1.5], "fitout:ac:living dining:39.6": [1.5, 1.5],
+        "fitout:meter_room": {"near": "stair"}, "fitout:common_board": "meter_board", "fitout:front_side": "south",
+        "fitout:underground_tank": {"side": "front", "near": "entrance"}, "fitout:overhead_tank_on": "stair_roof"}
+    assert {q.id for q in sample_mep[3].questions} <= set(answers)  # every question the plan raises is answered
+    assert layout.questions == [] and layout.unrouted == []
+    assert mep.problems(layout, model, lay) == []
+    # left: what the rules cannot do (the stilt toilet is too small for a shower; the terraces have no door)
+    assert sorted((u.what, u.room_key.split("-", 1)[1] if u.room_key else None) for u in layout.unplaced) == [
+        ("shower", "room-1-0"), ("switchboard", "room-1-roof"), ("switchboard", "room-4-roof")]
+    assert all("no door" in u.reason for u in layout.unplaced if u.what == "switchboard")
+    assert Counter(d.what for d in layout.devices) == {
+        "socket_6a": 370, "light": 253, "socket_16a": 161, "fan": 112, "switchboard": 119, "ac_indoor": 80,
+        "ac_outdoor": 80, "tv_outlet": 64, "exhaust_fan": 49, "geyser": 49, "floor_trap": 33, "distribution_board": 17,
+        "extinguisher": 17, "data_outlet": 16, "roof_outlet": 12, "exit_sign": 9, "overhead_tank": 2,
+        "underground_tank": 1, "pump": 1, "meter_board": 1}
+    assert Counter((r.kind, r.system) for r in layout.runs) == {
+        ("conduit", "power"): 688, ("conduit", "lighting"): 533, ("pipe", "cold_water"): 184, ("pipe", "waste"): 133,
+        ("pipe", "hot_water"): 113, ("pipe", "soil"): 51, ("pipe", "rainwater"): 12, ("pipe", "vent"): 2}
+    assert Counter(c.kind for c in layout.circuits) == {"dedicated": 130, "lighting": 52, "sockets": 49, "power": 32}
+    assumed = {a.id: a for a in layout.assumptions}
+    assert assumed["fitout:plan_north"].value == "+Y" and "fitout:common_board" not in assumed
+
+
+def test_two_split_acs_in_each_large_living_room(sample_answered):
+    _, model, _, layout, _ = sample_answered
+    devices = {d.key: d for d in layout.devices}
+    living = [r for r in model.rooms if r.classes == ["living", "dining"]]
+    assert len(living) == 16
+    for room in living:
+        units = [d for d in layout.in_room(room.key) if d.what == "ac_indoor"]
+        assert [u.rating for u in units] == ["1.5 TR", "1.5 TR"], room.key
+        assert math.dist(units[0].insertion, units[1].insertion) >= 1200  # as far apart as the outside wall lets
+        outs = [d for d in layout.in_room(room.key) if d.what == "ac_outdoor"]
+        sockets = [d for d in layout.in_room(room.key) if d.what == "socket_16a"]
+        assert len(outs) == 2 and len(sockets) == 2
+        for u in units:
+            face = next(f for f in room.faces if (f.wall_key, f.side) == (u.host.wall_key, u.host.side))
+            assert face.outer
+            out = next(o for o in outs if o.note.endswith(f"{u.key}, powered through it"))
+            assert out.host.wall_key == u.host.wall_key and not room.shape().covers(Point(out.insertion))
+            sock = min(sockets, key=lambda s: math.dist(s.insertion, u.insertion))
+            assert math.dist(sock.insertion, u.insertion) < 1500 and sock.elevation_mm == 2100
+            ckt = next(c for c in layout.circuits if u.key in c.devices)
+            assert ckt.kind == "dedicated" and sorted(devices[k].what for k in ckt.devices) == ["ac_indoor",
+                                                                                                 "socket_16a"]
+        assert math.dist(outs[0].insertion, outs[1].insertion) >= 850 + 100
+
+
+def test_meters_and_common_board_by_the_ground_floor_stair(sample_answered):
+    result, _, _, layout, _ = sample_answered
+    meter = next(d for d in layout.devices if d.what == "meter_board")
+    stair = next(op for op in result.plan.ops if getattr(op, "op", None) == "stair" and op.base_level == "Ground Floor")
+    foot = stair.runs[0].start
+    assert meter.level == "Ground Floor" and meter.room_key is None and meter.panel
+    # on the stair enclosure's east wall, outside it, beside the foot of the first flight (no room under the flights
+    # for a 1500 x 900 board at 1500 mm)
+    assert meter.host.kind == "wall" and meter.host.wall_key == "1.GROUND FLOOR PLAN.dxf-wall-13-0"
+    assert meter.insertion == (22550.0, 12939.7) and meter.facing_deg == 0 and meter.elevation_mm == 1500
+    assert math.dist(meter.insertion, foot) < 1500 and "no room under the flights" in meter.note
+    w, d, h = meter.size.width_mm, meter.size.depth_mm, meter.size.height_mm
+    x, y = meter.insertion
+    box_ = Polygon([(x, y - w / 2), (x, y + w / 2), (x + d, y + w / 2), (x + d, y - w / 2)])
+    assert siting.stair_clear(_ctx(result, layout), box_, 1500 - h / 2, 1500 + h / 2) == (True, False)
+    common = next(d for d in layout.devices if d.what == "distribution_board" and d.flat is None)
+    assert common.level == "Ground Floor" and common.host.wall_key == meter.host.wall_key
+    assert math.dist(common.insertion, meter.insertion) <= 1500 and meter.key in common.note
+    riser = next(r for r in layout.runs if r.key == "RUN-site-riser-1")
+    assert riser.connect_start == meter.key and riser.points[0][:2] == meter.insertion
+
+
+def _ctx(result, layout):
+    """A layout context for the sample's plan (the stair geometry the clearance check reads)."""
+    from b2m.fitout import rules
+    from b2m.fitout.mepcore import Ctx
+    wb = rules.load(layout.rule_set)
+    model = rooms.build(result.plan, wb)
+    return Ctx(result.plan, model, furniture.solve(model, wb), wb, {}, mep.shaft_kinds_from_sources(result.sources))
+
+
+def test_underground_tank_in_the_front_setback_near_the_gate(sample_answered):
+    result, _, _, layout, _ = sample_answered
+    ugt = next(d for d in layout.devices if d.what == "underground_tank")
+    pump = next(d for d in layout.devices if d.what == "pump")
+    half = ugt.size.width_mm / 2
+    x, y = ugt.insertion
+    tank = Polygon([(x - half, y - half), (x + half, y - half), (x + half, y + half), (x - half, y + half)])
+    assert ugt.capacity_l == 10800 and ugt.size.width_mm == 2700 and ugt.insertion == (26250.0, 2500.0)
+    raft = next(op for op in result.plan.ops if getattr(op, "op", None) == "foundation_slab")
+    building = min(p[1] for op in result.plan.ops if getattr(op, "op", None) == "floor" for p in op.points)
+    assert y + half < building  # south of the building, its front
+    assert tank.distance(Polygon(raft.points)) >= 1000  # clear of the footings
+    gate = Polygon([(18325, 614), (24325, 614), (24325, building), (18325, building)])  # the drive in from the gate
+    assert tank.distance(gate) >= 500
+    assert y - half > 614 + 125  # inside the boundary wall
+    assert "south of the building near the gate" in ugt.note
+    assert math.dist(pump.insertion, ugt.insertion) == half + 600 and pump.room_key is None
+    assert Point(pump.insertion).distance(gate) >= 500
+    # the rising main: buried from the pump to the stair well, up its corner, into the higher tank from above
+    rising = [r for r in layout.runs if r.key.split("-")[-2] == "rising_main"]
+    main = next(r for r in rising if r.connect_start == pump.key)
+    tanks = {d.key for d in layout.devices if d.what == "overhead_tank"}
+    assert main.connect_end in tanks and main.points[1][2] == -300 and main.points[-1][2] == 15900 + 1800 + 150
+    well = Polygon([(19300, 10365), (22300, 10365), (22300, 13615), (19300, 13615)])
+    up = next((a, b) for a, b in zip(main.points, main.points[1:]) if a[:2] == b[:2] and b[2] - a[2] > 10000)
+    assert well.contains(Point(up[0][:2])) and "stair well" in main.note
+    branch = next(r for r in rising if r.connect_start == main.key)
+    assert branch.connect_end in tanks - {main.connect_end}
+
+
+def test_overhead_tanks_on_the_stair_roof(sample_answered):
+    _, model, _, layout, _ = sample_answered
+    tanks = [d for d in layout.devices if d.what == "overhead_tank"]
+    assert [(t.level, t.capacity_l, t.size.width_mm) for t in tanks] == [("Upper Roof", 2700, 1400)] * 2
+    assert sorted(layout.water.overhead_l.values()) == [2700, 2700]
+    mumty = next(r for r in model.rooms if r.name == "MUMTY ROOM")
+    roof = Polygon(mumty.polygon).buffer(250, join_style="mitre")
+    for t in tanks:
+        half = t.size.width_mm / 2
+        x, y = t.insertion
+        assert roof.buffer(-599, join_style="mitre").covers(  # 600 mm access round it (to the rounding)
+            Polygon([(x - half, y - half), (x + half, y - half), (x + half, y + half), (x - half, y + half)]))
+        assert "for pressure on the top floor" in t.note and "no slab at Upper Roof" in t.note
+        down = next(r for r in layout.runs if r.connect_start == t.key and r.key.split("-")[-2] == "cold_downtake")
+        assert down.points[0][2] == 15900 + 150 and down.points[2][2] == 13500 + 150  # down the mumty's outer wall
+        assert not roof.contains(Point(down.points[2][:2]))
+    assert math.dist(tanks[0].insertion, tanks[1].insertion) >= 1400 + 600
+    downs = {r.key.split("-cold_downtake")[0] for r in layout.runs if r.key.split("-")[-2] == "cold_downtake"}
+    assert len(downs) == 2  # one per duct, each from its own tank
+
+
+def test_the_answered_sample_is_deterministic(sample_answered, wb_rules):
+    result, model, lay, layout, answers = sample_answered
+    again = mep.layout(result.plan, model, lay, wb_rules, answers,
+                       shaft_kinds=mep.shaft_kinds_from_sources(result.sources))
+    assert again == layout
+
+
+# ------------------------------------------------------------------------------------------------ answer shapes
+
+STAIR_EAST = {"op": "stair", "key": "S1", "base_level": "L0", "top_level": "L1", "width_mm": 1000, "tread_mm": 250,
+              "runs": [{"start": (8600, 500), "end": (8600, 4750), "risers": 18}]}  # one flight up the east wall
+
+
+def test_meter_board_near_the_stair_goes_under_it_or_beside_it(wb_rules):
+    model, lay, layout = fit(wb_rules, {"fitout:meter_room": {"near": "stair"}}, STAIR_EAST)
+    assert "fitout:meter_room" not in {q.id for q in layout.questions}
+    assert mep.problems(layout, model, lay) == []
+    meter = next(d for d in layout.devices if d.what == "meter_board")
+    # under the flight where its underside clears the board (1050-1950 mm), on the east wall's outer face
+    assert (meter.host.wall_key, meter.host.side, meter.insertion) == ("oE", "right", (8100.0, 4400.0))
+    assert meter.note.endswith("under the stair, on wall oE (right side) (answer)")
+    riser = next(r for r in layout.runs if r.key.split("-")[-2] == "riser")
+    assert riser.connect_start == meter.key
+
+
+def test_meter_board_near_a_point_and_asked_without_a_wall(wb_rules):
+    model, lay, layout = fit(wb_rules, {"fitout:meter_room": {"point": [-500, 3000]}})
+    meter = next(d for d in layout.devices if d.what == "meter_board")
+    # the west wall's outer face (its inner face is the bedroom's, a flat's), off the window at 2250-3750
+    assert (meter.host.wall_key, meter.host.side, meter.insertion[0]) == ("oW", "right", -100.0)
+    assert not 2150 - 750 < meter.insertion[1] < 3850 + 750
+    _, _, asked = fit(wb_rules, {"fitout:meter_room": {"near": "stair"}})  # the flat has no stair op
+    q = {q.id: q for q in asked.questions}["fitout:meter_room"]
+    assert "no stair starts or ends on L0" in q.text and '{"near": "stair"}' in q.text
+    assert [u.reason for u in asked.unplaced if u.what == "meter_board"] == ["no stair starts or ends on L0 (asked)"]
+
+
+def test_the_front_side_is_asked_then_the_tank_goes_in_that_setback(wb_rules):
+    given = {"fitout:underground_tank": {"side": "front", "near": "entrance"}}
+    _, _, asked = fit(wb_rules, given)
+    assert "fitout:front_side" in {q.id for q in asked.questions}
+    assert "fitout:underground_tank" not in {q.id for q in asked.questions}
+    assert any(u.what == "underground_tank" and "front is asked" in u.reason for u in asked.unplaced)
+    model, lay, layout = fit(wb_rules, {**given, "fitout:front_side": "south"})
+    assert mep.problems(layout, model, lay) == []
+    assert not {"fitout:front_side", "fitout:underground_tank"} & {q.id for q in layout.questions}
+    ugt = next(d for d in layout.devices if d.what == "underground_tank")
+    half = ugt.size.width_mm / 2
+    x, y = ugt.insertion
+    tank = Polygon([(x - half, y - half), (x + half, y - half), (x + half, y + half), (x - half, y + half)])
+    outline = unary_union([Polygon(r.polygon).buffer(300, join_style="mitre") for r in model.rooms
+                                  if r.polygon])
+    assert y + half < 0 and tank.distance(outline) >= 1000  # no foundation ops: kept off the building's outline
+    door = Polygon([(6000 - 400, 0), (6000 + 400, 0), (6000 + 400, -20000), (6000 - 400, -20000)])
+    assert tank.distance(door) >= 500 + (1500 - 800) / 2  # clear of the path out of the entrance door D3
+    pump = next(d for d in layout.devices if d.what == "pump")
+    rising = next(r for r in layout.runs if r.key.split("-")[-2] == "rising_main")
+    assert (rising.connect_start, rising.connect_end[:-1]) == (pump.key, "MEP-TER-overhead_tank-")
+
+
+def test_overhead_tanks_on_a_stair_roof_the_plan_lacks_are_asked(wb_rules):
+    _, _, layout = fit(wb_rules, {"fitout:overhead_tank_on": "stair_roof"})
+    assert "fitout:overhead_tank_on" in {q.id for q in layout.questions}
+    assert not [d for d in layout.devices if d.what == "overhead_tank"]
+    assert any(u.what == "overhead_tank" and "stair/lift roof" in u.reason for u in layout.unplaced)
