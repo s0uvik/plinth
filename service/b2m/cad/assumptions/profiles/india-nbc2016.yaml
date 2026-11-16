@@ -1,0 +1,66 @@
+# Location profile: what B2M may assume for a drawing-import project in India when the user says "assume".
+#
+# Rules for every profile:
+# - Every value carries its basis. `source` names a published document when there is one; a value with no source
+#   is "office practice, confirm" (its basis must start with those words): the assumption says so and the
+#   readiness report asks the user to confirm it.
+# - Nothing structural is assumed (beam, slab, tie-beam sizes): those are listed under not_assumable with the reason.
+# - `places` only help suggest a location from drawing text (site plan); a location is always the user's answer.
+id: india-nbc2016
+name: "India (national): NBC 2016 and common office practice"
+country: India
+states: [Andhra Pradesh, Arunachal Pradesh, Assam, Bihar, Chhattisgarh, Goa, Gujarat, Haryana, Himachal Pradesh,
+         Jharkhand, Karnataka, Kerala, Madhya Pradesh, Maharashtra, Manipur, Meghalaya, Mizoram, Nagaland, Odisha,
+         Punjab, Rajasthan, Sikkim, Tamil Nadu, Telangana, Tripura, Uttar Pradesh, Uttarakhand, West Bengal,
+         Andaman and Nicobar Islands, Chandigarh, Dadra and Nagar Haveli and Daman and Diu, Delhi,
+         Jammu and Kashmir, Ladakh, Lakshadweep, Puducherry]
+
+rule_sets:
+  - id: nbc2016
+    name: National Building Code of India 2016
+    data: nbc2016  # B2M rule file b2m/rules/nbc2016.yaml (values from a secondary summary, not yet verified)
+    source: "National Building Code of India 2016 (Bureau of Indian Standards, SP 7:2016)"
+    basis: "The national model code; state and municipal building rules apply alongside it and prevail where they differ."
+
+# Which rule sets govern a location in this profile (first matching entry; `default` otherwise).
+governing:
+  default: [nbc2016]
+
+values:
+  door_height_mm:
+    value: 2100
+    source: null
+    basis: "office practice, confirm"
+    note: "door height where the drawings give none"
+  window_sill_mm:
+    value: 900
+    source: null
+    basis: "office practice, confirm"
+    note: "window sill above finished floor where the drawings give none"
+  window_head_mm:
+    value: 2100
+    source: null
+    basis: "office practice, confirm"
+    note: "window heads in line with door heads"
+  wall_height:
+    value: "floor to the underside of the slab above (beams within the wall thickness)"
+    source: null
+    basis: "office practice, confirm"
+  lintel:
+    value: "a lintel over each opening, at its head"
+    source: null
+    basis: "office practice, confirm"
+  take_drawn_value:
+    value: true
+    source: null
+    basis: "office practice, confirm"
+    note: "a layer drawn to scale but not dimensioned is taken at its drawn size"
+
+not_assumable:
+  lift_door_height: "Lift landing doors come from the lift maker's data, not from location practice."
+  tie_beam_depth: "A structural design value: the structural engineer gives it."
+  beam_depth: "What the drawing's own dimension means: only the drawing's author can say."
+  slab_thickness: "A structural design value: the structural engineer gives it."
+  storey_height: "Storey heights are a design decision shown on the drawings, not a location default."
+
+places: []

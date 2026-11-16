@@ -77,6 +77,7 @@ class SheetRecord(_Model):
 class Evidence(_Model):
     sheet: str
     handles: list[str] = []
+    note: str | None = None
 
 
 class Question(_Model):
@@ -85,6 +86,13 @@ class Question(_Model):
     text: str
     evidence: list[Evidence] = []
     options: list[str] = []
+    # Added by the import pipeline (T5); defaults keep older project files valid.
+    severity: Literal["blocking", "check", "info"] = "check"  # blocking: must be answered before building
+    where: str | None = None  # a short description of where on the drawings
+    instances: list[str] = []  # one line per place the question covers (grouped findings)
+    findings: list[str] = []  # "<sheet>#<finding id>" of every recognition finding it covers
+    answer_type: str = "choice"  # what an answer looks like (b2m.cad.answers.ANSWER_TYPES)
+    key: dict[str, Any] = {}  # what the answer applies to, e.g. {"mark": "D1"}
     answer: Any = None
     answered_by: Literal["user", "assumed"] | None = None
     at: str | None = None
@@ -157,11 +165,12 @@ class ImportProject(_Model):
         return a
 
     def answer(self, question_id: str, answer: Any, by: Literal["user", "assumed"] = "user",
-               basis: str | None = None) -> Question:
-        """Record the user's answer, or (by="assumed", with its basis) an assumption made for it."""
+               basis: str | None = None, assumption: str | None = None) -> Question:
+        """Record the user's answer, or (by="assumed", with its basis) an assumption made for it; ``assumption``
+        is the assumption's wording (default: the question and the answer)."""
         q = self.question(question_id)
         if by == "assumed":
-            self.assume(f"{q.text} -> {answer}", basis or "", question=q.id)
+            self.assume(assumption or f"{q.text} -> {answer}", basis or "", question=q.id)
         elif by != "user":
             raise ValueError("answered_by is 'user' or 'assumed'")
         q.answer, q.answered_by, q.at = answer, by, _now()
