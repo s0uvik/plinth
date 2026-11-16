@@ -274,78 +274,80 @@ class Leader:
     handles: list[str]
 
 
-def leader(note: CadEntity, segs: list[Seg], tol: float = TOL, others: Iterable[CadEntity] = (),
-           arrows: Iterable["Arrow"] = ()) -> Leader | None:
-    """The leader drawn from a note: segments on the note's layer (or LEADER entities) that start at the note,
-    followed through their joints to their free ends; an arrowhead at a free end moves the tip to the arrow's point.
-    A start nearer another note (``others``) is that note's."""
-    box = text_box(note)
-    reach = (note.height or 0.0) * LEADER_REACH + tol
-    arrows = list(arrows)
-    boxes = [text_box(o) for o in others if o.handle != note.handle]
-    pool = [s for s in segs if s.layer == note.layer or s.dxftype == "LEADER"]
-
-    def mine(seg: Seg) -> bool:
-        d = min(rect_distance(seg.a, box), rect_distance(seg.b, box))
-        if d > reach:
-            return False
-        return all(min(rect_distance(seg.a, b), rect_distance(seg.b, b)) >= d for b in boxes)
-
-    starts = [s for s in pool if mine(s)]
-    if not starts:
-        return None
-    seen: set[int] = set()
-    stack = [pool.index(s) for s in starts]
-    while stack:
-        i = stack.pop()
-        if i in seen:
-            continue
-        seen.add(i)
-        if len(seen) > LEADER_MAX_SEGMENTS:
-            return None  # joined to drawing geometry: not a leader
-        for j, other in enumerate(pool):
-            if j not in seen and any(math.dist(p, q) <= tol for p in (pool[i].a, pool[i].b) for q in (other.a, other.b)):
-                stack.append(j)
-    chain = [pool[i] for i in seen]
-    ends = [p for s in chain for p in (s.a, s.b)]
-    open_ends = [p for p in ends if sum(math.dist(p, q) <= tol for q in ends) == 1]
-    handles = {s.handle for s in chain}
-    tips: list[Point] = []
-    for p in open_ends:
-        arrow = next((a for a in arrows if math.dist(a.base, p) <= max(tol, a.size * 0.1)), None)
-        if arrow:
-            tips.append(arrow.tip)
-            handles.add(arrow.handle)
-        elif rect_distance(p, box) > reach:
-            tips.append(p)
-    if not tips:
-        far = max(ends, key=lambda p: rect_distance(p, box))
-        if rect_distance(far, box) <= reach:
-            return None
-        tips = [far]
-    unique: list[Point] = []
-    for p in tips:
-        if all(math.dist(p, q) > tol for q in unique):
-            unique.append(p)
-    return Leader(unique, sorted(handles))
-
-
 def leaders(notes: list[CadEntity], segs: list[Seg], tol: float = TOL, arrows: Iterable["Arrow"] = ()
             ) -> dict[str, Leader]:
-    """Leaders of several notes at once, each start given to its nearest note. On the layer that carries most of
-    the drawing's geometry a leader cannot be told from the drawing, so there only LEADER entities count."""
-    out = {}
-    arrows = list(arrows)
+    """Leaders of notes: chains of joined segments (on a note's layer, or LEADER entities) with an open end near
+    the note. Each chain belongs to the note nearest one of its open ends; its other open ends are the tips (moved
+    to the point of an arrowhead drawn there). On the layer that carries most of the drawing's geometry a leader
+    cannot be told from the drawing, so there only LEADER entities count; a chain of many segments is drawing too."""
     counts: dict[str, int] = {}
     for seg in segs:
         counts[seg.layer] = counts.get(seg.layer, 0) + 1
     main = max(counts, key=counts.get) if counts else None
-    for note in notes:
-        pool = [s for s in segs if s.layer != main or s.dxftype == "LEADER"]
-        ld = leader(note, pool, tol, notes, arrows)
-        if ld:
-            out[note.handle] = ld
+    pool = [s for s in segs if s.layer != main or s.dxftype == "LEADER"]
+    arrows = list(arrows)
+    boxes = {n.handle: text_box(n) for n in notes}
+    reach = {n.handle: (n.height or 0.0) * LEADER_REACH + tol for n in notes}
+    out: dict[str, Leader] = {}
+    for chain in _chains(pool, tol):
+        if len(chain) > LEADER_MAX_SEGMENTS:
+            continue
+        ends = [p for s in chain for p in (s.a, s.b)]
+        open_ends = [p for p in ends if sum(math.dist(p, q) <= tol for q in ends) == 1]
+        if len(open_ends) < 2:
+            continue
+        layers = {s.layer for s in chain}
+        best = None
+        for n in notes:
+            if not (n.layer in layers or any(s.dxftype == "LEADER" for s in chain)):
+                continue
+            for p in open_ends:
+                d = rect_distance(p, boxes[n.handle])
+                if d <= reach[n.handle] and (best is None or d < best[0]):
+                    best = (d, n, p)
+        if best is None:
+            continue
+        _, note, start = best
+        handles = {s.handle for s in chain}
+        tips = []
+        for p in open_ends:
+            if p is start:
+                continue
+            arrow = next((a for a in arrows if math.dist(a.base, p) <= max(tol, a.size * 0.1)), None)
+            if arrow:
+                handles.add(arrow.handle)
+            tips.append(arrow.tip if arrow else p)
+        ld = out.setdefault(note.handle, Leader([], []))
+        ld.tips += [t for t in tips if all(math.dist(t, q) > tol for q in ld.tips)]
+        ld.handles = sorted(set(ld.handles) | handles)
     return out
+
+
+def _chains(segs: list[Seg], tol: float) -> list[list[Seg]]:
+    """Groups of segments joined end to end."""
+    parent = list(range(len(segs)))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    grid: dict[tuple[int, int], list[int]] = {}
+    cell = max(tol, 1e-6)
+    for i, s in enumerate(segs):
+        for p in (s.a, s.b):
+            gx, gy = int(p[0] // cell), int(p[1] // cell)
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    for j in grid.get((gx + dx, gy + dy), []):
+                        if any(math.dist(p, q) <= tol for q in (segs[j].a, segs[j].b)):
+                            parent[find(i)] = find(j)
+            grid.setdefault((gx, gy), []).append(i)
+    groups: dict[int, list[Seg]] = {}
+    for i, s in enumerate(segs):
+        groups.setdefault(find(i), []).append(s)
+    return list(groups.values())
 
 
 # ---------------------------------------------------------------- level marks

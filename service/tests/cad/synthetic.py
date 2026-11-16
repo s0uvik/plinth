@@ -71,6 +71,14 @@ class Drawing:
         return self.msp.add_point(at, dxfattribs={"layer": layer})
 
     def sheet(self, tmp_path: Path, name: str) -> sheet.Sheet:
+        """Saved with a page border and inner frame around the drawing, as office sheets are."""
+        from ezdxf import bbox
+        box = bbox.extents(self.msp)
+        x0, y0, x1, y1 = box.extmin.x, box.extmin.y, box.extmax.x, box.extmax.y
+        m = 0.15 * max(x1 - x0, y1 - y0)
+        self.rect(x0 - m, y0 - m, x1 + m, y1 + m)
+        self.rect(x0 - 1.2 * m, y0 - 1.2 * m, x1 + 1.2 * m, y1 + 1.2 * m)
+        self.text("SYNTHETIC SHEET", (x0, y0 - 0.6 * m), height=0.3 * m)  # the title: the tallest text
         path = tmp_path / name
         self.doc.saveas(path)
         return sheet.detect(reader.read_dxf(path))
@@ -127,3 +135,60 @@ def section(tmp_path: Path, marks: bool = True) -> sheet.Sheet:
     # a horizontal dimension (a width): never a height
     d.hdim(10500, (0, 9900), (10000, 9900))
     return d.sheet(tmp_path, "section.dxf")
+
+
+def foundation(tmp_path: Path) -> sheet.Sheet:
+    """Two alike isolated footings (one dimensioned), a footing section (founding 1500 below GL, 400 thick), and a
+    300 x 300 column section with 4 bars and notes."""
+    d = Drawing()
+    for x0 in (0, 4000):
+        d.rect(x0, 5000, x0 + 2000, 7000)
+        d.solid_rect(x0 + 900, 5900, x0 + 1100, 6100)
+    d.hdim(4500, (0, 5000), (2000, 5000))
+    d.vdim(-500, (0, 5000), (0, 7000))
+    # footing section
+    d.hline(0, 20000, 26000)
+    d.text("GL", (19400, 20))
+    d.hline(-1500, 21000, 25000)
+    d.hline(-1100, 21000, 25000)
+    d.vline(21000, -1500, -1100)
+    d.vline(25000, -1500, -1100)
+    d.vdim(20500, (21000, -1500), (21000, 0))
+    d.vdim(25500, (25000, -1500), (25000, -1100))
+    d.text("#10 @ 200 BOTH WAYS", (19000, -2500), height=100, layer="notes")
+    d.msp.add_lwpolyline([(20650, -2450), (23000, -1300)], dxfattribs={"layer": "notes"})
+    # column section
+    d.rect(30000, 0, 30300, 300)
+    for x, y in ((30050, 50), (30250, 50), (30050, 250), (30250, 250)):
+        d.msp.add_circle((x, y), 8)
+    d.hdim(-200, (30000, 0), (30300, 0))
+    d.vdim(30500, (30300, 0), (30300, 300))
+    d.hdim(150, (30000, 150), (30040, 150), text="<>mm clear cover")
+    d.text("4 nos 16 dia", (30600, 400), height=50, layer="notes")
+    d.msp.add_lwpolyline([(30590, 420), (30060, 60)], dxfattribs={"layer": "notes"})
+    d.text("8 dia 2 legged stirrups @ 150 c/c", (30600, 200), height=50, layer="notes")
+    d.msp.add_lwpolyline([(30590, 210), (30150, 150)], dxfattribs={"layer": "notes"})
+    return d.sheet(tmp_path, "foundation.dxf")
+
+
+def beam_layout(tmp_path: Path) -> sheet.Sheet:
+    """A 6000 x 5000 frame of 300 wide beams on grid lines, with column points at the corners."""
+    d = Drawing()
+    w = 150
+    for y in (0, 5000):
+        d.hline(y, -500, 6500, layer="grid")
+    for x in (0, 6000):
+        d.vline(x, -500, 5500, layer="grid")
+    # outer edges run through, inner edges stop at the crossing beams
+    d.hline(-w, -w, 6000 + w, "beams")
+    d.hline(w, w, 6000 - w, "beams")
+    d.hline(5000 + w, -w, 6000 + w, "beams")
+    d.hline(5000 - w, w, 6000 - w, "beams")
+    d.vline(-w, -w, 5000 + w, "beams")
+    d.vline(w, w, 5000 - w, "beams")
+    d.vline(6000 + w, -w, 5000 + w, "beams")
+    d.vline(6000 - w, w, 5000 - w, "beams")
+    for p in ((0, 0), (6000, 0), (0, 5000), (6000, 5000)):
+        d.point(p)
+    d.hdim(-1000, (0, 0), (6000, 0))
+    return d.sheet(tmp_path, "beams.dxf")

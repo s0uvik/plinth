@@ -43,7 +43,14 @@ _LAYER_NOTE = [re.compile(r"^(\d+(?:\.\d+)?)\s*MM\.?\s*(?:THICK|THK\.?)\s+(.+?)\
 
 
 def recognise_section(sheet: Sheet, name: str | None = None) -> SectionRecognition:
-    return _Section(sheet, name).run()
+    return recognise_section_full(sheet, name)[0]
+
+
+def recognise_section_full(sheet: Sheet, name: str | None = None) -> tuple[SectionRecognition, float | None]:
+    """The recognition and the drawing y of its datum (elevation 0), for vertical registration."""
+    reader = _Section(sheet, name)
+    rec = reader.run()
+    return rec, getattr(reader, "datum_y", None)
 
 
 @dataclass
@@ -514,12 +521,6 @@ class _Section:
                           f"{drawn:g} mm thick.", handles, "check")
             out.append((tip[1], material.upper(), thickness))
         return [(mat, th) for _, mat, th in sorted(out, key=lambda o: -o[0])]
-
-
-def _flat_name(sheet: Sheet) -> str | None:
-    from b2m.cad import classify
-    c = classify.classify(sheet.title, name_of(sheet))
-    return c.name
 
 
 def main(argv: list[str] | None = None) -> int:
