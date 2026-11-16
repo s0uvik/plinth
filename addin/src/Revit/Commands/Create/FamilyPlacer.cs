@@ -2,7 +2,8 @@
 // create_air_terminal. It places a family type in the way PlacementRules chooses: free at a level point (rotation,
 // height); hosted by a wall at a distance along it, at a height, on a chosen side; face-based on a wall's side face,
 // on a ceiling's bottom face or a floor's top face; or, for a work-plane-based family with no host (a light or fan where
-// there is no ceiling), on the level's plane facing up or on a new reference plane at the height facing down.
+// there is no ceiling), on the level's plane facing up (raised to the height; on a new reference plane at the height
+// facing up when Revit will not raise it) or on a new reference plane at the height facing down.
 // One transaction; the position (and host) Revit gives is checked to 1 mm before commit, otherwise everything rolls
 // back. created_ids lists every element added (the instance and any reference plane) so a run can remove them.
 
@@ -238,16 +239,11 @@ namespace B2M.Revit.Commands.Create
                             side = face.Side;
                             break;
                         case PlacementRules.Mode.LevelPlane:
-                        {
-                            var onLevel = new XYZ(point.X, point.Y, level.ProjectElevation);
-                            var reference = level.GetPlaneReference() ?? throw new InvalidOperationException("Revit gives no plane reference for this level.");
-                            instance = doc.Create.NewFamilyInstance(reference, onLevel, Direction(rotation), symbol);
-                            if (instance != null && Math.Abs(point.Z - onLevel.Z) > 1e-9) SetOffset(instance, point.Z - onLevel.Z);
+                            instance = OnLevelPlane(doc, symbol, level, point, rotation, placed);
                             break;
-                        }
                         default: // FaceDownPlane
                         {
-                            var plane = DownwardPlane(doc, point);
+                            var plane = HorizontalPlane(doc, point, true);
                             placed.CreatedIds.Add(RevitCompat.GetId(plane.Id));
                             instance = doc.Create.NewFamilyInstance(plane.GetReference(), point, Direction(rotation), symbol);
                             side = "down";
@@ -335,16 +331,97 @@ namespace B2M.Revit.Commands.Create
 
         private static XYZ Direction(double rotation) => new XYZ(Math.Cos(rotation), Math.Sin(rotation), 0);
 
-        /// <summary>A horizontal reference plane through the point whose normal points down.</summary>
-        private static ReferencePlane DownwardPlane(Document doc, XYZ point)
+        /// <summary>A horizontal reference plane through the point whose normal points down (or up).</summary>
+        private static ReferencePlane HorizontalPlane(Document doc, XYZ point, bool down)
         {
             var half = Mm.ToFeet(500);
             var plane = doc.Create.NewReferencePlane(point - XYZ.BasisX * half, point + XYZ.BasisX * half, XYZ.BasisY, doc.ActiveView)
                 ?? throw new InvalidOperationException("Revit returned no reference plane.");
-            if (plane.Normal.Z > 0) plane.Flip();
-            if (plane.Normal.Z > -0.999) throw new InvalidOperationException("could not make a horizontal reference plane facing down.");
+            if (down ? plane.Normal.Z > 0 : plane.Normal.Z < 0) plane.Flip();
+            if ((down ? -plane.Normal.Z : plane.Normal.Z) < 0.999)
+                throw new InvalidOperationException("could not make a horizontal reference plane facing " + (down ? "down." : "up."));
             plane.Name = "B2M fit-out " + RevitCompat.GetId(plane.Id);
             return plane;
+        }
+
+        /// <summary>
+        /// A work-plane-based family with no host, on the level's plane facing up, at the height asked for: raised off the
+        /// level by its offset parameter (Offset from Host, else Elevation from Level), else moved up; each try is checked
+        /// by where Revit then puts it. Live on 2026-11-17 a hob (Specialty Equipment, work-plane-based) asked 850 mm above
+        /// "Floor 1" stayed on the level, so when no try raises it, it goes on a new reference plane at the height facing up
+        /// instead (listed in created_ids, with a warning).
+        /// </summary>
+        private static FamilyInstance OnLevelPlane(Document doc, FamilySymbol symbol, Level level, XYZ point, double rotation, Placed placed)
+        {
+            var onLevel = new XYZ(point.X, point.Y, level.ProjectElevation);
+            var reference = level.GetPlaneReference() ?? throw new InvalidOperationException("Revit gives no plane reference for this level.");
+            var raiseMm = Mm.FromFeet(point.Z - level.ProjectElevation);
+            if (FamilyMeasure.HeightStillToGoMm(raiseMm, 0) == 0)
+                return doc.Create.NewFamilyInstance(reference, onLevel, Direction(rotation), symbol);
+            string why;
+            using (var sub = new SubTransaction(doc))
+            {
+                sub.Start();
+                var instance = doc.Create.NewFamilyInstance(reference, onLevel, Direction(rotation), symbol);
+                if (instance == null) why = "Revit returned no instance on the level's plane";
+                else
+                {
+                    doc.Regenerate();
+                    why = Raise(doc, instance, level, raiseMm);
+                    if (why == null)
+                    {
+                        sub.Commit();
+                        return instance;
+                    }
+                }
+                if (sub.HasStarted() && !sub.HasEnded()) sub.RollBack();
+            }
+            var plane = HorizontalPlane(doc, point, false);
+            placed.CreatedIds.Add(RevitCompat.GetId(plane.Id));
+            var note = "The family would not rise off the level's plane (" + why + "), so it was placed on a new reference plane at the "
+                + "height, facing up (listed in created_ids).";
+            placed.Warning = placed.Warning == null ? note : placed.Warning + " " + note;
+            return doc.Create.NewFamilyInstance(plane.GetReference(), point, Direction(rotation), symbol);
+        }
+
+        /// <summary>Raises the instance raiseMm above the level; null when it then stands there, else what was tried.</summary>
+        private static string Raise(Document doc, FamilyInstance instance, Level level, double raiseMm)
+        {
+            double? AboveLevel()
+            {
+                var at = (instance.Location as LocationPoint)?.Point;
+                return at == null ? (double?)null : Mm.FromFeet(at.Z - level.ProjectElevation);
+            }
+
+            var tried = new List<string>();
+            foreach (var bip in new[] { BuiltInParameter.INSTANCE_FREE_HOST_OFFSET_PARAM, BuiltInParameter.INSTANCE_ELEVATION_PARAM })
+            {
+                var parameter = instance.get_Parameter(bip);
+                if (parameter == null || parameter.IsReadOnly || parameter.StorageType != StorageType.Double) continue;
+                var before = parameter.AsDouble();
+                if (!parameter.Set(Mm.ToFeet(raiseMm)))
+                {
+                    tried.Add(parameter.Definition.Name + " refused the value");
+                    continue;
+                }
+                doc.Regenerate();
+                if (FamilyMeasure.HeightStillToGoMm(raiseMm, AboveLevel()) == 0) return null;
+                tried.Add(parameter.Definition.Name + " set, but it stands " + (AboveLevel()?.ToString() ?? "nowhere") + " mm above the level");
+                parameter.Set(before);
+                doc.Regenerate();
+            }
+            try
+            {
+                ElementTransformUtils.MoveElement(doc, instance.Id, new XYZ(0, 0, Mm.ToFeet(FamilyMeasure.HeightStillToGoMm(raiseMm, AboveLevel()))));
+                doc.Regenerate();
+                if (FamilyMeasure.HeightStillToGoMm(raiseMm, AboveLevel()) == 0) return null;
+                tried.Add("moved up, it stands " + (AboveLevel()?.ToString() ?? "nowhere") + " mm above the level");
+            }
+            catch (Autodesk.Revit.Exceptions.ApplicationException ex)
+            {
+                tried.Add("Revit would not move it: " + ex.Message);
+            }
+            return string.Join("; ", tried);
         }
 
         /// <summary>
@@ -376,19 +453,6 @@ namespace B2M.Revit.Commands.Create
             else ElementTransformUtils.MoveElement(doc, instance.Id, new XYZ(0, 0, -down));
             doc.Regenerate();
             return FormattableString.Invariant($"The family took the point's height as its offset above the level and stood {extra} mm too high; it was put back at the height asked for.");
-        }
-
-        /// <summary>Raises a work-plane-based instance off the level by its offset parameter.</summary>
-        private static void SetOffset(FamilyInstance instance, double feet)
-        {
-            foreach (var bip in new[] { BuiltInParameter.INSTANCE_FREE_HOST_OFFSET_PARAM, BuiltInParameter.INSTANCE_ELEVATION_PARAM })
-            {
-                var parameter = instance.get_Parameter(bip);
-                if (parameter == null || parameter.IsReadOnly) continue;
-                parameter.Set(feet);
-                return;
-            }
-            throw new InvalidOperationException("this family has no settable offset from its work plane.");
         }
 
         private static string Describe(XYZ p) =>

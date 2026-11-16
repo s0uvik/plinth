@@ -93,11 +93,13 @@ namespace B2M.Revit.Commands.Delete
         /// <summary>
         /// Duplicate-before-edit's sibling for deletes: deleting a type (or a whole family) silently deletes every
         /// element using it. A type or family with users is refused unless confirm_delete_all names its exact count.
+        /// Users that are in the same delete are not counted (a run removing what it placed with a type it copied in).
         /// Nothing has been deleted when this returns a refusal.
         /// </summary>
         private static CommandResult SharedDeleteRefusal(Document doc, long[] ids, JObject confirm)
         {
             var refused = new JArray();
+            var deleting = new HashSet<long>(ids);
             foreach (var id in ids)
             {
                 var element = doc.GetElement(RevitCompat.ToElementId(id));
@@ -116,6 +118,7 @@ namespace B2M.Revit.Commands.Delete
                 }
                 else continue;
 
+                users = users.Where(u => !deleting.Contains(u)).ToList();
                 if (users.Count == 0) continue;
                 var given = confirm?[id.ToString()];
                 if (given != null && given.Type == JTokenType.Integer && given.Value<int>() == users.Count) continue;

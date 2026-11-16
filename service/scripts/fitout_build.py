@@ -10,7 +10,11 @@ counts. With --build it builds the plan as its own run on top of the building's 
 
 --answers: a JSON file (or inline JSON) of fit-out answers, e.g. {"fitout:family:sofa": {"family": "...", "type":
 "..."}, "fitout:family:side_table": "skip"}; an answer may add "types" (preferred first), "front" (-y, +y, -x, +x:
-which way the family's front faces in its own coordinates) and "includes" (items the family already has).
+which way the family's front faces in its own coordinates) and "includes" (items the family already has). The answer
+{"create": "box"} (optionally "name", "size_mm": [w, d, h], "material") is the user's OK for B2M to create a plain box
+family for the item (default "B2M <Label>" at the rule's first size, type "<w> x <d> x <h>mm (B2M)"): the plan gets a
+family_create pre-step (the add-in's create_box_family; a family of that name already in the project is used as it is),
+the item is laid out at the box's size with no measuring, and the family is removed with the fit-out run.
 --measurements: boxes measured earlier (measure_family_types' shape), used instead of measuring now (an add-in
 without measure_family_types then needs no redeploy); --measured-level: the level they were measured on (else a box
 starting at one of the building's level elevations is taken as measured there with the point's z taken as offset).
@@ -33,7 +37,7 @@ from b2m.builds import BuildService
 from b2m.fitout import families, rooms, rules, to_plan
 from b2m.plan import BuildPlan, LevelOp
 from b2m.revit import RevitClient
-from b2m.revit.commands import REQUIRED_COMMANDS
+from b2m.revit.commands import BOX_FAMILY_COMMAND, REQUIRED_COMMANDS
 from b2m.revit.types import TypeMap
 from b2m.runs import RunStore
 
@@ -141,6 +145,8 @@ def main(argv: list[str] | None = None, *, connect: Callable[[], Any] | None = N
     ap.add_argument("--build", action="store_true", help="build the plan as its own run")
     ap.add_argument("--partial", action="store_true", help="with --build: build even with open questions (their items wait)")
     ap.add_argument("--level", help="with --flat: the level of the flat to build alone (a pilot)")
+    ap.add_argument("--exclude-run", action="append", default=[],
+                    help="with --build: leave out the items an earlier fit-out run already built (e.g. the pilot)")
     ap.add_argument("--flat", help="build only this flat's rooms on --level (a pilot to check placement before the rest)")
     args = ap.parse_args(argv)
     logs.configure()
@@ -205,7 +211,17 @@ def main(argv: list[str] | None = None, *, connect: Callable[[], Any] | None = N
         to_build = found.plan.model_copy(update={"ops": ops})
         print(f"pilot: flat {args.flat}{' on ' + args.level if args.level else ''}: "
               f"{sum(1 for o in ops if o.op == 'family')} families in {len(keep)} rooms")
-    build_connect = connect or (lambda: RevitClient.connect(required_commands=BUILD_COMMANDS))
+    if args.exclude_run:
+        done: set[str] = set()
+        for rid in args.exclude_run:
+            earlier = store.get(rid)
+            done |= set(((earlier.load("run") or {}).get("created") or {}) if earlier else ())
+        ops = [o for o in to_build.ops if getattr(o, "op", None) != "family" or o.key not in done]
+        print(f"leaving out {len(to_build.ops) - len(ops)} items built by {', '.join(args.exclude_run)}")
+        to_build = to_build.model_copy(update={"ops": ops})
+    # create_box_family only when the plan creates a box family (an add-in without it builds every other plan)
+    needed = BUILD_COMMANDS + ([BOX_FAMILY_COMMAND] if any(op.op == "family_create" for op in to_build.ops) else [])
+    build_connect = connect or (lambda: RevitClient.connect(required_commands=needed))
     service = BuildService(store, connect=build_connect, types=types if types is not None else TypeMap.load(args.types))
     built_run = service.build_now(to_build, args.title)
     fitout_run = store.get(built_run["run_id"])

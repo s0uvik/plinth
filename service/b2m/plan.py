@@ -308,6 +308,24 @@ class FamilyTypeCopyOp(_Op):
     values_mm: dict[str, float] = Field(min_length=1)  # type parameter name -> length in mm, e.g. {"Width": 1800}
 
 
+class FamilyCreateOp(_Op):
+    """A plain box family B2M creates for a fit-out item, only because the user answered so (``{"create": "box"}``:
+    no family suits it): one extrusion ``width_mm`` x ``depth_mm`` x ``height_mm`` with type parameters Width, Depth,
+    Height and Material, its origin at the middle of its back edge (back on +Y, front facing -Y) and its base at the
+    level, loaded as a NEW family ``family`` with the one type ``type``. A family of that name already in the project is
+    used as it is (never overwritten) and is not the run's to remove."""
+
+    op: Literal["family_create"]
+    kind: Literal["box"] = "box"
+    category: str = Field(min_length=1)  # built-in, e.g. OST_Furniture
+    family: str = Field(min_length=1)
+    type: str = Field(min_length=1)
+    width_mm: float = Field(gt=0, le=20000)
+    depth_mm: float = Field(gt=0, le=20000)
+    height_mm: float = Field(gt=0, le=20000)
+    material: str | None = None
+
+
 class FamilyOp(_Op):
     """A placed family instance (furniture, fixture, device, equipment) at ``point`` on ``level``.
 
@@ -393,18 +411,18 @@ class CircuitOp(_Op):
 
 Op = Annotated[Union[LevelOp, GridOp, ColumnOp, WallOp, FloorOp, ShaftOp, BeamOp, StairOp, RailingOp, DoorOp, WindowOp,
                      RoomOp, RoomSeparatorOp, FoundationSlabOp, WallTypeOp, FloorTypeOp, OpeningTypeOp,
-                     TypesFromFileOp, FamilyTypeCopyOp, FamilyOp, MepRunOp, CircuitOp],
+                     TypesFromFileOp, FamilyTypeCopyOp, FamilyCreateOp, FamilyOp, MepRunOp, CircuitOp],
                Field(discriminator="op")]
 
 # Ops that make sure of a type rather than create a model element: never counted in the read-back.
-TYPE_OPS = frozenset({"wall_type", "floor_type", "opening_type", "types_from_file", "family_type_copy"})
+TYPE_OPS = frozenset({"wall_type", "floor_type", "opening_type", "types_from_file", "family_type_copy", "family_create"})
 
 # Build order (PRD): types (before anything uses them; a type copied to another size after the type it copies),
 # levels, grids, columns, walls (which then join the columns), floors and foundation slabs, shaft openings (which cut
 # the floors), beams (onto columns, under the slabs), stairs (inside the cut shafts), railings (on their stairs), doors
 # and windows (into their walls), room separation lines, rooms (once every bounding element exists); then the fit-out:
 # placed families, MEP runs (joined to the families), circuits (of the placed devices).
-PHASES: tuple[tuple[str, ...], ...] = (("wall_type", "floor_type", "opening_type", "types_from_file"),
+PHASES: tuple[tuple[str, ...], ...] = (("wall_type", "floor_type", "opening_type", "types_from_file", "family_create"),
                                        ("family_type_copy",), ("level",), ("grid",), ("column",),
                                        ("wall",), ("floor", "foundation_slab"), ("shaft",), ("beam",), ("stair",),
                                        ("railing",), ("door", "window"), ("room_separator",), ("room",),
@@ -514,6 +532,9 @@ class BuildPlan(BaseModel):
         copies = [(op.family, op.name) for op in self.ops if isinstance(op, FamilyTypeCopyOp)]
         if len(set(copies)) != len(copies):
             raise ValueError("a family type may be copied to a name only once per plan")
+        made = [op.family.casefold() for op in self.ops if isinstance(op, FamilyCreateOp)]
+        if len(set(made)) != len(made):
+            raise ValueError("a family may be created only once per plan")
 
     def ordered(self) -> list[Op]:
         """Ops in build order; stable within a phase, so the same plan always builds the same way."""

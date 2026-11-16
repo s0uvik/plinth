@@ -72,7 +72,8 @@ class FitoutRevit:
         return {i: e for i, e in self.elements.items() if e.get("is_type") and e["kind"] == kind}
 
     def instances(self) -> dict[int, dict]:
-        return {i: e for i, e in self.elements.items() if not e.get("is_type") and not e.get("is_family")}
+        return {i: e for i, e in self.elements.items()
+                if not e.get("is_type") and not e.get("is_family") and not e.get("is_material")}
 
     def _find_type(self, kind, name, family=None, category=None) -> int:
         for i, e in self.project_types(kind).items():
@@ -238,13 +239,42 @@ class FitoutRevit:
         return {"duplicated": True, "source_type_id": p["source_type_id"], "new_type_id": new_id,
                 "new_type_name": p["new_type_name"], "family_name": source["family"]}
 
+    def _create_box_family(self, p):
+        """As the add-in's create_box_family: a NEW family with one type (Width, Depth, Height), origin at the middle of its
+        back, front -Y, base at the level; its material comes along when the project has none of that name. A family of
+        that name already in the project is returned as already_there (never overwritten, nothing created)."""
+        name = p["family_name"]
+        w, d, h = p["width_mm"], p["depth_mm"], p["height_mm"]
+        type_name = p.get("type_name") or f"{w:g} x {d:g} x {h:g}mm (B2M)"
+        family = next((i for i, e in self.elements.items() if e.get("is_family") and e["family"].casefold() == name.casefold()), None)
+        if family is not None:
+            types = [(i, e) for i, e in self.project_types().items() if e["family"] == self.elements[family]["family"]]
+            chosen = next(((i, e) for i, e in types if e["type"] == type_name), types[0] if types else (None, None))
+            return {"action": "already_there", "dry_run": False, "family_name": self.elements[family]["family"],
+                    "type_name": chosen[1]["type"] if chosen[1] else None, "family_id": family, "type_id": chosen[0],
+                    "category": self.elements[family]["category"], "created_ids": [],
+                    "notes": [] if chosen[1] and chosen[1]["type"] == type_name else [f"it has no type '{type_name}'"]}
+        before = set(self.elements)
+        type_id = self._add_type("family_type", type_name, name, p.get("category") or "OST_Furniture",
+                                 dims={"width": w, "depth": d, "height": h}, placement="OneLevelBased", made_by="box")
+        self.elements[type_id]["box"] = {"min": [-w / 2, -d, 0], "max": [w / 2, 0, h]}
+        material = p.get("material_name") or "B2M Fit-out"
+        if not any(e.get("is_material") and e["name"] == material for e in self.elements.values()):
+            self.elements[self._new_id()] = {"is_material": True, "name": material, "category": "OST_Materials"}
+        family_id = next(i for i in sorted(set(self.elements) - before) if self.elements[i].get("is_family"))
+        others = [i for i in sorted(set(self.elements) - before) if i not in (family_id, type_id)]
+        return {"action": "created", "dry_run": False, "family_name": name, "type_name": type_name, "family_id": family_id,
+                "type_id": type_id, "category": p.get("category") or "OST_Furniture", "template": "Metric Furniture.rft",
+                "placement": "OneLevelBased", "created_ids": [family_id, type_id, *others], "brought_along_ids": others}
+
     # ------------------------------------------------------------------ building
 
     def _batch_execute(self, p):
         saved = copy.deepcopy((self.elements, self.next_id))
         results = []
         for index, sub in enumerate(p["commands"]):
-            assert sub["command"] not in ("copy_types_from_file", "list_types_in_file", "duplicate_family_type"), sub
+            assert sub["command"] not in ("copy_types_from_file", "list_types_in_file", "duplicate_family_type",
+                                          "create_box_family"), sub
             try:
                 results.append({"index": index, "ok": True, "data": getattr(self, "_" + sub["command"])(sub["params"])})
             except RevitError as e:

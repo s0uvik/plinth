@@ -14,6 +14,9 @@
 // After building, a flex check in a transaction that is always rolled back changes b and h and moves the stretch
 // datum (Upper Ref. Level, Member Right) and checks the solid follows, so a family that would not flex is never saved.
 // Every failure names the step that failed; the caller closes the family document whatever happens.
+// A box (BoxRecipe, for create_box_family, 2026-11-17: a fit-out item no family suits, created only when the user says
+// so) is one extrusion W x D x H with type parameters Width, Depth, Height and Material, its origin at the middle of its
+// back edge (back on +Y, front facing -Y) and its base at the level; its flex check keeps the back on the origin.
 
 using System;
 using System.Collections.Generic;
@@ -275,9 +278,210 @@ namespace B2M.Revit.Commands.Families
         }
     }
 
+    /// <summary>What the box recipe built: the extrusion and where its origin is in the family (feet).</summary>
+    internal sealed class BoxGeometry
+    {
+        public Extrusion Extrusion;
+        public double Cx, Cy, Z0;
+    }
+
+    /// <summary>
+    /// A plain box for a fit-out item (create_box_family): one extrusion sketched on the Ref. Level (so its base follows
+    /// the level), its sides locked to Box Left / Box Right planes held symmetric about Center (Left/Right) with Width
+    /// labelling them, its back face locked to Center (Front/Back) (the origin is the middle of the back edge, the back on
+    /// +Y), its front face locked to a Box Front plane Depth in front of it (-Y), its top locked to a Box Top plane Height
+    /// above the level. The centre planes are pinned so a changed Depth moves the front, never the origin.
+    /// </summary>
+    internal static class BoxRecipe
+    {
+        public static readonly SectionDimension Width = new SectionDimension("width_mm", "Width", null);
+        public static readonly SectionDimension Depth = new SectionDimension("depth_mm", "Depth", null);
+        public static readonly SectionDimension Height = new SectionDimension("height_mm", "Height", null);
+
+        internal static BoxGeometry Build(FamilyBuilder fb, FamilyParameter pw, FamilyParameter pd, FamilyParameter ph, double w, double d, double h)
+        {
+            var doc = fb.Doc;
+            var level = FamilyBuilder.Step("find the Ref. Level", () => fb.FindLevel("Ref. Level", true));
+            var plan = FamilyBuilder.Step("find the Ref. Level plan view", () => fb.FindPlanView(level));
+            var front = FamilyBuilder.Step("find the Front elevation view", () => fb.FindElevation("Front", XYZ.BasisY));
+            var centerX = FamilyBuilder.Step("find the Center (Left/Right) reference plane", () => fb.CenterPlane("Center (Left/Right)", XYZ.BasisX));
+            var centerY = FamilyBuilder.Step("find the Center (Front/Back) reference plane", () => fb.CenterPlane("Center (Front/Back)", XYZ.BasisY));
+            FamilyBuilder.Step("pin the centre reference planes", () =>
+            {
+                if (!centerX.Pinned) centerX.Pinned = true;
+                if (!centerY.Pinned) centerY.Pinned = true;
+            });
+            var cx = FamilyBuilder.Coordinate(centerX, XYZ.BasisX);
+            var cy = FamilyBuilder.Coordinate(centerY, XYZ.BasisY);
+            var z0 = level.ProjectElevation;
+            var basePoint = new XYZ(cx, cy, z0);
+            var halfLength = Math.Max(w, d) + FamilyBuilder.Margin;
+            var side = cx - w / 2 - FamilyBuilder.Margin; // where the depth and height dimensions sit: left of the box
+
+            // Width across X: Box Left/Right planes run along Y; their dimensions sit behind the back (+Y).
+            var x = fb.SymmetricPair("Width", plan, centerX, XYZ.BasisX, "Box Left", "Box Right", w, pw, XYZ.BasisY, XYZ.BasisZ, basePoint,
+                halfLength, FamilyBuilder.Margin);
+
+            // Depth: a Box Front plane d in front of the back (the Center (Front/Back) plane), labelled from it.
+            var frontPlane = FamilyBuilder.Step("create the Box Front reference plane", () =>
+                fb.EnsurePlane("Box Front", XYZ.BasisY, cy - d, XYZ.BasisX, XYZ.BasisZ, basePoint, halfLength, plan));
+            FamilyBuilder.Step("label Depth between Center (Front/Back) and Box Front", () =>
+                fb.LabelledDimension(plan, centerY.GetReference(), frontPlane.GetReference(),
+                    Line.CreateBound(new XYZ(side, cy, z0), new XYZ(side, cy - d, z0)), pd));
+            doc.Regenerate();
+            FamilyBuilder.Step("check the Box Front position", () => fb.CheckAt(frontPlane, XYZ.BasisY, cy - d));
+
+            // Height: a Box Top plane h above the level, drawn in the Front elevation, labelled from the level.
+            var top = FamilyBuilder.Step("create the Box Top reference plane", () =>
+                fb.EnsurePlane("Box Top", XYZ.BasisZ, z0 + h, XYZ.BasisX, XYZ.BasisY, basePoint, halfLength, front));
+            FamilyBuilder.Step("label Height between the Ref. Level and Box Top", () =>
+                fb.LabelledDimension(front, level.GetPlaneReference(), top.GetReference(),
+                    Line.CreateBound(new XYZ(side, cy, z0), new XYZ(side, cy, z0 + h)), ph));
+            doc.Regenerate();
+            FamilyBuilder.Step("check the Box Top position", () => fb.CheckAt(top, XYZ.BasisZ, z0 + h));
+
+            var extrusion = FamilyBuilder.Step("create the box extrusion on the Ref. Level", () =>
+            {
+                var sketch = SketchPlane.Create(doc, level.Id);
+                var profile = FamilyBuilder.Rectangle(
+                    new XYZ(cx - w / 2, cy - d, z0), new XYZ(cx + w / 2, cy - d, z0),
+                    new XYZ(cx + w / 2, cy, z0), new XYZ(cx - w / 2, cy, z0));
+                return doc.FamilyCreate.NewExtrusion(true, profile, sketch, h);
+            });
+            doc.Regenerate();
+
+            FamilyBuilder.Step("lock the left face to the Box Left plane", () => fb.Align(plan, x[0].GetReference(), extrusion, -XYZ.BasisX));
+            FamilyBuilder.Step("lock the right face to the Box Right plane", () => fb.Align(plan, x[1].GetReference(), extrusion, XYZ.BasisX));
+            FamilyBuilder.Step("lock the front face to the Box Front plane", () => fb.Align(plan, frontPlane.GetReference(), extrusion, -XYZ.BasisY));
+            FamilyBuilder.Step("lock the back face to the Center (Front/Back) plane", () => fb.Align(plan, centerY.GetReference(), extrusion, XYZ.BasisY));
+            FamilyBuilder.Step("lock the top face to the Box Top plane", () => fb.Align(front, top.GetReference(), extrusion, XYZ.BasisZ));
+
+            return new BoxGeometry { Extrusion = extrusion, Cx = cx, Cy = cy, Z0 = z0 };
+        }
+    }
+
     internal static class FamilyFactory
     {
         public const string MaterialParameterName = "Structural Material";
+        public const string BoxMaterialParameterName = "Material";
+        public const string BoxDefaultMaterial = "B2M Fit-out";
+
+        /// <summary>
+        /// Creates a box family (BoxRecipe) from the template, saves it to savePath (never overwriting) and closes it.
+        /// When the template makes another category (the generic model template), the family category is set. Throws
+        /// FamilyBuildException naming the failed step; the family document is always closed without saving.
+        /// </summary>
+        public static JObject CreateBox(RevitApplication app, string templatePath, BuiltInCategory category, string savePath, string typeName,
+            double w, double d, double h, string materialName)
+        {
+            Document doc = null;
+            try
+            {
+                doc = FamilyBuilder.Step("open the family template", () => app.NewFamilyDocument(templatePath));
+                if (doc == null) throw new FamilyBuildException("open the family template", "Revit returned no family document");
+                var family = doc.OwnerFamily ?? throw new FamilyBuildException("open the family template", "the document has no family");
+                var fb = new FamilyBuilder(doc);
+                string categorySet = null, material;
+                int removed;
+                BoxGeometry built;
+                FamilyParameter pw, pd, ph;
+                using (var tx = new Transaction(doc, "B2M: Build box family"))
+                {
+                    FamilyBuilder.Step("start the family transaction", () => tx.Start());
+                    if (family.FamilyCategory == null || family.FamilyCategory.BuiltInCategory != category)
+                        categorySet = FamilyBuilder.Step("set the family category to " + category, () =>
+                        {
+                            var wanted = Category.GetCategory(doc, category)
+                                ?? throw new InvalidOperationException("the family document knows no category " + category);
+                            family.FamilyCategory = wanted;
+                            if (family.FamilyCategory == null || family.FamilyCategory.BuiltInCategory != category)
+                                throw new InvalidOperationException("Revit kept the category " + (family.FamilyCategory?.Name ?? "none"));
+                            return wanted.Name;
+                        });
+                    removed = FamilyBuilder.Step("remove the template's sample geometry", () => fb.RemoveSampleGeometry());
+                    FamilyBuilder.Step("create the family type", () => fb.EnsureOnlyType(typeName));
+                    pw = FamilyBuilder.Step("add the type parameter Width", () => fb.EnsureLengthParameter(BoxRecipe.Width, w));
+                    pd = FamilyBuilder.Step("add the type parameter Depth", () => fb.EnsureLengthParameter(BoxRecipe.Depth, d));
+                    ph = FamilyBuilder.Step("add the type parameter Height", () => fb.EnsureLengthParameter(BoxRecipe.Height, h));
+                    doc.Regenerate();
+                    built = BoxRecipe.Build(fb, pw, pd, ph, w, d, h);
+                    // The parameter holds its material before it is associated (an empty material parameter fails regeneration).
+                    material = FamilyBuilder.Step("bind the " + BoxMaterialParameterName + " parameter to the extrusion", () =>
+                        fb.BindMaterial(built.Extrusion, BoxMaterialParameterName, string.IsNullOrWhiteSpace(materialName) ? BoxDefaultMaterial : materialName.Trim()));
+                    var status = FamilyBuilder.Step("commit the family geometry", () => tx.Commit());
+                    if (status != TransactionStatus.Committed)
+                        throw new FamilyBuildException("commit the family geometry", "Revit rolled the family transaction back (see failures)");
+                }
+
+                var flex = BoxFlexCheck(fb, built, pw, pd, ph, w, d, h);
+
+                FamilyBuilder.Step("save the family file", () =>
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(savePath));
+                    doc.SaveAs(savePath, new SaveAsOptions { OverwriteExistingFile = false });
+                });
+
+                return new JObject
+                {
+                    ["template"] = Path.GetFileName(templatePath),
+                    ["category_set"] = categorySet,
+                    ["material"] = material,
+                    ["sample_geometry_removed"] = removed,
+                    ["reference_planes_created"] = new JArray(fb.PlanesCreated),
+                    ["reference_planes_reused"] = new JArray(fb.PlanesReused),
+                    ["flex_check"] = flex
+                };
+            }
+            finally
+            {
+                Close(doc);
+            }
+        }
+
+        private static void Close(Document doc)
+        {
+            if (doc == null) return;
+            try
+            {
+                if (doc.IsValidObject && !doc.Close(false)) AddinLog.Write("Families", "Revit refused to close the new family document.");
+            }
+            catch (Exception ex)
+            {
+                AddinLog.Write("Families", "Could not close the new family document: " + ex.Message);
+            }
+        }
+
+        /// <summary>Flex Width, Depth and Height in a transaction that is always rolled back: the back stays on the origin.</summary>
+        private static JObject BoxFlexCheck(FamilyBuilder fb, BoxGeometry built, FamilyParameter pw, FamilyParameter pd, FamilyParameter ph,
+            double w, double d, double h)
+        {
+            const string step = "flex check";
+            var doc = fb.Doc;
+            double w2 = w + Mm.ToFeet(50), d2 = d + Mm.ToFeet(80), h2 = h + Mm.ToFeet(100);
+            using (var tx = new Transaction(doc, "B2M: Flex check"))
+            {
+                try
+                {
+                    FamilyBuilder.Step(step, () => tx.Start());
+                    FamilyBuilder.Step(step + ": set Width, Depth and Height", () =>
+                    {
+                        fb.Manager.Set(pw, w2);
+                        fb.Manager.Set(pd, d2);
+                        fb.Manager.Set(ph, h2);
+                        doc.Regenerate();
+                    });
+                    var box = FamilyBuilder.Step(step + ": measure", () => FamilyBuilder.Measure(built.Extrusion));
+                    Expect(box, XYZ.BasisX, built.Cx - w2 / 2, built.Cx + w2 / 2, "Width");
+                    Expect(box, XYZ.BasisY, built.Cy - d2, built.Cy, "Depth (the back staying on the origin)");
+                    Expect(box, XYZ.BasisZ, built.Z0, built.Z0 + h2, "Height (the base staying on the level)");
+                }
+                finally
+                {
+                    if (tx.HasStarted() && !tx.HasEnded()) tx.RollBack();
+                }
+            }
+            return new JObject { ["width_depth_height_flex"] = true, ["origin"] = "middle of the back edge, at the level" };
+        }
 
         /// <summary>
         /// Creates the family from the template, saves it to savePath (never overwriting) and closes it. Throws
@@ -339,17 +543,7 @@ namespace B2M.Revit.Commands.Families
             }
             finally
             {
-                if (doc != null)
-                {
-                    try
-                    {
-                        if (doc.IsValidObject && !doc.Close(false)) AddinLog.Write("Families", "Revit refused to close the new family document.");
-                    }
-                    catch (Exception ex)
-                    {
-                        AddinLog.Write("Families", "Could not close the new family document: " + ex.Message);
-                    }
-                }
+                Close(doc);
             }
         }
 
@@ -594,12 +788,15 @@ namespace B2M.Revit.Commands.Families
             return parameter;
         }
 
-        /// <summary>Associates the extrusion's material with a type parameter "Structural Material", adding it when missing.</summary>
-        public void BindMaterial(Extrusion extrusion)
+        /// <summary>
+        /// Associates the extrusion's material with a type material parameter (by default "Structural Material" holding
+        /// Concrete), adding it when missing. Returns the material the type holds.
+        /// </summary>
+        public string BindMaterial(Extrusion extrusion, string parameterName = FamilyFactory.MaterialParameterName, string materialName = "Concrete")
         {
-            var parameter = FindParameter(FamilyFactory.MaterialParameterName);
+            var parameter = FindParameter(parameterName);
             if (parameter == null)
-                parameter = Manager.AddParameter(FamilyFactory.MaterialParameterName, GroupTypeId.Materials, SpecTypeId.Reference.Material, false);
+                parameter = Manager.AddParameter(parameterName, GroupTypeId.Materials, SpecTypeId.Reference.Material, false);
             else
             {
                 if (!SpecTypeId.Reference.Material.Equals(parameter.Definition.GetDataType()))
@@ -610,19 +807,21 @@ namespace B2M.Revit.Commands.Families
             if (material == null || !Manager.CanElementParameterBeAssociated(material))
                 throw new InvalidOperationException("the extrusion's material cannot be bound to a family parameter");
             // Binding geometry to a material parameter that holds no material fails with "Document regeneration
-            // failed" (the beam template's built-in Structural Material starts empty; found live). Give it Concrete.
-            EnsureMaterialValue(parameter);
+            // failed" (the beam template's built-in Structural Material starts empty; found live). Give it the material.
+            var held = EnsureMaterialValue(parameter, materialName);
             Manager.AssociateElementParameterToFamilyParameter(material, parameter);
+            return held;
         }
 
-        private void EnsureMaterialValue(FamilyParameter parameter)
+        private string EnsureMaterialValue(FamilyParameter parameter, string materialName)
         {
             var current = Manager.CurrentType?.AsElementId(parameter);
-            if (current != null && current != ElementId.InvalidElementId && Doc.GetElement(current) is Material) return;
-            var concrete = new FilteredElementCollector(Doc).OfClass(typeof(Material)).Cast<Material>()
-                .FirstOrDefault(m => string.Equals(m.Name, "Concrete", StringComparison.OrdinalIgnoreCase));
-            var id = concrete?.Id ?? Material.Create(Doc, "Concrete");
+            if (current != null && current != ElementId.InvalidElementId && Doc.GetElement(current) is Material held) return held.Name;
+            var found = new FilteredElementCollector(Doc).OfClass(typeof(Material)).Cast<Material>()
+                .FirstOrDefault(m => string.Equals(m.Name, materialName, StringComparison.OrdinalIgnoreCase));
+            var id = found?.Id ?? Material.Create(Doc, materialName);
             Manager.Set(parameter, id);
+            return ((Material)Doc.GetElement(id)).Name;
         }
 
         private FamilyParameter FindParameter(string name)

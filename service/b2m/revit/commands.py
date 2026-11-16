@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from b2m.plan import (KEY_SEPARATOR, BeamOp, CircuitOp, ColumnOp, DoorOp, FamilyOp, FamilyTypeCopyOp, FloorOp,
-                      FloorTypeOp, FoundationSlabOp, GridOp, LevelOp, MepRunOp, Op, OpeningTypeOp, RailingOp, RoomOp,
-                      RoomSeparatorOp, ShaftOp, StairOp, TypesFromFileOp, WallOp, WallTypeOp, WindowOp)
+from b2m.plan import (KEY_SEPARATOR, BeamOp, CircuitOp, ColumnOp, DoorOp, FamilyCreateOp, FamilyOp, FamilyTypeCopyOp,
+                      FloorOp, FloorTypeOp, FoundationSlabOp, GridOp, LevelOp, MepRunOp, Op, OpeningTypeOp, RailingOp,
+                      RoomOp, RoomSeparatorOp, ShaftOp, StairOp, TypesFromFileOp, WallOp, WallTypeOp, WindowOp)
 from b2m.revit.types import TypeMap
 
 NO_MAPPING = TypeMap()
@@ -31,7 +31,8 @@ IMPORT_COMMANDS = [
 
 # What a fit-out (Step 10, F14) needs on top: types from Revit's installed templates (list_types_in_file and
 # copy_types_from_file open another file, so they run directly, never inside batch_execute), placed families, MEP runs
-# with fittings and connections, and circuits.
+# with fittings and connections, and circuits. A plan that creates a box family (family_create, only when the user
+# answered so) needs create_box_family too (BOX_FAMILY_COMMAND), checked only for such a plan.
 FITOUT_COMMANDS = [
     "list_template_files", "list_types_in_file", "copy_types_from_file", "load_family_from_path",
     "create_lighting_fixture", "create_air_terminal", "create_mep_run", "create_electrical_circuit",
@@ -39,12 +40,15 @@ FITOUT_COMMANDS = [
     "get_available_family_types", "get_type_parameters", "duplicate_family_type",
 ]
 
+BOX_FAMILY_COMMAND = "create_box_family"
+
 # Ops the runner calls directly, one call (and one Revit undo step) per op, never inside batch_execute:
 # the add-in refuses create_stair in a batch, and a railing needs its stair's id and railings first; type pre-steps
 # may open, save or duplicate types, which a batch rollback cannot undo, and their results rename what later ops use.
-# Copying types from a template opens another file, which the add-in refuses inside a batch.
+# Copying types from a template opens another file, and creating a box family builds and loads a family file, which
+# the add-in refuses inside a batch.
 DIRECT_OPS = frozenset({"stair", "railing", "wall_type", "floor_type", "opening_type", "types_from_file",
-                        "family_type_copy"})
+                        "family_type_copy", "family_create"})
 
 # Placed families of these categories go through the MEP placement commands (snake_case parameters); the rest through
 # create_point_based_element. All three place the same way (the add-in's FamilyPlacer).
@@ -212,6 +216,12 @@ def to_command(op: Op, plan: dict[str, Op], ids: dict[str, int], types: TypeMap 
             # finds it and calls duplicate_family_type with source_type_id itself (see Runner._copy_type).
             return {"command": "duplicate_family_type", "params": {
                 "new_type_name": op.name, "type_parameter_overrides": dict(op.values_mm)}}
+        case FamilyCreateOp():
+            params = {"family_name": op.family, "type_name": op.type, "category": op.category,
+                      "width_mm": op.width_mm, "depth_mm": op.depth_mm, "height_mm": op.height_mm}
+            if op.material:
+                params["material_name"] = op.material
+            return {"command": BOX_FAMILY_COMMAND, "params": params}
         case FamilyOp():
             return _family_command(op, ids, types)
         case MepRunOp():
@@ -312,6 +322,9 @@ def created_ids(op: Op, data: dict[str, Any]) -> list[int]:
             return list(data.get("created_ids") or [])
         case FamilyTypeCopyOp():
             return [data["new_type_id"]] if data.get("new_type_id") is not None else []
+        case FamilyCreateOp():
+            # The family, its type and what the load brought along; nothing when the family was already there.
+            return [] if data.get("action") == "already_there" else list(data.get("created_ids") or [])
         case FamilyOp():
             # The instance first, then a reference plane a face-down placement made.
             return list(data.get("created_ids") or [data.get("elementId", data.get("instance_id"))])

@@ -1,6 +1,6 @@
 """Family matching for the fit-out (PRD Step 10, stage 2 "Families"; F1/F5): each item the layout needs is matched
-to a family type at planning time, or asked about. Families: find, adapt a copy, ask; never create a family, never
-edit an existing type.
+to a family type at planning time, or asked about. Families: find, adapt a copy, ask; never edit an existing type, and
+create a family only when the user answers so (``{"create": "box"}``: a plain box family, see ``box_choice``).
 
     needs = families.needs_from(layout.placed)            # one need per item kind and size (+ MEP devices)
     found = families.resolve(needs, revit, answers)       # revit: anything with .call(command, params)
@@ -27,7 +27,10 @@ How it decides, per need:
   Length), a copy of the type is made at the size (a family_type_copy op; the type itself is never changed);
   otherwise the closest type is used as it is and the difference is listed.
 - nothing with a keyword in the category: a question (``fitout:family:<need>``) with the category's other types as
-  options; the answer {"family", "type"} (any type of the category, project or template) or "skip".
+  options; the answer {"family", "type"} (any type of the category, project or template), "skip", or
+  {"create": "box"} (optionally "name", "size_mm" [w, d, h], "material"): B2M creates a plain box family for it at
+  build (a ``family_create`` op, removed with the run), its origin at the middle of its back, front -Y, base at the
+  level, so it needs no measuring.
 
 Category names in the rules are Revit's English display names ("Plumbing Fixtures"); ``CATEGORIES`` maps them to
 built-in categories, so matching does not depend on Revit's language. A type the user names is looked for in the
@@ -99,6 +102,7 @@ class Need(_Model):
     keywords: list[str]
     width_mm: float | None = None
     depth_mm: float | None = None
+    height_mm: float | None = None  # furniture: the rule's (or the layout record's) height, for a box B2M creates
     classification: str | None = None  # MEP system types: Sanitary, DomesticColdWater, SupplyAir...
     keys: list[str] = []  # the layout records (or runs) that need it
 
@@ -186,17 +190,28 @@ class Measurement(_Model):
         return text
 
 
+class BoxFamily(_Model):
+    """A plain box family B2M creates for an item (the user's answer {"create": "box"}): its size and material."""
+
+    kind: Literal["box"] = "box"
+    width_mm: float
+    depth_mm: float
+    height_mm: float
+    material: str | None = None
+
+
 class Choice(_Model):
     """The family type a need is placed with. ``type`` is the type to place: the size copy's name when one is made
     (from ``base_type``, setting ``values_mm``). ``measured``: the type's measured box, when known (the layout then
     used its footprint, and the insertion point is worked out from it); ``front``: which way the family's front faces
-    in its own coordinates (-Y, the Revit way, unless the user says otherwise)."""
+    in its own coordinates (-Y, the Revit way, unless the user says otherwise). ``source`` "create": a box family B2M
+    creates at build (``box``), its box known from its own geometry."""
 
     need: str
     category: str
     family: str | None
     type: str
-    source: Literal["project", "template"]
+    source: Literal["project", "template", "create"]
     path: str | None = None  # template: copied in at build (types_from_file)
     placement: str | None = None
     kind: str = "family_type"
@@ -209,6 +224,7 @@ class Choice(_Model):
     type_id: int | None = None
     measured: Measurement | None = None
     front: Front = "-y"
+    box: BoxFamily | None = None
 
 
 class Resolution(_Model):
@@ -259,7 +275,8 @@ def needs_from(records: Iterable[Any]) -> list[Need]:
         nid = need_id(item, width, depth)
         entry = grouped.setdefault(nid, {"id": nid, "item": item, "label": _get(record, "label") or item,
                                          "category": category, "keywords": list(_get(record, "keywords") or [item]),
-                                         "width_mm": width, "depth_mm": depth, "keys": []})
+                                         "width_mm": width, "depth_mm": depth, "height_mm": _get(record, "height_mm"),
+                                         "keys": []})
         entry["keys"].append(_get(record, "key"))
     return [Need(**v) for _, v in sorted(grouped.items())]
 
@@ -514,10 +531,21 @@ def resolve(needs: list[Need], revit: Revit, answers: dict[str, Any] | None = No
     questions: list[Question] = []
     assumptions: list[Assumption] = []
     skipped: list[str] = []
+    # an item answered {"create": "box"} with no size of its own at more than one size gets one box family per size
+    box_sizes: dict[str, set] = {}
+    for need in needs:
+        answer = answer_for(need, answers)
+        if is_create(answer) and not answer.get("size_mm"):
+            box_sizes.setdefault(need.item, set()).add((need.width_mm, need.depth_mm, need.height_mm))
     for need in needs:
         answer = answer_for(need, answers)
         if answer == "skip":
             skipped.append(need.id)
+            continue
+        if is_create(answer):
+            choice, note = box_choice(need, answer, per_size=len(box_sizes.get(need.item, ())) > 1)
+            choices[need.id] = choice
+            assumptions.append(note)
             continue
         if isinstance(answer, dict):
             chosen = _answered(need, answer, search)
@@ -544,6 +572,84 @@ def resolve(needs: list[Need], revit: Revit, answers: dict[str, Any] | None = No
 
 def question_id(need: Need) -> str:
     return f"fitout:family:{need.id}"
+
+
+# ------------------------------------------------------------------------------------------------ a box B2M creates
+
+BOX_TYPE_SUFFIX = "(B2M)"
+BOX_SOURCE = "its own geometry: a box B2M creates, origin at the middle of its back, front -Y, base at the level"
+# What Windows refuses in a file name (the family is saved as <name>.rfa) and Revit in a family name (the add-in's
+# BoxFamily.NameError checks the same).
+BOX_NAME_FORBIDDEN = set('\\/:*?"<>|{}[];`~')
+BOX_MAX_MM = 20000.0
+
+
+def is_create(answer: Any) -> bool:
+    """The user's answer that B2M creates a family for the item: {"create": "box", ...}."""
+    return isinstance(answer, dict) and answer.get("create") is not None
+
+
+def _mm(v: float) -> str:
+    r = round(float(v), 1)
+    return f"{r:.0f}" if r == round(r) else f"{r:.1f}"
+
+
+def box_type_name(w: float, d: float, h: float) -> str:
+    """"1500 x 2000 x 450mm (B2M)", as the add-in names it by default."""
+    return f"{_mm(w)} x {_mm(d)} x {_mm(h)}mm {BOX_TYPE_SUFFIX}"
+
+
+def box_choice(need: Need, answer: dict[str, Any], *, per_size: bool = False) -> tuple[Choice, Assumption]:
+    """The user said B2M creates a plain box family for the item (only then: families are found, adapted, and created
+    only with the user's OK): {"create": "box"}, optionally "name" (default "B2M <Label>"), "size_mm" [w, d, h]
+    (default the need's size: the rule's first size, or the layout record's) and "material". Its box is known from its
+    own geometry (origin at the middle of its back, front -Y, base at the level), so it is never measured. ``per_size``:
+    the item is placed at several sizes and no size was given, so each size gets its own family ("B2M Bed 1200x2000")."""
+    where = f"fitout:family:{need.item}"
+    if answer.get("create") != "box":
+        raise ValueError(f"{where}: create {answer.get('create')!r} is not 'box', the only family B2M creates")
+    if need.mep:
+        raise ValueError(f"{where}: B2M creates box families for placed items, not {need.category} types")
+    unknown = set(answer) - {"create", "name", "size_mm", "material", "includes"}
+    if unknown:
+        raise ValueError(f"{where}: {', '.join(sorted(unknown))} do not apply to a box B2M creates "
+                         f"(it takes name, size_mm [w, d, h], material, includes)")
+    size = answer.get("size_mm")
+    if size is not None:
+        if (not isinstance(size, (list, tuple)) or len(size) != 3
+                or not all(isinstance(v, (int, float)) and 0 < v <= BOX_MAX_MM for v in size)):
+            raise ValueError(f"{where}: size_mm must be [width, depth, height] in mm, each above 0 and at most "
+                             f"{BOX_MAX_MM:g}")
+        w, d, h = (float(v) for v in size)
+    else:
+        if need.width_mm is None or need.depth_mm is None or need.height_mm is None:
+            raise ValueError(f"{where}: the item has no size of its own; give size_mm [width, depth, height]")
+        w, d, h = need.width_mm, need.depth_mm, need.height_mm
+    name = str(answer.get("name") or f"B2M {need.label}").strip()
+    if per_size and not answer.get("name"):
+        name += f" {_mm(w)}x{_mm(d)}"
+    bad = sorted({c for c in name if c in BOX_NAME_FORBIDDEN or ord(c) < 32})
+    if not name or name.endswith(".") or len(name) > 120 or bad:
+        raise ValueError(f"{where}: {name!r} cannot be a family name (it is also a file name: no "
+                         f"{' '.join(sorted(BOX_NAME_FORBIDDEN))}, no dot at the end, at most 120 characters)")
+    material = answer.get("material")
+    type_name = box_type_name(w, d, h)
+    measured = Measurement(family=name, type=type_name, placement="OneLevelBased", min=(-w / 2, -d, 0.0),
+                           max=(w / 2, 0.0, h), source=BOX_SOURCE)
+    choice = Choice(need=need.id, category=need.category, family=name, type=type_name, source="create",
+                    placement="OneLevelBased", width_mm=w, depth_mm=d, answered=True, measured=measured, front="-y",
+                    box=BoxFamily(width_mm=w, depth_mm=d, height_mm=h, material=material))
+    note = Assumption(
+        id=f"fitout:family-create:{need.id}",
+        text=f"{need.label}: as the user answered, B2M creates a plain box family {name!r} (type {type_name!r}), "
+             f"{_mm(w)} x {_mm(d)} x {_mm(h)} mm, from Revit's metric template for its category (else the generic "
+             f"model's), with Width, Depth, Height and Material parameters, its origin at the middle of its back, front "
+             f"-Y, base at the level; a new family, removed with the fit-out run (a family of that name already in the "
+             f"project is used as it is, never overwritten)",
+        value={"family": name, "type": type_name, "size_mm": [w, d, h], "category": need.category,
+               **({"material": material} if material else {})},
+        source="user's answer", instances=need.keys)
+    return choice, note
 
 
 def answer_for(need: Need, answers: dict[str, Any]) -> Any:
@@ -825,7 +931,7 @@ def item_needs(model: Any, rules: Any) -> list[Need]:
         size = item.sizes[0]
         needs.append(Need(id=_slug(item_id), item=item_id, label=item.label, category=category,
                           keywords=list(item.keywords), width_mm=size.width_mm, depth_mm=size.depth_mm,
-                          keys=sorted(rooms_of[item_id])))
+                          height_mm=size.height_mm, keys=sorted(rooms_of[item_id])))
     return needs
 
 
@@ -839,8 +945,9 @@ def resolve_items(model: Any, rules: Any, revit: Revit, answers: dict[str, Any] 
     chosen family's real footprint. An answer may be {"family", "type"} (the family's smaller types are tried when it
     does not fit), {"family", "types": [preferred first]}, either with "front" ("-y" the Revit way, "+y", "-x", "+x":
     which way the family's front faces in its own coordinates) and "includes" (items the family already has, as a
-    bed set its side tables: not placed apart, and the side clearance they stand in is not kept beside the set), or
-    "skip". Types are used as they are, never edited."""
+    bed set its side tables: not placed apart, and the side clearance they stand in is not kept beside the set),
+    "skip", or {"create": "box"} (``box_choice``: a box family B2M creates, laid out at its own size, never measured).
+    Types are used as they are, never edited."""
     answers = answers or {}
     search = search or _Search(revit, year, language, templates)
     needs = item_needs(model, rules)
@@ -868,9 +975,13 @@ def resolve_items(model: Any, rules: Any, revit: Revit, answers: dict[str, Any] 
     # what to measure: each chosen project type and the other types of its family (or the types the answer lists)
     measurer = Measurer(revit, measurements, document=document, level=level, cache=cache)
     plans: dict[str, tuple[Choice, list[tuple[int | None, str | None, str]], str, bool]] = {}
+    created: dict[str, Choice] = {}  # item -> the box B2M creates for it: its box is its own geometry, never measured
     for need in needs:
         choice = found.choices.get(need.id)
         if choice is None or need.item in left_out:
+            continue
+        if choice.source == "create":
+            created[need.item] = choice
             continue
         answer = answer_for(need, answers)
         answer = answer if isinstance(answer, dict) else {}
@@ -915,6 +1026,10 @@ def resolve_items(model: Any, rules: Any, revit: Revit, answers: dict[str, Any] 
                 value={"family": choice.family, "type": choice.base_type or choice.type}, source="family match",
                 instances=need.keys))
         items[item_id] = ItemFamily(item=item_id, need=need, choice=choice, options=options)
+    for item_id, choice in created.items():
+        need = by_item[item_id]
+        items[item_id] = ItemFamily(item=item_id, need=need, choice=choice, options=[choice])
+        notes.extend(a for a in found.assumptions if a.id == f"fitout:family-create:{need.id}")
     for item_id, why in sorted(left_out.items()):
         notes.append(Assumption(id=f"fitout:left-out:{_slug(item_id)}", text=f"{rules.furniture.items[item_id].label}: "
                                 f"not placed ({why})", value=why, source="user's answer",
