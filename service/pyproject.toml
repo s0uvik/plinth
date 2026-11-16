@@ -13,6 +13,7 @@ dependencies = [
     "reportlab>=4",
     "pypdf>=5",
     "ezdxf>=1.4",
+    "openpyxl>=3.1",
 ]
 
 [project.optional-dependencies]
@@ -26,7 +27,7 @@ build-backend = "setuptools.build_meta"
 include = ["b2m*"]
 
 [tool.setuptools.package-data]
-b2m = ["rules/*.yaml", "web/*.html"]
+b2m = ["rules/*.yaml", "web/*.html", "estimate/rules/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
