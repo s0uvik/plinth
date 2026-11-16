@@ -20,7 +20,9 @@ Geometry per kind (all points are world XY in mm, z is dropped):
     other      anything else (proxy entities, images, multileaders, ...), kept for the audit with its dxftype
 
 Children of an insert get handle "<parent handle>:<index>" and parent = the insert's handle; layer is as drawn
-in the block (layer "0" inherits the insert's layer when AutoCAD displays it).
+in the block (layer "0" inherits the insert's layer when AutoCAD displays it). invisible marks an entity AutoCAD
+does not display (DXF group 60, e.g. the other visibility states of a dynamic block, or inside an invisible insert);
+it is kept for the audit but recognisers skip it.
 """
 
 from __future__ import annotations
@@ -65,6 +67,7 @@ class CadEntity(BaseModel):
     layer: str
     color: int | None = None  # AutoCAD colour index: 256 = by layer, 0 = by block
     linetype: str | None = None
+    invisible: bool = False
     points: list[Point] = []
     bulges: list[float] | None = None
     closed: bool = False
@@ -121,6 +124,7 @@ class CadSheet(BaseModel):
     unit_factor: float  # drawing units to mm
     entities: list[CadEntity]
     issues: list[Issue] = []
+    layer_linetypes: dict[str, str] = {}  # layer name -> its linetype, to resolve an entity's BYLAYER linetype
 
     def walk(self) -> Iterator[CadEntity]:
         """Every entity, children of inserts included (depth first)."""
@@ -162,7 +166,8 @@ def read_dxf(dxf: Path | str, source: Path | str | None = None) -> CadSheet:
     reader = _Reader(doc, factor, issues)
     entities = [reader.entity(e, e.dxf.handle, None, 0) for e in doc.modelspace()]
     return CadSheet(source=str(source), sha256=convert.sha256(source), dxf=str(dxf), units=unit,
-                    unit_factor=factor, entities=entities, issues=issues)
+                    unit_factor=factor, entities=entities, issues=issues,
+                    layer_linetypes={layer.dxf.name: layer.dxf.get("linetype", "Continuous") for layer in doc.layers})
 
 
 class _Reader:
@@ -180,8 +185,13 @@ class _Reader:
     def entity(self, e: Any, handle: str, parent: str | None, depth: int) -> CadEntity:
         kind_fields = self._geometry(e, handle, depth)
         dxf = e.dxf
-        return CadEntity(handle=handle, parent=parent, dxftype=e.dxftype(), layer=dxf.get("layer", "0"),
-                         color=dxf.get("color", 256), linetype=dxf.get("linetype", "BYLAYER"), **kind_fields)
+        entity = CadEntity(handle=handle, parent=parent, dxftype=e.dxftype(), layer=dxf.get("layer", "0"),
+                           color=dxf.get("color", 256), linetype=dxf.get("linetype", "BYLAYER"),
+                           invisible=bool(dxf.get("invisible", 0)), **kind_fields)
+        if entity.invisible:
+            for child in entity.walk():
+                child.invisible = True
+        return entity
 
     def _geometry(self, e: Any, handle: str, depth: int) -> dict[str, Any]:
         t = e.dxftype()

@@ -126,6 +126,25 @@ class Projection(_Model):
     evidence: Evidence
 
 
+class SectionMark(_Model):
+    """A section cut line drawn on a plan (centre line with the section's letter at both ends): where section
+    recognition (T4) takes the section's cut_line from."""
+
+    name: str  # "A" for section AA
+    points: list[Point]  # the cut line as drawn (may be stepped)
+    evidence: Evidence
+
+
+class RoofFall(_Model):
+    """A slope arrow on a roof plan: water falls from start towards end (the arrowhead)."""
+
+    id: str
+    start: Point
+    end: Point
+    label: str | None = None  # the text written along it, e.g. "SLOPE"
+    evidence: Evidence
+
+
 class PlanRecognition(_Model):
     sheet: str
     role: Literal["floor_plan", "roof_plan"]
@@ -139,6 +158,8 @@ class PlanRecognition(_Model):
     shafts: list[Shaft] = []
     projections: list[Projection] = []
     outline: list[Point] | None = None  # outer face of the building on this plan
+    section_marks: list[SectionMark] = []  # section cut lines drawn on the plan (for T4's cut_line)
+    falls: list[RoofFall] = []  # roof plans: slope arrows (no other field carries roof drainage)
     findings: list[Finding] = []
     unclaimed: list[Evidence] = []  # drawing geometry no recogniser used (listed, never silently dropped)
 
