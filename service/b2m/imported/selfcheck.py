@@ -39,7 +39,8 @@ and the relative tolerance):
 - doors and windows: host wall, centre along the host wall from its start, width and height of the type, sill
   (windows), Type Mark, facing and hand flips, level.
 - rooms: name, number, department, level, placement point; area against the drawn boundary and against the written
-  size ("3500 X 4000"); a room merged from several labels has no drawn boundary and must just be enclosed.
+  size ("3500 X 4000"); a room merged from several labels, or split off a shared space by a separation line, has
+  no drawn boundary and must just be enclosed. A label merged into a room is accounted for by the answer.
 - stairs: levels, risers, riser height (storey height / risers), tread, width of every run.
 - railings: hosted on their stair. Shafts: outline, levels, offsets. Room separation lines: every segment.
 Type names are not compared: the add-in may reuse an existing type of the same build-up under another name; what
@@ -59,6 +60,7 @@ from typing import Any, Callable, Iterable, Literal, Mapping
 from pydantic import BaseModel, ConfigDict
 
 from b2m.cad.building import Evidence, RecognisedBuilding, Registration
+from b2m.imported import split_space
 from b2m.imported.to_plan import ImportPlan
 from b2m.plan import KEY_SEPARATOR, TYPE_OPS, BuildPlan
 from b2m.revit.commands import CATEGORY, RAILINGS, op_key
@@ -901,10 +903,13 @@ class _Comparer:
         if kind == "rooms":
             for fid, members in self.rec.groups(sheet).items():
                 if e.id in members:
-                    built = [m for m in members if (sheet, m) in room_keys]
                     answer = f"rooms:{sheet}:{fid}"
-                    if built and answer in self.answers:
-                        return (f"one room with {', '.join(m for m in members if m != e.id)}, built from {built[0]}, "
+                    rooms = {r.id: r for r in self.rec.plans[sheet].rooms}
+                    apart, together = split_space.split_members([rooms[m] for m in members], self.answers.get(answer))
+                    together = [r.id for r in together]
+                    built = [m for m in together if (sheet, m) in room_keys]
+                    if e.id in together and built and answer in self.answers:
+                        return (f"one room with {', '.join(m for m in together if m != e.id)}, built from {built[0]}, "
                                 f"as answered ({answer})")
             return None
         if kind == "section_marks":

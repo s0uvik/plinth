@@ -1,5 +1,5 @@
 {
-  "_note": "TEST-ONLY answers for the G+4 sample, to exercise the plan conversion. Door heights 2100 and the D1 width (800, as in the office estimate) are the office's; window sills/heights take the one window dimensioned in section BB (sill 900 as drawn, head 2100) for every type, and the chajja thickness, boundary wall height, roof-structure height, stair landing side and room choices are illustrative assumptions, not answers the user gave.",
+  "_note": "TEST-ONLY answers for the G+4 sample, to exercise the plan conversion. Door heights 2100 and the D1 width (800, as in the office estimate) are the office's; window sills/heights take the one window dimensioned in section BB (sill 900 as drawn, head 2100) for every type, and the chajja thickness, boundary wall height, roof-structure height, stair landing side and room choices are illustrative assumptions, not answers the user gave, except the kitchen of each open living/dining/kitchen as its own room (the user's decision, 2026-11-17; the living/dining name is illustrative).",
   "door_height:D": 2100,
   "door_height:D1": 2100,
   "door_height:door-1000": 2100,
@@ -39,9 +39,9 @@
   "room:1.GROUND FLOOR PLAN.dxf:room-3": "skip",
   "room:1.GROUND FLOOR PLAN.dxf:room-4": "skip",
   "room:1.GROUND FLOOR PLAN.dxf:room-5": "skip",
-  "rooms:2.PLAN 1st to 4th.dxf:rooms-share-space-1": {"mode": "one_room", "name": "LIVING / DINING / KITCHEN"},
-  "rooms:2.PLAN 1st to 4th.dxf:rooms-share-space-2": {"mode": "one_room", "name": "LIVING / DINING / KITCHEN"},
+  "rooms:2.PLAN 1st to 4th.dxf:rooms-share-space-1": {"mode": "separate", "rooms": ["KITCHEN"], "name": "LIVING / DINING"},
+  "rooms:2.PLAN 1st to 4th.dxf:rooms-share-space-2": {"mode": "separate", "rooms": ["KITCHEN"], "name": "LIVING / DINING"},
   "rooms:2.PLAN 1st to 4th.dxf:rooms-share-space-3": {"mode": "one_room", "name": "ENTRANCE LOBBY"},
-  "rooms:2.PLAN 1st to 4th.dxf:rooms-share-space-4": {"mode": "one_room"},
-  "rooms:2.PLAN 1st to 4th.dxf:rooms-share-space-5": "one_room"
+  "rooms:2.PLAN 1st to 4th.dxf:rooms-share-space-4": {"mode": "separate", "rooms": ["KITCHEN"], "name": "LIVING / DINING"},
+  "rooms:2.PLAN 1st to 4th.dxf:rooms-share-space-5": {"mode": "separate", "rooms": ["KITCHEN"], "name": "LIVING / DINING"}
 }

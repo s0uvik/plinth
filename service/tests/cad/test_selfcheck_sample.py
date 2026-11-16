@@ -40,7 +40,8 @@ def unexplained(report):
 def test_a_perfect_build_of_the_sample(sample):
     building, answers, result, created, readback = sample
     report = selfcheck.compare(result, building, created, readback, answers=answers)
-    assert report.elements_read == len(readback) == 1332 - 20  # every op but the 20 type pre-steps
+    # every op but the 20 type pre-steps (1332 with 16 kitchen rooms and their 16 separation lines)
+    assert report.elements_read == len(readback) == 1364 - 20
     # plan -> model and drawing -> model: nothing; drawing -> plan: only what the answers changed
     assert [d for d in report.differences if d.stage in ("plan_to_model", "drawing_to_model")] == []
     explained = Counter((d.kind, d.field, d.reason.split(" = ")[0]) for d in report.differences
@@ -55,11 +56,17 @@ def test_a_perfect_build_of_the_sample(sample):
         ("room", "name", f"answered question rooms:{TYPICAL}:rooms-share-space-5"): 4,
     }
     # accounting: every recognised element is planned, listed as not modelled, or accounted for by a rule
-    assert report.accounting == {"recognised": 641, "planned": 549, "not_modelled": 27, "explained": 65,
+    # the 4 kitchen labels are built as rooms of their own: planned, no longer accounted for as merged
+    assert report.accounting == {"recognised": 641, "planned": 553, "not_modelled": 27, "explained": 61,
                                  "unaccounted": 0}
     rules = Counter(d.kind for d in report.differences if d.stage == "accounting" and d.explained)
-    assert rules == {"recognised grids": 32, "recognised levels": 16, "recognised rooms": 9,
+    assert rules == {"recognised grids": 32, "recognised levels": 16, "recognised rooms": 5,
                      "recognised section_marks": 6, "recognised column_sections": 2}
+    merged = {d.element: d.reason for d in report.differences
+              if d.stage == "accounting" and d.kind == "recognised rooms"}
+    # each flat's living room label is part of its living/dining room, never of the kitchen
+    assert merged["room-10"].startswith("one room with room-7, built from room-7")
+    assert len(merged) == 5 and not {"room-1", "room-6", "room-33", "room-34"} & set(merged)  # kitchens are built
     assert unexplained(report) == []
     off_grid = next(n for n in result.not_modelled if n.what == "roof-plan centre lines off the building grid")
     assert sorted(off_grid.elements) == sorted(f"{ROOF}#{g}" for g in ROOF_LINES_OFF_GRID)

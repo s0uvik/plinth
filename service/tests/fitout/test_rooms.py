@@ -26,9 +26,10 @@ def sample_model(sample_import, wb_rules):
 
 def test_every_sample_room_gets_its_polygon_and_drawn_area(sample_model):
     building, result, model = sample_model
-    assert len(model.rooms) == 105 and all(r.status == "ok" for r in model.rooms)
-    assert Counter(r.level for r in model.rooms) == {"Ground Floor": 1, "Floor 1": 25, "Floor 2": 25, "Floor 3": 25,
-                                                     "Floor 4": 25, "Roof": 4}
+    # 29 rooms per typical storey: each flat's kitchen is a room of its own beside its living/dining (2026-11-17)
+    assert len(model.rooms) == 121 and all(r.status == "ok" for r in model.rooms)
+    assert Counter(r.level for r in model.rooms) == {"Ground Floor": 1, "Floor 1": 29, "Floor 2": 29, "Floor 3": 29,
+                                                     "Floor 4": 29, "Roof": 4}
     recognised = {(p.sheet, r.id): (p, r) for p in building.plans for r in p.rooms}
     grouped = {(p.sheet, h) for p in building.plans for f in p.findings if f.topic == "rooms_share_space"
                for h in f.evidence.handles}
@@ -59,10 +60,12 @@ def test_typical_storeys_are_alike_and_classed(sample_model):
         assert {k: (r.polygon, r.classes, r.flat, len(r.openings)) for k, r in by_storey[n].items()} == \
                {k: (r.polygon, r.classes, r.flat, len(r.openings)) for k, r in by_storey[1].items()}
     floor1 = by_storey[1].values()
-    assert Counter(r.cls for r in floor1) == {"bedroom": 12, "toilet": 8, "living": 4, "lobby": 1}
-    ldk = [r for r in floor1 if r.cls == "living"]
-    assert all(r.classes == ["living", "dining", "kitchen"] for r in ldk)
-    assert sorted(r.flat for r in ldk) == ["U1", "U2", "U3", "U4"]
+    assert Counter(r.cls for r in floor1) == {"bedroom": 12, "toilet": 8, "living": 4, "kitchen": 4, "lobby": 1}
+    living = [r for r in floor1 if r.cls == "living"]
+    assert all(r.classes == ["living", "dining"] for r in living)
+    assert sorted(r.flat for r in living) == ["U1", "U2", "U3", "U4"]
+    kitchens = [r for r in floor1 if r.cls == "kitchen"]
+    assert all(r.classes == ["kitchen"] for r in kitchens) and sorted(r.flat for r in kitchens) == ["U1", "U2", "U3", "U4"]
     lobby = next(r for r in floor1 if r.cls == "lobby")
     assert (lobby.flat, lobby.flat_source) == (None, "common")  # opens into all four flats
     assert {r.flat_source for r in floor1 if r.cls != "lobby"} == {"plan"}
@@ -100,6 +103,25 @@ def test_sample_doors_and_windows_on_their_rooms(sample_model):
     assert all(any(f.outer for f in r.faces) for r in bedrooms)  # every bedroom has an outside wall
     w = next(o for r in bedrooms for o in r.windows if o.type == "W")
     assert (w.width_mm, w.sill_mm, w.head_mm) == (1500, 900, 2100)
+
+
+def test_sample_kitchens_are_rooms_of_their_own(sample_model):
+    """Each flat's kitchen (its own room since 2026-11-17) is closed off its living/dining by the separation line
+    the build plan draws across the alcove's mouth: one separator face each side, neighbours of each other, and the
+    two together fill the space the drawing leaves open (46.77 / 47.02 m2 recognised)."""
+    building, _, model = sample_model
+    floor1 = {r.key: r for r in model.on_level("Floor 1")}
+    kitchens = [r for r in floor1.values() if r.cls == "kitchen"]
+    assert len(kitchens) == 4
+    for k in kitchens:
+        ld = next(floor1[n] for n in k.neighbours if floor1[n].cls == "living")
+        assert ld.flat == k.flat and k.key in ld.neighbours
+        assert [f.kind for f in k.faces].count("separator") == 1 and [f.kind for f in ld.faces].count("separator") == 1
+        assert k.area_m2 == pytest.approx(7.37, abs=0.01)  # NBC 2016's least kitchen is 5.0 m2
+        assert k.windows  # light and air for its exhaust and fittings
+        space = next(r.shared_space for p in building.plans for r in p.rooms if r.shared_space
+                     and Polygon(r.shared_space).contains(Point(k.point)))
+        assert k.area_m2 + ld.area_m2 == pytest.approx(Polygon(space).area / 1e6, abs=0.15)
 
 
 # ------------------------------------------------------------------------------------------------ synthetic

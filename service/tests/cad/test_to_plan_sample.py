@@ -5,13 +5,15 @@ answers-test.json it gives a plan whose op counts per kind and level are pinned 
 recognition tests' pinned figures (54 walls, 56 columns, 37 windows, 34 room labels per typical storey).
 """
 
+import copy
 import json
 
 import pytest
+from shapely.geometry import LineString, Point, Polygon
 
 from b2m.cad import structure
 from b2m.cad.recognise import recognise_plan
-from b2m.imported import to_plan
+from b2m.imported import split_space, to_plan
 from tests.cad.conftest import SAMPLE
 
 TYPICAL, GROUND, TIE = "2.PLAN 1st to 4th.dxf", "1.GROUND FLOOR PLAN.dxf", "9.TIE BEAM LAYOUT(GROUND FLOOR).dxf"
@@ -66,7 +68,9 @@ def test_with_answers_the_plan(building, answers):
         assert counts[f"column@{storey}"] == 56
         assert counts[f"window@{storey}"] == 37
         assert counts[f"door@{storey}"] == 38  # D x12, D1 x20, 4 entrance doors, 2 lift doors
-        assert counts[f"room@{storey}"] == 25  # 34 labels, 5 shared spaces answered one room
+        # 34 labels; the entrance labels one room; each flat's living/dining/kitchen two rooms (kitchen apart)
+        assert counts[f"room@{storey}"] == 29
+        assert counts[f"room_separator@{storey}"] == 4  # one per kitchen, where its alcove opens
         assert counts[f"floor@{storey}"] == 1 + 8 + 20 + 1  # slab, balconies, chajjas, the ledge
         assert counts[f"stair@{storey}"] == 1 and counts[f"railing@{storey}"] == 1
         assert counts[f"shaft@{storey}"] == 5  # 2 lifts, 2 ducts, the stair well
@@ -105,3 +109,89 @@ def test_a_wall_across_a_door_gap_ends_on_the_centrelines_it_abuts(building, ans
                 ops[f"{TYPICAL}-opening-{n}-1"].offset_mm) for n in (29, 30, 47, 48)}
     assert ends == {29: (19175.03, 18050.03, 625.0), 30: (22425.03, 23550.03, 625.0),
                     47: (19175.03, 17925.03, 625.0), 48: (22425.03, 23675.03, 625.0)}
+
+
+def _without_corners(building, fid_rooms):
+    """The building with the shared space of the given rooms replaced by its bounding box (no corner, no mouth)."""
+    b = copy.deepcopy(building)
+    plan = next(p for p in b.plans if p.sheet == TYPICAL)
+    for r in plan.rooms:
+        if r.id in fid_rooms:
+            x0, y0, x1, y1 = Polygon(r.shared_space).bounds
+            r.shared_space = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+    return b
+
+
+def test_no_clear_mouth_is_asked_never_guessed(building, answers):
+    qid = f"rooms:{TYPICAL}:rooms-share-space-1"
+    result = to_plan(_without_corners(building, {"room-1", "room-7", "room-10"}), answers)
+    assert result.plan is None and [m.id for m in result.missing] == [qid]
+    m = result.missing[0]
+    assert m.topic == "rooms_share_space" and m.options == [] and "OPEN KITCHEN" in m.text
+    assert "No wall end or column face gives a line" in m.text
+    # the user gives the line (one per room to separate): it is drawn as given
+    line = [[29000.0, 21000.0], [32000.0, 21000.0]]
+    result = to_plan(_without_corners(building, {"room-1", "room-7", "room-10"}),
+                     {**answers, qid: {**answers[qid], "lines": [line]}})
+    assert result.missing == []
+    ops = result.plan.by_key()
+    assert ops[f"{TYPICAL}-rooms-share-space-1.1-1"].points == [tuple(q) for q in line]
+    assert (ops[f"{TYPICAL}-room-1-1"].name, ops[f"{TYPICAL}-room-7-1"].name) == ("OPEN KITCHEN", "LIVING / DINING")
+
+
+def test_several_lines_alike_are_asked_with_each_as_an_answer(building, answers, monkeypatch):
+    qid = f"rooms:{TYPICAL}:rooms-share-space-1"
+    found = [((29238.03, 22589.5), (31924.53, 22000.0)), ((29238.03, 22589.5), (31424.53, 19490.18))]
+    monkeypatch.setattr(split_space, "find_mouth", lambda *a, **k: split_space.Mouth(
+        candidates=found, reason="2 lines part this label from the others, none clearly the shortest"))
+    result = to_plan(building, answers)
+    m = next(m for m in result.missing if m.id == qid)
+    assert result.plan is None and "none clearly the shortest" in m.text and len(m.options) == 2
+    assert all(o["mode"] == "separate" and o["rooms"] == ["KITCHEN"] and len(o["lines"]) == 1 for o in m.options)
+    monkeypatch.undo()
+    result = to_plan(building, {**answers, qid: m.options[1]})  # choosing one builds it
+    assert qid not in {x.id for x in result.missing}
+    assert result.plan.by_key()[f"{TYPICAL}-rooms-share-space-1.1-1"].points == [tuple(q) for q in m.options[1]["lines"][0]]
+
+
+def test_a_name_that_matches_no_label_is_asked(building, answers):
+    qid = f"rooms:{TYPICAL}:rooms-share-space-1"
+    result = to_plan(building, {**answers, qid: {"mode": "separate", "rooms": ["PANTRY"]}})
+    assert [m.id for m in result.missing] == [qid] and '"PANTRY" names none of the labels' in result.missing[0].text
+
+
+def test_each_flats_kitchen_is_its_own_room_closed_where_its_alcove_opens(building, answers):
+    """The user's decision (2026-11-17): a kitchen in the open living/dining space is its own room. Answered
+    {"mode": "separate", "rooms": ["KITCHEN"], "name": "LIVING / DINING"}, each flat's shared space gives a kitchen
+    room and a living/dining room, parted by a room separation line across the kitchen alcove's mouth: from the end
+    of the 900 mm wall stub off the outer wall to the corner of the column at the bedroom door, drawn on into both."""
+    result = to_plan(building, answers)
+    ops = result.plan.by_key()
+    plan = next(p for p in building.plans if p.sheet == TYPICAL)
+    walls = [LineString([w.start, w.end]).buffer(w.thickness_mm / 2, cap_style="flat") for w in plan.walls]
+    flats = {}
+    for n, kitchen, rest in ((1, "room-1", "room-7"), (2, "room-6", "room-8"), (4, "room-34", "room-25"),
+                             (5, "room-33", "room-26")):
+        space = Polygon(next(r.shared_space for r in plan.rooms if r.id == kitchen))
+        for storey in range(1, 5):
+            sep = ops[f"{TYPICAL}-rooms-share-space-{n}.1-{storey}"]
+            k, ld = ops[f"{TYPICAL}-{kitchen}-{storey}"], ops[f"{TYPICAL}-{rest}-{storey}"]
+            assert (sep.level, k.level, ld.level) == (f"Floor {storey}",) * 3
+            assert "KITCHEN" in k.name and ld.name == "LIVING / DINING" and k.flat == ld.flat
+            line = LineString(sep.points)
+            assert 3990 <= line.length <= 4010  # the 3792 mm mouth, drawn on into the stub and the wall past the column
+            a, b = sep.points
+            side = lambda p: (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])  # noqa: E731
+            assert side(k.point) * side(ld.point) < 0  # the kitchen label on one side, the living/dining on the other
+            assert all(any(w.contains(Point(q)) for w in walls) for q in sep.points)  # both ends in a wall: no slit
+            assert space.buffer(1).contains(line.interpolate(0.5, normalized=True))
+            # the other labels of the space (the living room's) are in the living/dining room, not counted twice
+            others = [r for r in plan.rooms if r.shared_space and Polygon(r.shared_space).equals(space)
+                      and r.id not in (kitchen, rest)]
+            assert others and all(f"{TYPICAL}-{r.id}-{storey}" not in ops for r in others)
+        flats[k.flat] = (k.name, [tuple(q) for q in sep.points])
+    assert flats == {
+        "U2": ("OPEN KITCHEN", [(31527.72, 19343.91), (29223.04, 22610.75)]),
+        "U1": ("OPEN KITCHEN", [(12377.02, 22610.75), (10072.34, 19343.91)]),
+        "U3": ("KITCHEN OPEN", [(10072.33, 10885.44), (12377.02, 7619.26)]),
+        "U4": ("KITCHEN OPEN", [(29223.04, 7619.26), (31527.73, 10885.44)])}
