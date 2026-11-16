@@ -651,6 +651,9 @@ namespace B2M.Revit.Commands.Families
             var plane = Doc.FamilyCreate.NewReferencePlane(origin + along * halfLength, origin - along * halfLength, cut, view);
             plane.Name = name;
             PlanesCreated.Add(name);
+            // A plane made in this transaction has no geometric reference until the document regenerates; dimensioning
+            // it before that fails with "The references are not geometric references" (found in the first live run).
+            Doc.Regenerate();
             return plane;
         }
 
