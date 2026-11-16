@@ -201,7 +201,7 @@ class SectionRecognition(_Model):
     levels: list[Level] = []
     storey_heights_mm: list[float] = []  # floor to floor, bottom up, from dimensions
     slab_thickness_mm: float | None = None
-    beam_depth_mm: float | None = None
+    beam_depth_mm: float | None = None  # as dimensioned; overall depth once the beam-depth question is answered
     parapet_height_mm: float | None = None
     plinth_height_mm: float | None = None  # PL above GL
     foundation_layers: list[tuple[str, float]] = []  # ("PCC", 150), ("BFS", 75), ...

@@ -116,7 +116,7 @@ def test_findings_are_grouped(project_and_building):
     mark = ids["mark-width-d1"]
     assert mark.options == ["800 mm", "900 mm", "two types: D1 800 mm and a new mark for the 900 mm ones"]
     assert mark.findings == [f"{FRAME}#mwm-1"] and len(mark.instances) == 1
-    (enclosed,) = [q for q in project.questions if q.topic == "room_not_enclosed"]
+    (enclosed,) = [q for q in project.questions if q.topic == "room_not_enclosed" and q.answer_type != "plan_input"]
     assert enclosed.severity == "info" and len(enclosed.instances) == 2
     # inputs every import needs
     assert ids["location"].severity == "blocking" and ids["location"].answer_type == "location"
@@ -214,6 +214,8 @@ def test_readiness_flips_when_blocking_questions_are_answered(project_and_buildi
             answers.apply_answer(project, q.id, {"one_room": True})
         elif q.answer_type == "door_height":
             answers.apply_answer(project, q.id, 2000)
+        elif q.key.get("unit") == "mm":  # a length the build-plan converter (T6) needs
+            answers.apply_answer(project, q.id, 3000)
         else:
             answers.apply_answer(project, q.id, q.options[0] if q.options else "as drawn")
     report = readiness.ready_to_build(project)

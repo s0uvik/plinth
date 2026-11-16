@@ -11,7 +11,11 @@ into grouped import questions (``questions``). With a store it saves, in the imp
 
 - ``recognised_building.json``: the building as the drawings give it (after cross-sheet resolution);
 - ``building.json``: the same with every answer recorded so far applied (``answers.apply``);
-- ``project.json``: the project with its questions.
+- ``project.json``: the project with its questions;
+- ``project-standards.json``: the build-plan converter's (T6) catalogue of types for this building.
+
+Whatever the build-plan converter (T6) still misses is asked too, under T6's own ids, unless an import question
+already asks it (``plan_bridge``).
 """
 
 from __future__ import annotations
@@ -22,7 +26,7 @@ import sys
 from pathlib import Path
 from typing import get_args
 
-from b2m.cad import answers, assumptions, classify, crosssheet, questions, reader, readiness, structure
+from b2m.cad import answers, assumptions, classify, crosssheet, plan_bridge, questions, reader, readiness, structure
 from b2m.cad import sheet as sheets
 from b2m.cad.annot import flatten, name_of
 from b2m.cad.building import RecognisedBuilding
@@ -89,6 +93,7 @@ def persist(store: ImportStore, project: ImportProject, building: RecognisedBuil
     _write(directory / RECOGNISED_FILE, building)
     _write(directory / APPLIED_FILE, answers.apply(project, building))
     store.save(project)
+    plan_bridge.to_plan(project, building).standards.save(directory)  # project-standards.json (T6)
     return directory
 
 

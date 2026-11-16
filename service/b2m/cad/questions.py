@@ -252,14 +252,14 @@ def _not_in_wall(b: RecognisedBuilding, d: Describe, refs: list[FRef]) -> list[Q
             f"door-not-in-wall-{width:g}", "door_not_in_wall",
             f"{n} door{'s' if n > 1 else ''} {width:g} mm wide on {', '.join(d.sheet(s) for s in sheets)} "
             f"close{'' if n > 1 else 's'} a gap between walls but lie{'' if n > 1 else 's'} in no wall (the leaf "
-            "does not run along any wall's line). A door needs a wall to sit in: which wall holds "
-            f"{'them' if n > 1 else 'it'}, or is a wall missing?", "blocking",
+            "does not run along any wall's line). A door needs a wall to sit in: leave "
+            f"{'them' if n > 1 else 'it'} out, or put a wall across each gap (its thickness and whether it is "
+            "exterior or interior)?", "blocking",
             evidence=[o.evidence for _, _, o in items],
-            options=["each sits in the wall gap it closes (the gap's walls are its host)",
-                     "a wall is missing across each gap", "other (describe)"],
+            options=["skip (leave these doors out)", "a new wall across each gap (give thickness_mm and function)"],
             where="; ".join(f"{o.id} {d.near(p, o.center)} ({p.sheet})" for _, p, o in items),
             instances=[f"{o.id} {d.near(p, o.center)} ({p.sheet})" for _, p, o in items],
-            findings=sorted({r.ref for r, _, _ in items}), answer_type="choice_or_text",
+            findings=sorted({r.ref for r, _, _ in items}), answer_type="opening_host",
             key={"openings": [[p.sheet, o.id] for _, p, o in items]}))
     return out + _generic(d, "door_not_in_wall", loose)
 
@@ -312,7 +312,8 @@ def _rooms_share(b: RecognisedBuilding, d: Describe, refs: list[FRef]) -> list[Q
             f"{n} place{'s' if n > 1 else ''} on {', '.join(d.sheet(s) for s in sheets)}{area_txt}. Are they one "
             "room, or where does one end and the next begin (room separation lines for each place)?",
             "blocking", evidence=[rm.evidence for _, _, rooms in items for rm in rooms],
-            options=["one room (give its name)", "separate rooms: give the separation lines for each place"],
+            options=["one room (give its name)", "separate rooms: give the separation lines for each place",
+                     "skip (leave them out of the model)"],
             where="; ".join(where(*it) for it in items), instances=[where(*it) for it in items],
             findings=[r.ref for r, _, _ in items], answer_type="rooms",
             key={"instances": [{"ref": r.ref, "sheet": p.sheet, "rooms": [rm.id for rm in rooms]}
@@ -338,7 +339,7 @@ def _beam_depth(b: RecognisedBuilding, d: Describe, refs: list[FRef]) -> list[Qu
             overall = {opts[0]: v + t, opts[1]: v} if v is not None and t is not None and len(opts) == 2 else {}
             out.append(_q(
                 "beam-depth" if n == 0 else f"beam-depth-{n + 1}", "beam_depth",
-                f"{rs[0].finding.text} (dimensioned on {_sections_named(d, rs)}.)", "blocking",
+                f"{rs[0].finding.text} (dimensioned on {_sections_named(d, rs)}.)", "check",
                 evidence=[r.finding.evidence for r in rs], options=list(opts),
                 where=", ".join(d.sheet(r.sheet) for r in rs), findings=[r.ref for r in rs],
                 key={"sections": [r.sheet for r in rs], "overall_by_option": overall,
@@ -376,13 +377,13 @@ def _roof_structure(b: RecognisedBuilding, d: Describe, refs: list[FRef]) -> lis
     evidence = [r.finding.evidence for r in refs]
     if roof_rooms:
         names = list(dict.fromkeys(rm.name for _, rm in roof_rooms))
-        text += (f", and which height belongs to which? The roof plan names "
+        text += (f"? The roof plan names "
                  f"{' and '.join(chr(34) + n + chr(34) for n in names)} "
                  f"({', '.join(sorted({p.sheet for p, _ in roof_rooms}))}).")
-        options = [f"{' and '.join(names)} (as the roof plan names them; say which height is which)"] + options
+        options = [f"{' and '.join(names)} (as the roof plan names them)"] + options
         evidence += [rm.evidence for _, rm in roof_rooms]
     text = text if text.endswith(".") else text + "?"
-    return [_q("roof-structure", "roof_structure", text, "blocking", evidence=evidence, options=options,
+    return [_q("roof-structure", "roof_structure", text, "check", evidence=evidence, options=options,
                where=", ".join(d.sheet(r.sheet) for r in refs), findings=[r.ref for r in refs],
                answer_type="choice_or_text")]
 
@@ -566,7 +567,8 @@ def building_questions(b: RecognisedBuilding, d: Describe) -> list[Question]:
     out = [
         _q("wall-height", "wall_height",
            "How high do the walls run? The plans draw walls in plan only and the sections give floor-to-floor "
-           "heights, slab and beam depths, not where the walls stop.", "blocking",
+           "heights, slab and beam depths, not where the walls stop. (The build plan runs walls from each storey's "
+           "level to the next.)", "check",
            options=["floor to the underside of the slab above (beams within the wall thickness)",
                     "floor to the underside of the beam where one runs above, else to the slab",
                     "other (give the height)"],
@@ -686,6 +688,11 @@ def update(project: ImportProject, raw: RecognisedBuilding,
     orphans = [q for q in project.questions if not T2_ID.match(q.id) and q.id not in new_ids and not q.open]
     project.questions = t2 + new + orphans
     sync_inputs(project)
+    from b2m.cad import plan_bridge
+
+    plan_bridge.merge(project, raw, old)
+    rank = {q.id: i for i, q in enumerate(project.questions)}
+    project.questions.sort(key=lambda q: (0 if T2_ID.match(q.id) else 1, _RANK[q.severity], rank[q.id]))
     return project.questions
 
 

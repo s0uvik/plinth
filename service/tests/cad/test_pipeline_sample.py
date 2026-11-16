@@ -6,13 +6,14 @@ from collections import Counter
 
 import pytest
 
-from b2m.cad import answers, assumptions, pipeline, readiness
+from b2m.cad import answers, assumptions, pipeline, plan_bridge, questions, readiness
 from b2m.cad.project import ImportStore, LocationRequired
 from tests.cad.conftest import SAMPLE_DXF
 
 TYPICAL, GROUND, ROOF = "2.PLAN 1st to 4th.dxf", "1.GROUND FLOOR PLAN.dxf", "3.ROOF PLAN.dxf"
 
-# The sample's questions: (id, severity, places) for the questions with ids of their own ...
+# The sample's questions: (id, severity, places) for the questions with ids of their own (T5's, then those the
+# build-plan converter T6 still needs, under T6's ids) ...
 EXPECTED = [
     ("location", "blocking", 0),
     ("mark-width-d1", "blocking", 4),
@@ -21,9 +22,7 @@ EXPECTED = [
     ("door-not-in-wall-1000", "blocking", 4),
     ("rooms-share-space-dining-kitchen-open-living-room", "blocking", 4),
     ("rooms-share-space-entrance-entrance", "blocking", 1),
-    ("beam-depth", "blocking", 0),
     ("tie-beam-depth", "blocking", 0),
-    ("roof-structure", "blocking", 0),
     ("door-height-d", "blocking", 0),
     ("door-height-d1", "blocking", 0),
     ("door-height-lift", "blocking", 0),
@@ -32,20 +31,44 @@ EXPECTED = [
     ("window-size-w2", "blocking", 0),
     ("window-size-w3", "blocking", 0),
     ("window-size-w4", "blocking", 0),
-    ("wall-height", "blocking", 0),
+    ("boundary_wall_height", "blocking", 5),
+    ("level:roof_structure", "blocking", 16),
+    ("projection:2.PLAN 1st to 4th.dxf:projection-22", "blocking", 0),
+    ("projection_thickness:chajja", "blocking", 20),
+    ("room:1.GROUND FLOOR PLAN.dxf:room-2", "blocking", 0),
+    ("room:1.GROUND FLOOR PLAN.dxf:room-3", "blocking", 0),
+    ("room:1.GROUND FLOOR PLAN.dxf:room-4", "blocking", 0),
+    ("room:1.GROUND FLOOR PLAN.dxf:room-5", "blocking", 0),
+    ("slab_outline:storey-0", "blocking", 0),
+    ("stair_axis:1.GROUND FLOOR PLAN.dxf:stair-1", "blocking", 0),
+    ("stair_axis:2.PLAN 1st to 4th.dxf:stair-1", "blocking", 0),
     ("rule-set", "check", 0),
+    ("beam-depth", "check", 0),
+    ("roof-structure", "check", 0),
     ("layer-sand-filling", "check", 0),
+    ("wall-height", "check", 0),
     ("lintel", "check", 0),
     ("clear-height-nbc2016-nbc-height-habitable", "check", 0),
 ]
-# ... and (topic, severity, places) for the findings asked as they are (ids hashed from their wording).
+# ... and (topic, severity, places) for the findings asked as they are (ids hashed from their wording). The
+# projection-kind and room-not-enclosed findings are asked by T6's questions above, in a form the plan can use.
 EXPECTED_GENERIC = Counter([
-    ("projection_kind", "check", 0), ("walls_side_by_side", "check", 0), ("column", "check", 0),
-    ("outline_ambiguous", "info", 0), ("room_not_enclosed", "info", 4), ("room_name_order", "info", 0),
+    ("walls_side_by_side", "check", 0), ("column", "check", 0),
+    ("outline_ambiguous", "info", 0), ("room_name_order", "info", 0),
     ("dimensions", "info", 2), ("datum", "info", 0), ("datum", "info", 0), ("rebar", "info", 2),
     ("section_mark", "info", 0), ("section_mark", "info", 0), ("section_mark", "info", 0),
     ("section_mark", "info", 0), ("grid", "info", 0), ("registration", "info", 0), ("storeys", "info", 0),
     ("storeys", "info", 0)])
+# Test-only answers (the T6 fixture's values, and choices for T5's own questions); never used by the product.
+FIXTURE = SAMPLE_DXF.parent / "answers-test.json"
+OWN = {
+    "location": {"city": "Bardhaman", "state": "West Bengal"},
+    "mark-width-d1": "800 mm",
+    "opening-mark-door-1000": "DE",
+    "opening-mark-window-640": "W2 (640 mm)",
+    "door-not-in-wall-1000": {"mode": "new_wall", "thickness_mm": 250, "function": "interior"},
+    "tie-beam-depth": 450,
+}
 
 
 @pytest.fixture(scope="module")
@@ -133,6 +156,7 @@ def test_files_kept_and_answers_applied(sample):
     report = readiness.ready_to_build(p)
     assert len(report["blocking"]) < before and report["ready"] is False
     assert {"tie-beam-depth", "door-height-lift", "roof-structure"} <= {q for q, _ in result.not_assumed}
+    assert any(q.startswith("stair_axis:") for q, _ in result.not_assumed)  # T6's questions are not assumed
     assert p.question("door-height-d").answered_by == "assumed"
 
     # re-running the import keeps every answer
@@ -146,3 +170,42 @@ def test_cli(capsys, tmp_path):
     for word in ("SHEETS", "RECOGNITION", "REGISTRATION", "SETTLED ACROSS SHEETS", "QUESTIONS", "BLOCKING",
                  "mark-width-d1 [4 places]", "READY TO BUILD: no"):
         assert word in out, word
+
+
+def test_answers_make_the_build_plan(tmp_path):
+    """Every blocking question answered (rounds: an answer can raise a follow-up) -> T6 makes the plan, and the
+    readiness report says ready; project-standards.json is written with the import."""
+    store = ImportStore(tmp_path)
+    project = store.create(SAMPLE_DXF)
+    raw = pipeline.run_import(project, store)
+    assert (pipeline.folder(store, project) / "project-standards.json").is_file()
+    t6 = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    rounds = []
+    for _ in range(5):
+        todo = [q for q in project.open_questions() if q.severity == "blocking"]
+        rounds.append(len(todo))
+        if not todo:
+            break
+        for q in todo:
+            if q.id in OWN:
+                value = OWN[q.id]
+            elif q.id in t6:
+                value = t6[q.id]
+            elif q.answer_type == "door_height":
+                value = 2100
+            elif q.answer_type == "window_size":
+                value = {"sill_mm": 900, "head_mm": 2100}
+            elif q.answer_type == "rooms":
+                value = {"one_room": True}
+            else:
+                raise AssertionError(f"no test answer for {q.id}")
+            answers.apply_answer(project, q.id, value)
+        questions.update(project, raw)
+    assert rounds[-1] == 0 and len(rounds) <= 4, rounds
+    result = plan_bridge.to_plan(project, raw)
+    assert result.plan is not None and not result.missing
+    assert readiness.ready_to_build(project)["ready"] is True
+    # asked once: T6's door, window, rooms and host ids are settled by T5's grouped questions
+    ids = {q.id for q in project.questions}
+    assert not any(i.startswith(("door_height:", "window_sill:", "window_height:", "rooms:", "opening_host:",
+                                 "door_width:", "beam_depth:")) for i in ids)

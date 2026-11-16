@@ -15,8 +15,11 @@ Answer types (what ``answer`` accepts):
 - ``choice_or_text``: one of the options, or the user's own words.
 - ``mark_width``: {"width_mm": 800} or {"split": true, "new_marks": {"900": "D1A"}} (or "new_mark" when there is
   one other width); an option's text or index is accepted for a width.
-- ``rooms``: {"one_room": true, "name": "LIVING / DINING"} or {"one_room": false, "lines": {"<instance>":
+- ``rooms``: {"one_room": true, "name": "LIVING / DINING"}, {"skip": true}, or {"lines": {"<instance>":
   [[x1, y1, x2, y2], ...]}} with separation lines (sheet coordinates, mm) for every instance of the question.
+- ``opening_host``: "skip" or {"mode": "new_wall", "thickness_mm": 250, "function": "interior"}.
+- ``plan_input``: a value the build-plan converter (T6) asks for under its own id: a length in mm (a number, or
+  "450 mm"), one of its options, or its dict form ({"mode": "one_room", ...}).
 - ``door_height``: {"height_mm": 2100}.
 - ``window_size``: {"sill_mm": 900, "head_mm": 2100}.
 - ``length``: {"value_mm": 300}, a number, or an option such as "700 mm (the drawn layer)".
@@ -72,7 +75,8 @@ class MarkWidthAnswer(_A):
 
 
 class RoomsAnswer(_A):
-    one_room: bool
+    one_room: bool = False
+    skip: bool = False  # leave these rooms out of the model
     name: str | None = None
     lines: dict[str, list[tuple[float, float, float, float]]] = {}
 
@@ -176,8 +180,12 @@ def normalise(q: Question, value: Any) -> Any:
                     raise AnswerError(f"{q.id}: give a new mark for the {', '.join(f'{w:g}' for w in missing)} mm ones")
             return a.model_dump()
         if t == "rooms":
+            if isinstance(value, str) and value.startswith("skip"):
+                value = {"skip": True}
+            elif isinstance(value, str) and value.startswith("one room"):
+                value = {"one_room": True}
             a = RoomsAnswer.model_validate(value)
-            if not a.one_room:
+            if not a.one_room and not a.skip:
                 refs = [i["ref"] for i in q.key.get("instances", [])]
                 missing = [r for r in refs if not a.lines.get(r)]
                 if missing:
@@ -210,6 +218,40 @@ def normalise(q: Question, value: Any) -> Any:
                 opt = _option(q, value)
                 value = {"mark": (opt or value).split(" (")[0].strip()}
             return OpeningMarkAnswer.model_validate(value).model_dump()
+        if t == "opening_host":
+            if isinstance(value, str) and value.lower().startswith("skip"):
+                return "skip"
+            if isinstance(value, dict) and value.get("mode") == "new_wall":
+                thickness = value.get("thickness_mm")
+                if not isinstance(thickness, (int, float)) or thickness <= 0 or \
+                        value.get("function") not in ("exterior", "interior"):
+                    raise AnswerError(f"{q.id}: a new wall needs thickness_mm and function (exterior or interior)")
+                return {"mode": "new_wall", "thickness_mm": float(thickness), "function": value["function"]}
+            raise AnswerError(f"{q.id}: answer \"skip\" or {{'mode': 'new_wall', 'thickness_mm': ..., "
+                              "'function': 'interior'}")
+        if t == "plan_input":
+            raw = q.key.get("options_raw") or []
+            if isinstance(value, str):
+                for text, o in zip(q.options, raw):
+                    if " ".join(text.split()).lower() == " ".join(value.split()).lower():
+                        value = o
+                        break
+            if q.key.get("unit") == "mm":
+                n = value if isinstance(value, (int, float)) and not isinstance(value, bool) else \
+                    (_first_mm(value) if isinstance(value, str) else None)
+                if n is None and isinstance(value, str):
+                    try:
+                        n = float(value)
+                    except ValueError:
+                        n = None
+                if n is None or n <= 0:
+                    raise AnswerError(f"{q.id}: give a length in mm")
+                return float(n)
+            if isinstance(value, dict) and value.get("mode") in ("one_room", "separate", "new_wall"):
+                return value
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+            raise AnswerError(f"{q.id}: choose one of {q.options}")
         if t == "text":
             if not isinstance(value, str) or not value.strip():
                 raise AnswerError(f"{q.id}: say it in words")
@@ -220,7 +262,7 @@ def normalise(q: Question, value: Any) -> Any:
 
 
 ANSWER_TYPES = ["location", "rule_set", "choice", "choice_or_text", "mark_width", "rooms", "door_height",
-                "window_size", "length", "opening_mark", "text"]
+                "window_size", "length", "opening_mark", "opening_host", "plan_input", "text"]
 
 
 def answer(project: ImportProject, question_id: str, value: Any, by: str = "user", basis: str | None = None,
@@ -250,13 +292,16 @@ def apply_answer(project: ImportProject, question_id: str, value: Any, by: str =
 
 # ---------------------------------------------------------------- applying
 
-def apply(project: ImportProject, building: RecognisedBuilding) -> RecognisedBuilding:
-    """A copy of the building with every answered question applied (questions in order)."""
+def apply(project: ImportProject, building: RecognisedBuilding, rooms: bool = True) -> RecognisedBuilding:
+    """A copy of the building with every answered question applied (questions in order). ``rooms=False`` leaves
+    the rooms as drawn (the build-plan converter applies room answers itself, from its answer map)."""
     b = building.model_copy(deep=True)
     for q in project.questions:
         if q.open or q.answer is None:
             continue
         fn = APPLY.get(q.answer_type)
+        if q.answer_type == "rooms" and not rooms:
+            fn = None
         if fn:
             fn(b, q, q.answer)
         b.answered.append(q.id)
@@ -319,7 +364,7 @@ def _apply_rooms(b: RecognisedBuilding, q: Question, a: dict) -> None:
         if plan is None:
             continue
         rooms = [r for r in plan.rooms if r.id in inst["rooms"]]
-        if not rooms:
+        if not rooms or a.get("skip"):
             continue
         if a["one_room"]:
             name = a.get("name") or " / ".join(r.name for r in rooms)
