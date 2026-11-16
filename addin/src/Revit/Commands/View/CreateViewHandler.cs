@@ -6,6 +6,10 @@
 // scale, detail level and a plan crop rectangle in mm; an unknown level is an error with the valid
 // options (rvt-mcp fell back to the lowest level); a duplicate view name fails before anything is created;
 // fields that do not apply to the chosen view type are rejected.
+// Step 9 (drawing to model): a section can look to either side of its line (side left|right), take its bottom/top
+// from levels plus offsets (bottomLevel/bottomOffset, topLevel/topOffset), and any view can get a view template
+// (viewTemplateName, checked with IsValidViewTemplate). After creation the section's cut plane is read back and the
+// view is rolled back if it does not pass through the given line within 1 mm (sectionLineMm reports where it is).
 
 using System;
 using System.Collections.Generic;
@@ -22,18 +26,21 @@ namespace B2M.Revit.Commands.View
 
     public sealed class CreateViewHandler : IRevitCommand
     {
-        private static readonly string[] Common = { "viewType", "name", "viewFamilyTypeName", "scale", "detailLevel" };
+        private static readonly string[] Common = { "viewType", "name", "viewFamilyTypeName", "scale", "detailLevel", "viewTemplateName" };
         private static readonly string[] PlanFields = { "level", "cropMinX", "cropMinY", "cropMaxX", "cropMaxY" };
-        private static readonly string[] SectionFields = { "startX", "startY", "endX", "endY", "depth", "bottom", "top" };
+        private static readonly string[] SectionFields =
+            { "startX", "startY", "endX", "endY", "depth", "bottom", "top", "side", "bottomLevel", "bottomOffset", "topLevel", "topOffset" };
+        private static readonly string[] SectionRequired = { "startX", "startY", "endX", "endY", "depth" };
         private static readonly string[] ElevationFields = { "level", "x", "y", "direction" };
 
         public string Name => "create_view";
         public string Description =>
             "Create a view. floor_plan / ceiling_plan: on a named level, optional crop rectangle (cropMinX..cropMaxY, mm). "
-            + "3d: isometric. section: plan line startX/startY to endX/endY (mm); the section looks to the left of start->end "
-            + "(drawn west to east it looks north) for depth mm; bottom/top are absolute heights in mm. "
+            + "3d: isometric. section: cut exactly on the plan line startX/startY to endX/endY (mm), looking to the side (left, default, "
+            + "or right) of start->end (drawn west to east, left looks north) for depth mm (far clip); its height range is bottom/top "
+            + "(absolute mm) or bottomLevel/topLevel plus bottomOffset/topOffset (mm). "
             + "elevation: marker at x/y (mm) on the named level's floor plan; direction is the way the view looks (north = +Y). "
-            + "Optional name, viewFamilyTypeName, scale (100 for 1:100), detailLevel.";
+            + "Optional name (e.g. SECTION - AA), viewFamilyTypeName, viewTemplateName, scale (100 for 1:100), detailLevel.";
         public string ParametersSchema => @"{""type"":""object"",""properties"":{
             ""viewType"":{""type"":""string"",""enum"":[""floor_plan"",""ceiling_plan"",""3d"",""section"",""elevation""]},
             ""level"":{""type"":""string""},
@@ -46,6 +53,10 @@ namespace B2M.Revit.Commands.View
             ""startX"":{""type"":""number""},""startY"":{""type"":""number""},
             ""endX"":{""type"":""number""},""endY"":{""type"":""number""},
             ""depth"":{""type"":""number""},""bottom"":{""type"":""number""},""top"":{""type"":""number""},
+            ""side"":{""type"":""string"",""enum"":[""left"",""right""]},
+            ""bottomLevel"":{""type"":""string""},""bottomOffset"":{""type"":""number""},
+            ""topLevel"":{""type"":""string""},""topOffset"":{""type"":""number""},
+            ""viewTemplateName"":{""type"":""string""},
             ""x"":{""type"":""number""},""y"":{""type"":""number""},
             ""direction"":{""type"":""string"",""enum"":[""north"",""south"",""east"",""west""]}},
             ""required"":[""viewType""]}";
@@ -76,7 +87,7 @@ namespace B2M.Revit.Commands.View
                     family = ViewFamily.ThreeDimensional; group = ElementTypeGroup.ViewType3D; resultType = ViewType.ThreeD;
                     break;
                 case "section":
-                    fields = SectionFields; required = SectionFields;
+                    fields = SectionFields; required = SectionRequired;
                     family = ViewFamily.Section; group = ElementTypeGroup.ViewTypeSection; resultType = ViewType.Section;
                     break;
                 default:
@@ -123,19 +134,36 @@ namespace B2M.Revit.Commands.View
                     return CommandResult.Fail("INVALID_PARAMS: cropMinX/cropMinY must be smaller than cropMaxX/cropMaxY.");
             }
 
+            View template = null;
+            var templateName = p.Value<string>("viewTemplateName");
+            if (!string.IsNullOrEmpty(templateName))
+            {
+                var templates = new FilteredElementCollector(doc).OfClass(typeof(View)).Cast<View>()
+                    .Where(v => v.IsTemplate && v.ViewType == resultType).OrderBy(v => v.Name).ToList();
+                template = templates.FirstOrDefault(v => string.Equals(v.Name, templateName, StringComparison.OrdinalIgnoreCase));
+                if (template == null)
+                    return CommandResult.Fail("TEMPLATE_NOT_FOUND: no " + resultType + " view template named '" + templateName + "'.",
+                        new JObject { ["valid_view_templates"] = new JArray(templates.Take(100).Select(v => v.Name)) });
+            }
+
             BoundingBoxXYZ sectionBox = null;
+            XYZ sectionStart = null, sectionEnd = null;
             if (kind == "section")
             {
+                if (!TryHeight(doc, p, "bottom", out var bottomMm, out failure)) return failure;
+                if (!TryHeight(doc, p, "top", out var topMm, out failure)) return failure;
                 var start = new XYZ(Mm.ToFeet(p.Value<double>("startX")), Mm.ToFeet(p.Value<double>("startY")), 0);
                 var end = new XYZ(Mm.ToFeet(p.Value<double>("endX")), Mm.ToFeet(p.Value<double>("endY")), 0);
                 var depth = Mm.ToFeet(p.Value<double>("depth"));
-                var bottom = Mm.ToFeet(p.Value<double>("bottom"));
-                var top = Mm.ToFeet(p.Value<double>("top"));
+                var bottom = Mm.ToFeet(bottomMm);
+                var top = Mm.ToFeet(topMm);
                 if (start.DistanceTo(end) <= app.Application.ShortCurveTolerance)
                     return CommandResult.Fail("LINE_TOO_SHORT: the section line start and end are closer than Revit's shortest allowed line.");
                 if (depth <= 0) return CommandResult.Fail("INVALID_PARAMS: depth must be greater than 0 mm.");
                 if (top <= bottom) return CommandResult.Fail("INVALID_PARAMS: top must be above bottom.");
-                sectionBox = SectionBox(start, end, depth, bottom, top);
+                sectionBox = SectionBox(start, end, depth, bottom, top, p.Value<string>("side") == "right");
+                sectionStart = start;
+                sectionEnd = end;
             }
 
             XYZ looking = null;
@@ -184,11 +212,34 @@ namespace B2M.Revit.Commands.View
                     if (detail != null)
                         view.DetailLevel = detail == "coarse" ? ViewDetailLevel.Coarse : detail == "medium" ? ViewDetailLevel.Medium : ViewDetailLevel.Fine;
                     if (crop != null) ApplyCrop(view, crop);
+                    if (template != null)
+                    {
+                        if (!view.IsValidViewTemplate(template.Id))
+                            throw new InvalidOperationException("view template '" + template.Name + "' cannot be applied to this view.");
+                        view.ViewTemplateId = template.Id;
+                    }
+                    object sectionLine = null;
+                    if (kind == "section")
+                    {
+                        doc.Regenerate();
+                        var deviation = Math.Max(OffPlaneMm(view, sectionStart), OffPlaneMm(view, sectionEnd));
+                        var far = view.get_Parameter(BuiltInParameter.VIEWER_BOUND_OFFSET_FAR);
+                        sectionLine = new
+                        {
+                            startX = Mm.FromFeet(sectionStart.X), startY = Mm.FromFeet(sectionStart.Y),
+                            endX = Mm.FromFeet(sectionEnd.X), endY = Mm.FromFeet(sectionEnd.Y),
+                            cutPlaneDeviationMm = Math.Round(deviation, 3),
+                            farClipMm = far != null && far.HasValue ? Mm.FromFeet(far.AsDouble()) : (double?)null
+                        };
+                        if (deviation > 1.0)
+                            throw new InvalidOperationException("the section's cut plane is " + Math.Round(deviation, 1)
+                                + " mm off the given line.");
+                    }
 
                     if (tx.Commit() != TransactionStatus.Committed)
                         return CommandResult.Fail("NOT_COMMITTED: Revit rolled the transaction back; see failures.");
 
-                    var template = doc.GetElement(view.ViewTemplateId) as View;
+                    var appliedTemplate = doc.GetElement(view.ViewTemplateId) as View;
                     var look = view.ViewDirection.Negate();
                     return CommandResult.Ok(new
                     {
@@ -199,11 +250,12 @@ namespace B2M.Revit.Commands.View
                         levelName = view.GenLevel?.Name ?? level?.Name,
                         scale = view.Scale,
                         detailLevel = view.DetailLevel.ToString(),
-                        viewTemplate = template?.Name,
+                        viewTemplate = appliedTemplate?.Name,
                         cropMm = crop == null ? null : CropMm(view),
                         looksToward = kind == "section" || kind == "elevation"
                             ? new[] { Math.Round(look.X, 6), Math.Round(look.Y, 6), Math.Round(look.Z, 6) } : null,
-                        elevationMarkerId = marker == null ? (long?)null : RevitCompat.GetId(marker.Id)
+                        elevationMarkerId = marker == null ? (long?)null : RevitCompat.GetId(marker.Id),
+                        sectionLineMm = sectionLine
                     });
                 }
                 catch (Exception ex)
@@ -215,13 +267,15 @@ namespace B2M.Revit.Commands.View
         }
 
         /// <summary>
-        /// Section box with its origin on the plan line's midpoint at height 0: BasisX along the line,
-        /// BasisY up, BasisZ (toward the viewer) = line x up, so the view looks to the left of start->end.
-        /// Local Y is therefore absolute height; local Z runs from -depth (far clip) to 0 (the cut).
+        /// Section box with its origin on the plan line's midpoint at height 0: BasisX along the line (reversed when
+        /// looking right), BasisY up, BasisZ (toward the viewer) = BasisX x up, so the view looks to the left of
+        /// start->end, or to the right when lookRight. Local Y is therefore absolute height; local Z runs from -depth
+        /// (far clip) to 0 (the cut, on the line).
         /// </summary>
-        private static BoundingBoxXYZ SectionBox(XYZ start, XYZ end, double depth, double bottom, double top)
+        private static BoundingBoxXYZ SectionBox(XYZ start, XYZ end, double depth, double bottom, double top, bool lookRight)
         {
             var along = (end - start).Normalize();
+            if (lookRight) along = along.Negate();
             var transform = Transform.Identity;
             transform.Origin = (start + end) * 0.5;
             transform.BasisX = along;
@@ -234,6 +288,52 @@ namespace B2M.Revit.Commands.View
                 Min = new XYZ(-half, bottom, -depth),
                 Max = new XYZ(half, top, 0)
             };
+        }
+
+        /// <summary>
+        /// bottom/top: an absolute height in mm, or a level's elevation plus an offset (bottomLevel + bottomOffset).
+        /// Exactly one form must be given.
+        /// </summary>
+        private static bool TryHeight(Document doc, JObject p, string which, out double mm, out CommandResult failure)
+        {
+            mm = 0;
+            failure = null;
+            var absolute = p[which];
+            var levelName = p.Value<string>(which + "Level");
+            var offset = p[which + "Offset"];
+            if (absolute != null && levelName != null)
+            {
+                failure = CommandResult.Fail("INVALID_PARAMS: give " + which + " or " + which + "Level (+ " + which + "Offset), not both.");
+                return false;
+            }
+            if (absolute != null)
+            {
+                if (offset != null)
+                {
+                    failure = CommandResult.Fail("INVALID_PARAMS: " + which + "Offset goes with " + which + "Level, not with " + which + ".");
+                    return false;
+                }
+                mm = absolute.Value<double>();
+                return true;
+            }
+            if (levelName == null)
+            {
+                failure = CommandResult.Fail("INVALID_PARAMS: viewType section needs " + which + " (mm) or " + which + "Level.");
+                return false;
+            }
+            if (!Lookup.TryLevel(doc, levelName, out var level, out failure)) return false;
+            mm = Mm.FromFeet(level.ProjectElevation, 3) + (offset?.Value<double>() ?? 0);
+            return true;
+        }
+
+        /// <summary>How far (mm) a plan point is from the section's cut plane: the crop box's front face (local Z = Max.Z).</summary>
+        private static double OffPlaneMm(View view, XYZ point)
+        {
+            var box = view.CropBox;
+            var t = box.Transform;
+            var front = t.OfPoint(new XYZ(0, 0, box.Max.Z));
+            var p = new XYZ(point.X, point.Y, front.Z);
+            return Math.Abs((p - front).DotProduct(t.BasisZ)) * 304.8;
         }
 
         private static XYZ Compass(string direction)

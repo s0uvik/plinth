@@ -2,7 +2,7 @@ using B2M.Revit.Bridge;
 
 namespace B2M.Revit.Commands.Annotation
 {
-    /// <summary>Registers the annotation toolset's commands ported in Step 8 (the earlier ones are in CommandCatalog).</summary>
+    /// <summary>Registers the annotation toolset's commands ported in Step 8 (the earlier ones are in CommandCatalog) and the Step 9 drawing commands.</summary>
     internal static class AnnotationCatalog
     {
         public static void Register(CommandDispatcher dispatcher)
@@ -20,6 +20,10 @@ namespace B2M.Revit.Commands.Annotation
             dispatcher.Register(new FindUntaggedElementsHandler());
             dispatcher.Register(new FindUndimensionedElementsHandler());
             dispatcher.Register(new WipeEmptyTagsHandler());
+            dispatcher.Register(new AutoDimensionPlanHandler());
+            dispatcher.Register(new AutoDimensionSectionHandler());
+            dispatcher.Register(new LabelRoomsHandler());
+            dispatcher.Register(new SpotLevelHandler());
         }
     }
 }
