@@ -89,6 +89,10 @@ def t6_ids(q: Question, b: RecognisedBuilding) -> dict[str, Any]:
             else:
                 value = {"mode": "separate", "lines": [[[x1, y1], [x2, y2]] for x1, y1, x2, y2
                                                        in a.get("lines", {}).get(inst["ref"], [])]}
+                if a.get("separate"):  # named labels apart, the rest one room; lines found unless given
+                    value = {"mode": "separate", "rooms": list(a["separate"]),
+                             **({"name": a["name"]} if a.get("name") else {}),
+                             **({"lines": value["lines"]} if value["lines"] else {})}
             out[f"rooms:{sheet}:{fid}"] = value
     elif k.get("sets") == "tie_beam_depth":
         for sheet in k.get("sheets", []):
