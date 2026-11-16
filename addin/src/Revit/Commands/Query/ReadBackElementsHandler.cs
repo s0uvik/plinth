@@ -5,7 +5,7 @@
 // host wall from its start, width/height from the type, sill/head, facing/hand flipped), rooms (name, number, department,
 // area, perimeter), floors and foundation slabs (sketch outline, computed area, thickness, height offset), structural
 // columns/beams (section b/h from the type, levels and offsets), stairs (levels, risers, riser height, tread, run widths),
-// railings (host), levels (elevation), grids (end points), shaft openings (outline, constraints, vertical extent) and
+// railings (host, path length), levels (elevation), grids (end points), shaft openings (outline, constraints, vertical extent) and
 // model lines such as room separation lines (their curve). An id that is not in the document comes back as
 // {id, exists: false}. Read-only.
 // Responses are capped at 1 MiB, so a call returns as many elements as fit in about 900 000 characters and gives
@@ -32,7 +32,7 @@ namespace B2M.Revit.Commands.Query
 
         public string Name => "read_back_elements";
         public string Description => "Read built elements back for the self-check (mm, m2, degrees): per id the category, type, family, Type Mark, "
-            + "level, location and the kind's own facts (walls, doors/windows, rooms, floors, columns/beams, stairs, railings, levels, "
+            + "level, location and the kind's own facts (walls, doors/windows, rooms, floors, columns/beams, stairs, railings with path length, levels, "
             + "grids, shafts, model lines). Up to 5000 ids; pages by start/next_start under the 1 MiB response cap.";
         public string ParametersSchema => @"{""type"":""object"",""properties"":{
             ""element_ids"":{""type"":""array"",""items"":{""type"":""integer""},""description"":""1 to 5000 element ids""},
@@ -112,7 +112,7 @@ namespace B2M.Revit.Commands.Query
                     record["stair"] = StairFacts(doc, stairs);
                     break;
                 case Railing railing:
-                    record["railing"] = Clean(new JObject { ["host_id"] = Id(railing.HostId) });
+                    record["railing"] = RailingFacts(railing);
                     break;
                 case Level level:
                     record["level_element"] = new JObject
@@ -201,6 +201,22 @@ namespace B2M.Revit.Commands.Query
                 .Select(id => doc.GetElement(id) as StairsRun).Where(r => r != null)
                 .Select(r => Mm.FromFeet(r.ActualRunWidth, 3)))
         });
+
+        /// <summary>The host and the railing's run length: the estimate measures railings in running metres. path_length_mm
+        /// is the sum of the path curves (GetPath, as sketched); length_mm is Revit's own Length parameter where the
+        /// railing has one, so a live check can see whether the two agree on a sloped stair.</summary>
+        private static JObject RailingFacts(Railing railing)
+        {
+            JToken pathLength = null;
+            var path = railing.GetPath();
+            if (path != null && path.Count > 0) pathLength = new JValue(Mm.FromFeet(path.Sum(c => c.Length), 3));
+            return Clean(new JObject
+            {
+                ["host_id"] = Id(railing.HostId),
+                ["path_length_mm"] = pathLength,
+                ["length_mm"] = Length(railing, BuiltInParameter.CURVE_ELEM_LENGTH)
+            });
+        }
 
         private static JObject GridFacts(Grid grid)
         {
