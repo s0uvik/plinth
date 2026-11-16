@@ -10,6 +10,13 @@
 // from levels plus offsets (bottomLevel/bottomOffset, topLevel/topOffset), and any view can get a view template
 // (viewTemplateName, checked with IsValidViewTemplate). After creation the section's cut plane is read back and the
 // view is rolled back if it does not pass through the given line within 1 mm (sectionLineMm reports where it is).
+// Step 9 T10b: drafting views (ViewDrafting.Create with a Drafting view family type; scale, detail level, template)
+// and structural plans (ViewPlan.Create with a StructuralPlan view family type on a level). Floor and structural plans
+// take an optional viewRange {top_offset_mm, cut_offset_mm, bottom_offset_mm, depth_offset_mm, top_level?,
+// bottom_level?, depth_level?}: offsets from the view's level, or from the named level for top/bottom/depth (the cut
+// plane is always on the view's level, as in Revit). Planes not given keep the view type's defaults. The given planes
+// are checked before anything is created, and the merged range again on the new view (top >= cut >= bottom >= depth);
+// PlanViewRange is set on the new view only, never on a type or template.
 
 using System;
 using System.Collections.Generic;
@@ -17,6 +24,7 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using B2M.Revit.Bridge;
+using B2M.Revit.Core.Drawing;
 using Newtonsoft.Json.Linq;
 
 namespace B2M.Revit.Commands.View
@@ -28,6 +36,9 @@ namespace B2M.Revit.Commands.View
     {
         private static readonly string[] Common = { "viewType", "name", "viewFamilyTypeName", "scale", "detailLevel", "viewTemplateName" };
         private static readonly string[] PlanFields = { "level", "cropMinX", "cropMinY", "cropMaxX", "cropMaxY" };
+        private static readonly string[] RangedPlanFields = PlanFields.Concat(new[] { "viewRange" }).ToArray();
+        private static readonly string[] ViewRangeFields =
+            { "top_offset_mm", "cut_offset_mm", "bottom_offset_mm", "depth_offset_mm", "top_level", "bottom_level", "depth_level" };
         private static readonly string[] SectionFields =
             { "startX", "startY", "endX", "endY", "depth", "bottom", "top", "side", "bottomLevel", "bottomOffset", "topLevel", "topOffset" };
         private static readonly string[] SectionRequired = { "startX", "startY", "endX", "endY", "depth" };
@@ -35,14 +46,17 @@ namespace B2M.Revit.Commands.View
 
         public string Name => "create_view";
         public string Description =>
-            "Create a view. floor_plan / ceiling_plan: on a named level, optional crop rectangle (cropMinX..cropMaxY, mm). "
-            + "3d: isometric. section: cut exactly on the plan line startX/startY to endX/endY (mm), looking to the side (left, default, "
+            "Create a view. floor_plan / structural_plan / ceiling_plan: on a named level, optional crop rectangle (cropMinX..cropMaxY, mm); "
+            + "floor and structural plans take an optional viewRange {top_offset_mm, cut_offset_mm, bottom_offset_mm, depth_offset_mm} "
+            + "from the view's level (top_level / bottom_level / depth_level name another level for that plane; planes left out keep "
+            + "the defaults; top >= cut >= bottom >= depth). drafting: an empty drafting view (scale, e.g. 500). 3d: isometric. section: cut exactly on the plan line startX/startY to endX/endY (mm), looking to the side (left, default, "
             + "or right) of start->end (drawn west to east, left looks north) for depth mm (far clip); its height range is bottom/top "
             + "(absolute mm) or bottomLevel/topLevel plus bottomOffset/topOffset (mm). "
             + "elevation: marker at x/y (mm) on the named level's floor plan; direction is the way the view looks (north = +Y). "
             + "Optional name (e.g. SECTION - AA), viewFamilyTypeName, viewTemplateName, scale (100 for 1:100), detailLevel.";
         public string ParametersSchema => @"{""type"":""object"",""properties"":{
-            ""viewType"":{""type"":""string"",""enum"":[""floor_plan"",""ceiling_plan"",""3d"",""section"",""elevation""]},
+            ""viewType"":{""type"":""string"",""enum"":[""floor_plan"",""ceiling_plan"",""3d"",""section"",""elevation"",""drafting"",""structural_plan""]},
+            ""viewRange"":{""type"":""object""},
             ""level"":{""type"":""string""},
             ""name"":{""type"":""string""},
             ""viewFamilyTypeName"":{""type"":""string""},
@@ -75,8 +89,16 @@ namespace B2M.Revit.Commands.View
             switch (kind)
             {
                 case "floor_plan":
-                    fields = PlanFields; required = new[] { "level" };
+                    fields = RangedPlanFields; required = new[] { "level" };
                     family = ViewFamily.FloorPlan; group = ElementTypeGroup.ViewTypeFloorPlan; resultType = ViewType.FloorPlan;
+                    break;
+                case "structural_plan":
+                    fields = RangedPlanFields; required = new[] { "level" };
+                    family = ViewFamily.StructuralPlan; group = ElementTypeGroup.ViewTypeStructuralPlan; resultType = ViewType.EngineeringPlan;
+                    break;
+                case "drafting":
+                    fields = new string[0]; required = fields;
+                    family = ViewFamily.Drafting; group = ElementTypeGroup.ViewTypeDrafting; resultType = ViewType.DraftingView;
                     break;
                 case "ceiling_plan":
                     fields = PlanFields; required = new[] { "level" };
@@ -146,6 +168,15 @@ namespace B2M.Revit.Commands.View
                         new JObject { ["valid_view_templates"] = new JArray(templates.Take(100).Select(v => v.Name)) });
             }
 
+            List<RangePlane> viewRange = null;
+            if (p["viewRange"] != null && p["viewRange"].Type != JTokenType.Null)
+            {
+                if (!TryViewRange(doc, p["viewRange"], level, out viewRange, out failure)) return failure;
+                if (template != null && TemplateControlsViewRange(template))
+                    return CommandResult.Fail("INVALID_PARAMS: view template '" + template.Name + "' controls the view range, so viewRange would "
+                        + "not hold; leave viewRange out or use a template that does not include View Range.");
+            }
+
             BoundingBoxXYZ sectionBox = null;
             XYZ sectionStart = null, sectionEnd = null;
             if (kind == "section")
@@ -189,8 +220,12 @@ namespace B2M.Revit.Commands.View
                     switch (kind)
                     {
                         case "floor_plan":
+                        case "structural_plan":
                         case "ceiling_plan":
                             view = ViewPlan.Create(doc, vft.Id, level.Id);
+                            break;
+                        case "drafting":
+                            view = ViewDrafting.Create(doc, vft.Id);
                             break;
                         case "3d":
                             view = View3D.CreateIsometric(doc, vft.Id);
@@ -212,6 +247,7 @@ namespace B2M.Revit.Commands.View
                     if (detail != null)
                         view.DetailLevel = detail == "coarse" ? ViewDetailLevel.Coarse : detail == "medium" ? ViewDetailLevel.Medium : ViewDetailLevel.Fine;
                     if (crop != null) ApplyCrop(view, crop);
+                    if (viewRange != null) ApplyViewRange(doc, (ViewPlan)view, level, viewRange);
                     if (template != null)
                     {
                         if (!view.IsValidViewTemplate(template.Id))
@@ -255,7 +291,8 @@ namespace B2M.Revit.Commands.View
                         looksToward = kind == "section" || kind == "elevation"
                             ? new[] { Math.Round(look.X, 6), Math.Round(look.Y, 6), Math.Round(look.Z, 6) } : null,
                         elevationMarkerId = marker == null ? (long?)null : RevitCompat.GetId(marker.Id),
-                        sectionLineMm = sectionLine
+                        sectionLineMm = sectionLine,
+                        viewRangeMm = kind == "floor_plan" || kind == "structural_plan" ? ViewRangeMm(doc, (ViewPlan)view) : null
                     });
                 }
                 catch (Exception ex)
@@ -264,6 +301,136 @@ namespace B2M.Revit.Commands.View
                     return CommandResult.Fail("CREATE_FAILED: could not create the " + kind + " view: " + ex.Message + " Nothing was created.");
                 }
             }
+        }
+
+        /// <summary>One view range plane the request sets: its level and its offset from that level.</summary>
+        private sealed class RangePlane
+        {
+            public PlanViewPlane Plane;
+            public string Name;
+            public Level Level;
+            public double OffsetMm;
+
+            public double AbsoluteMm => Mm.FromFeet(Level.ProjectElevation, 3) + OffsetMm;
+        }
+
+        private static readonly PlanViewPlane[] RangePlanes =
+            { PlanViewPlane.TopClipPlane, PlanViewPlane.CutPlane, PlanViewPlane.BottomClipPlane, PlanViewPlane.ViewDepthPlane };
+
+        /// <summary>
+        /// Parses viewRange: {plane}_offset_mm from the view's level or from {plane}_level (top, bottom, depth; the cut plane
+        /// is always on the view's level). A plane is set when its offset or level is given. The given planes must already
+        /// run top >= cut >= bottom >= depth.
+        /// </summary>
+        private static bool TryViewRange(Document doc, JToken token, Level viewLevel, out List<RangePlane> planes, out CommandResult failure)
+        {
+            planes = null;
+            failure = null;
+            var o = token as JObject;
+            var stray = o?.Properties().Select(x => x.Name).Where(n => !ViewRangeFields.Contains(n)).ToList() ?? new List<string>();
+            if (o == null || stray.Count > 0 || o.Count == 0)
+            {
+                failure = CommandResult.Fail("INVALID_PARAMS: viewRange must be an object with any of " + string.Join(", ", ViewRangeFields)
+                    + (stray.Count > 0 ? "; unknown field(s) " + string.Join(", ", stray) : "") + ".");
+                return false;
+            }
+            var result = new List<RangePlane>();
+            for (var i = 0; i < RangePlanes.Length; i++)
+            {
+                var name = ViewRangeRules.Planes[i];
+                var offsetToken = o[name + "_offset_mm"];
+                var levelToken = o[name + "_level"];
+                if ((offsetToken == null || offsetToken.Type == JTokenType.Null) && (levelToken == null || levelToken.Type == JTokenType.Null)) continue;
+                double offset = 0;
+                if (offsetToken != null && offsetToken.Type != JTokenType.Null)
+                {
+                    if (offsetToken.Type != JTokenType.Integer && offsetToken.Type != JTokenType.Float)
+                    {
+                        failure = CommandResult.Fail("INVALID_PARAMS: viewRange." + name + "_offset_mm must be a number (mm).");
+                        return false;
+                    }
+                    offset = offsetToken.Value<double>();
+                }
+                var planeLevel = viewLevel;
+                if (levelToken != null && levelToken.Type != JTokenType.Null)
+                {
+                    if (levelToken.Type != JTokenType.String)
+                    {
+                        failure = CommandResult.Fail("INVALID_PARAMS: viewRange." + name + "_level must be a level name.");
+                        return false;
+                    }
+                    if (!Lookup.TryLevel(doc, levelToken.Value<string>(), out planeLevel, out failure)) return false;
+                }
+                result.Add(new RangePlane { Plane = RangePlanes[i], Name = name, Level = planeLevel, OffsetMm = offset });
+            }
+            double? At(string n) => result.FirstOrDefault(r => r.Name == n)?.AbsoluteMm;
+            var reason = ViewRangeRules.Validate(At("top"), At("cut"), At("bottom"), At("depth"));
+            if (reason != null)
+            {
+                failure = CommandResult.Fail("INVALID_VIEW_RANGE: " + reason + " Heights are absolute (level elevation + offset, mm).",
+                    new JObject { ["given_mm"] = new JObject(result.Select(r => new JProperty(r.Name, Math.Round(r.AbsoluteMm, 1)))) });
+                return false;
+            }
+            planes = result;
+            return true;
+        }
+
+        private static bool TemplateControlsViewRange(View template)
+        {
+            var rangeId = new ElementId(BuiltInParameter.PLAN_VIEW_RANGE);
+            return template.GetTemplateParameterIds().Contains(rangeId) && !template.GetNonControlledTemplateParameterIds().Contains(rangeId);
+        }
+
+        /// <summary>The level a view range plane is on (resolving "current level" to the view's level), or null when not a level.</summary>
+        private static Level PlaneLevel(Document doc, ViewPlan view, PlanViewRange range, PlanViewPlane plane)
+        {
+            var id = range.GetLevelId(plane);
+            if (id == PlanViewRange.Current) return view.GenLevel;
+            return doc.GetElement(id) as Level;
+        }
+
+        /// <summary>
+        /// Inside the transaction, on the new view only: sets the given planes on the view's own range, checks the merged
+        /// range (unlimited or relative planes are not compared) and applies it. Throws when it is not valid.
+        /// </summary>
+        private static void ApplyViewRange(Document doc, ViewPlan view, Level viewLevel, List<RangePlane> planes)
+        {
+            var range = view.GetViewRange();
+            foreach (var plane in planes)
+            {
+                range.SetLevelId(plane.Plane, plane.Plane == PlanViewPlane.CutPlane ? viewLevel.Id : plane.Level.Id);
+                range.SetOffset(plane.Plane, Mm.ToFeet(plane.OffsetMm));
+            }
+            var heights = RangePlanes.Select(pl =>
+            {
+                var level = PlaneLevel(doc, view, range, pl);
+                return level == null ? (double?)null : DrawingMm(level.ProjectElevation + range.GetOffset(pl));
+            }).ToArray();
+            var reason = ViewRangeRules.Validate(heights[0], heights[1], heights[2], heights[3]);
+            if (reason != null)
+                throw new InvalidOperationException("with the view type's default planes the view range is not valid: " + reason);
+            view.SetViewRange(range);
+        }
+
+        private static double DrawingMm(double feet) => feet * 304.8;
+
+        /// <summary>The plan's view range as {plane: {level, offset_mm}} (level null for unlimited or relative planes).</summary>
+        private static JObject ViewRangeMm(Document doc, ViewPlan view)
+        {
+            PlanViewRange range;
+            try { range = view.GetViewRange(); }
+            catch (Exception) { return null; }
+            var result = new JObject();
+            for (var i = 0; i < RangePlanes.Length; i++)
+            {
+                var level = PlaneLevel(doc, view, range, RangePlanes[i]);
+                result[ViewRangeRules.Planes[i]] = new JObject
+                {
+                    ["level"] = level?.Name,
+                    ["offset_mm"] = Mm.FromFeet(range.GetOffset(RangePlanes[i]))
+                };
+            }
+            return result;
         }
 
         /// <summary>
