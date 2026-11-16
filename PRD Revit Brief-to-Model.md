@@ -420,6 +420,48 @@ Nine steps, each ending at a gate. A step starts only when the previous gate pas
 - Pilot fixes take priority: toolsets the pilot firms ask for move to the front of the order.
 - **Gate:** all 262 tools pass their command tests on Revit 2024, 2025, 2026 and 2027, and the MCP tool list matches Appendix A.
 
+### Step 9 · Drawing to model (F13)
+
+A second way in, beside the brief: the office's own CAD drawing set (DWG) becomes the Revit model, drawing set and estimate, matching the source 100%, proven by automatic comparison, never assumed. The sample used to build and gate it is a G+4 RCC block (stilt + 4 floors of 4 × 3BHK, 2 lifts): 9 DWGs (ground, typical 1st–4th, roof, site plan, front elevation, sections AA/BB, foundation details, tie beam layout), the same set as PDF, and the office's door/window estimate (Excel). It is a test case for the system, not a one-off: the next similar project must go through the same pipeline unchanged.
+
+**Rules.** No guessing. Every fact comes from the drawings, the project standards or the user. Anything unclear becomes a question. When the user says "assume", B2M first asks the project location (city/municipality), then assumes from that location's rule set and typical practice, and lists every assumption back. Families: find, adapt a copy, ask before creating. Types: duplicate before edit.
+
+**What the sample DWGs are like** (and so what the importer must handle): millimetres, true size; each file is one sheet with its border, title and page number drawn in model space; floors are not on a shared origin; walls are plain line pairs on layer 0 (250 mm outer, 125 mm inner), columns are solid hatches, doors are anonymous dynamic blocks, windows are line patterns in wall gaps with a text mark beside them (w, w1–w4), room names and sizes are text ("3500 X 4000"); heights exist only as dimensions in the sections (2700 floor to floor, 150 slab, 450 beam, 900 parapet, PL/GL, plinth); foundation sizes and rebar are dimensions, MTEXT notes and a Reinforcement layer.
+
+**Pipeline**
+
+| # | Stage | Output | Proof |
+| --- | --- | --- | --- |
+| 1 | Ingest | DWG → DXF (ODA File Converter, found or installed with the user's OK) → normalised sheets: entities in mm with layer, expanded blocks, text, dimensions; border/title excluded | Entity counts match the DXF |
+| 2 | Classify | Each sheet's role and storeys from its title ("FIRST STOREY TO FOURTH STOREY FLOOR PLAN" → storeys 1–4), scale; unknown sheets → question | Every sheet classified or asked |
+| 3 | Recognise | Per plan: grids, walls (thickness classes), columns, doors (width, swing, hinge, mark), windows (width, mark), rooms (name, labelled size), stair, lifts, shafts, balconies/verandahs, parapets; per section: levels and heights; foundation: footings, plinth/tie beams, rebar specs | Each element keeps its source entity handles; unclaimed geometry is listed |
+| 4 | Register | All storeys and sections on one origin and grid; section lines tied to plans | Grids and columns coincide across sheets within 1 mm |
+| 5 | Questions | Everything ambiguous or missing (location/rules, sizes not measurable, heights not dimensioned, unknown blocks/layers), with the evidence | List empty, or answered/assumed and recorded |
+| 6 | Review | Web page: source drawing overlaid with what B2M understood, per storey, plus the question list; nothing builds until approved | User approval stored with the run |
+| 7 | Build | Building model → build plan → the existing runner (batches, undo, families find/adapt/ask, duplicate-before-edit); door/window types by mark and size | Zero Revit warnings |
+| 8 | Self-check | Revit model read back and compared with the recognised building and the DWG: wall axes and thicknesses, opening positions/sizes/marks, room areas vs labels, columns, levels | Difference report; target zero |
+| 9 | Drawings | The source sheet set reproduced: plans per storey type with dimensions, room tags "NAME / W X L", door/window marks, roof plan, sections at the source section lines, elevation, foundation plan, tie beam layout, office sheet format and page numbers | Sheet list and dimension values match the source |
+| 10 | Estimate | Door/window estimate in the office's Excel layout with live formulas, from the model and written measurement rules | Matches the source Excel cell by cell |
+
+**Tasks**
+
+| Task | Scope | Depends on |
+| --- | --- | --- |
+| T1 | CAD ingest: ODA discovery/conversion, DXF reader, normalised sheet model, border/title detection | — |
+| T2 | Sheet classification and storey mapping; project file (inputs, answers, assumptions, approvals) | T1 |
+| T3 | Plan recognition: walls, columns, grids, doors, windows, rooms, stair, lifts, shafts, balconies, parapets | T1 |
+| T4 | Section/foundation recognition (levels, heights, footings, tie beams, rebar notes) and cross-sheet registration | T1, T3 |
+| T5 | Question and assumption engine (location-based assumptions) | T2–T4 |
+| T6 | Building model → build plan (new ops as needed: footing, tie beam, balcony, parapet, shaft, lift) and project standards (wall build-ups, door/window catalogue with marks) | T3, T4 |
+| T7 | Add-in: door/window types by mark and size (ensure_family_type for doors/windows), type marks at creation, room tags with size, auto-dimensions, section placement on given lines, office sheet format | — |
+| T8 | Review web page (overlay + questions + approval) and API/MCP tools | T2–T5 |
+| T9 | Self-check comparison and difference report | T6, T7 |
+| T10 | Drawing set from imported projects | T7 |
+| T11 | Estimate engine: measurement rules, model quantities, Excel with formulas | T6 |
+| T12 | End-to-end gate on the sample, review, fixes, documentation | all |
+
+- **Gate:** the sample goes DWG → approved review → Revit with zero warnings → self-check with zero unexplained differences → sheet set matching the source list and dimensions → estimate matching the source Excel; the pipeline code has no sample-specific branches.
+
 ## Testing and acceptance
 
 Four test layers, from fast to slow. Only the last two need Revit.
