@@ -5,6 +5,11 @@
 // "B2M.MeshShapes" (replace_existing only deletes shapes this add-in made); a category not allowed
 // for DirectShape is an error instead of a silent switch to Generic Models; vertex mm go through Mm;
 // "Nothing was changed" outcomes are "CODE: message" errors.
+// Duplicate before edit (TypeEditGuard): update_materials changes existing materials named in the file, which changes
+// every element using them, so it also needs confirm_edit_all (= each material's best-effort user count; several:
+// {"<materialId>": N}); without it the command refuses with MATERIAL_IN_USE before anything changes. No copy is
+// offered: to get separate materials, give them new names in the file. Without update_materials, existing materials
+// are only reused, never changed.
 
 using System;
 using System.Collections.Generic;
@@ -14,6 +19,7 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using B2M.Revit.Bridge;
+using B2M.Revit.Core.Safety;
 using Newtonsoft.Json.Linq;
 
 namespace B2M.Revit.Commands.Geometry
@@ -26,12 +32,15 @@ namespace B2M.Revit.Commands.Geometry
         public string Name => "create_mesh_shapes";
         public string Description =>
             "Create DirectShapes with materials from a local JSON mesh file {materials:[{name,color:[r,g,b],transparency,shininess}], "
-            + "shapes:[{name,category,material,vertices:[[x,y,z] mm],faces:[[i,j,k(,l)] 0-based]}]}. Up to 500000 faces and 64 MB per file.";
+            + "shapes:[{name,category,material,vertices:[[x,y,z] mm],faces:[[i,j,k(,l)] 0-based]}]}. Up to 500000 faces and 64 MB per file. "
+            + "Existing materials of the same name are reused unchanged; update_materials changes them in place, which needs confirm_edit_all "
+            + "(the exact user count from the MATERIAL_IN_USE refusal; several: {\"<materialId>\": N}).";
         public string ParametersSchema => @"{""type"":""object"",""properties"":{
             ""file"":{""type"":""string""},
             ""replace_existing"":{""type"":""boolean""},
             ""update_materials"":{""type"":""boolean""},
-            ""mesh_only"":{""type"":""boolean""}},""required"":[""file""]}";
+            ""mesh_only"":{""type"":""boolean""},
+            " + SharedEditRule.ConfirmOnlySchemaField + @"},""required"":[""file""]}";
         public bool ReadOnly => false;
 
         public CommandResult Execute(UIApplication app, JObject p)
@@ -82,6 +91,21 @@ namespace B2M.Revit.Commands.Geometry
                         new JObject { ["valid_categories"] = new JArray(MeshShapeFile.Categories.Where(c => DirectShape.IsValidCategoryId(new ElementId(MapCategory(c)), doc))) });
                 categoryIds[category] = id;
             }
+
+            // update_materials edits existing materials in place: the shared-edit rule applies (confirm only).
+            var toUpdate = new List<Material>();
+            if (updateMaterials)
+            {
+                var byName = new FilteredElementCollector(doc).OfClass(typeof(Material)).Cast<Material>()
+                    .GroupBy(m => m.Name, StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+                foreach (var material in spec.Materials)
+                    if (byName.TryGetValue(material.Name, out var existing) && !toUpdate.Contains(existing)) toUpdate.Add(existing);
+            }
+            else if (p[SharedEditRule.ConfirmField] != null)
+                return CommandResult.Fail("INVALID_PARAMS: confirm_edit_all applies only with update_materials: true. Nothing was changed.");
+            if (!TypeEditGuard.TryPlan(doc, p, toUpdate.Select(m => new SharedEdit(m)), out var plan, out var refusal, copyAllowed: false))
+                return refusal;
 
             var warnings = new JArray();
             var duplicateNames = prepared.GroupBy(s => s.Name).Where(g => g.Count() > 1).Select(g => g.Key).Take(10).ToList();
@@ -144,6 +168,7 @@ namespace B2M.Revit.Commands.Geometry
                 ["materials_created"] = created,
                 ["materials_updated"] = updated,
                 ["materials_reused"] = reused,
+                ["shared_edits"] = plan.Report(),
                 ["input_faces"] = prepared.Sum(s => s.InputFaces),
                 ["faces_built"] = prepared.Sum(s => s.Loops.Count),
                 ["skipped_degenerate_faces"] = prepared.Sum(s => s.SkippedDegenerate),

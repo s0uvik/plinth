@@ -2,6 +2,9 @@
 // file src/shared/Handlers/Materials/SetMaterialAppearanceHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
 // Modified for B2M: a pattern id of -1 clears that pattern; a wrong pattern id lists the valid fill patterns of
 // the right kind (cut patterns must be drafting patterns); the response reads the material back.
+// Duplicate before edit (TypeEditGuard): a material is shared, so it is changed only with duplicate_as (a copy named
+// so gets the change; nothing else moves onto it) or confirm_edit_all (= its best-effort user count); otherwise
+// MATERIAL_IN_USE before anything changes.
 
 using System;
 using System.Collections.Generic;
@@ -21,7 +24,8 @@ namespace B2M.Revit.Commands.Materials
         public string Name => "set_material_appearance";
         public string Description =>
             "Set a material's shading: colour (red, green, blue 0-255), transparency 0-100, shininess and smoothness 0-128, "
-            + "use_render_appearance_for_shading, and surface/cut fill pattern ids (-1 clears; cut patterns must be drafting patterns).";
+            + "use_render_appearance_for_shading, and surface/cut fill pattern ids (-1 clears; cut patterns must be drafting patterns)."
+            + TypeEditGuard.Rule;
         public string ParametersSchema => @"{""type"":""object"",""properties"":{" + MaterialsHelpers.MaterialSchema + @",
             ""red"":{""type"":""integer""},""green"":{""type"":""integer""},""blue"":{""type"":""integer""},
             ""transparency"":{""type"":""integer""},
@@ -31,7 +35,8 @@ namespace B2M.Revit.Commands.Materials
             ""surface_foreground_pattern_id"":{""type"":""integer""},
             ""surface_background_pattern_id"":{""type"":""integer""},
             ""cut_foreground_pattern_id"":{""type"":""integer""},
-            ""cut_background_pattern_id"":{""type"":""integer""}}}";
+            ""cut_background_pattern_id"":{""type"":""integer""},
+            " + TypeEditGuard.SchemaFields + @"}}";
         public bool ReadOnly => false;
 
         public CommandResult Execute(UIApplication app, JObject p)
@@ -80,11 +85,15 @@ namespace B2M.Revit.Commands.Materials
             if (color == null && !transparency.HasValue && !shininess.HasValue && !smoothness.HasValue && !useRender.HasValue && patterns.Count == 0)
                 return CommandResult.Fail("INVALID_PARAMS: nothing to change; give at least one appearance field.");
 
+            if (!TypeEditGuard.TryPlan(doc, p, new[] { new SharedEdit(mat) }, out var plan, out failure)) return failure;
+
             using (var tx = new Transaction(doc, "B2M: Set material appearance"))
             {
                 tx.Start();
                 try
                 {
+                    plan.Apply(doc);
+                    mat = (Material)plan.TargetFor(mat);
                     if (color != null) mat.Color = color;
                     if (transparency.HasValue) mat.Transparency = transparency.Value;
                     if (shininess.HasValue) mat.Shininess = shininess.Value;
@@ -123,7 +132,8 @@ namespace B2M.Revit.Commands.Materials
                 ["surface_foreground_pattern_id"] = MaterialsHelpers.IdOrNull(mat.SurfaceForegroundPatternId),
                 ["surface_background_pattern_id"] = MaterialsHelpers.IdOrNull(mat.SurfaceBackgroundPatternId),
                 ["cut_foreground_pattern_id"] = MaterialsHelpers.IdOrNull(mat.CutForegroundPatternId),
-                ["cut_background_pattern_id"] = MaterialsHelpers.IdOrNull(mat.CutBackgroundPatternId)
+                ["cut_background_pattern_id"] = MaterialsHelpers.IdOrNull(mat.CutBackgroundPatternId),
+                ["shared_edits"] = plan.Report()
             });
         }
     }

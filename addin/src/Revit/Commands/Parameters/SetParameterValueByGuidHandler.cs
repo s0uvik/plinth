@@ -5,6 +5,9 @@
 // be a JSON number, boolean or string; valueType "display" still uses Revit's display-string parser; per-element
 // failures with allOrNothing: false are reported as failedCount so batch_execute sees them; a type shared by
 // several elements is set once and the others are listed; old and new values are read back in wire units.
+// Duplicate before edit (TypeEditGuard): a type owner (target type, or auto falling back to the type) and an id that is
+// itself a type or material are changed only with duplicate_as (the copy gets the value and the elementIds of that
+// type move onto it) or confirm_edit_all (= the exact instance count); otherwise TYPE_IN_USE before anything changes.
 
 using System;
 using System.Collections.Generic;
@@ -25,7 +28,8 @@ namespace B2M.Revit.Commands.Parameters
             "Set a shared parameter (by GUID) on elements, or on their types (target type, or auto: instance first, then type). "
             + "value: text, number, true/false for Yes/No, or an element id. Numbers are read in unit (auto = mm / m2 / m3 / deg from the "
             + "parameter's data type; internal = Revit's own units). valueType display parses Revit's formatted text. "
-            + "allOrNothing (default true) rolls everything back on the first failure.";
+            + "allOrNothing (default true) rolls everything back on the first failure." + TypeEditGuard.Rule
+            + " Several types in one call: duplicate_as {\"<typeId>\": \"name\"} and confirm_edit_all {\"<typeId>\": N}.";
         public string ParametersSchema => @"{""type"":""object"",""properties"":{
             ""elementIds"":{""type"":""array"",""items"":{""type"":""integer""}},
             ""guid"":{""type"":""string""},
@@ -33,7 +37,8 @@ namespace B2M.Revit.Commands.Parameters
             ""valueType"":{""type"":""string"",""enum"":[""auto"",""display""]},
             ""unit"":{""type"":""string"",""enum"":[""auto"",""internal"",""mm"",""m2"",""m3"",""deg""]},
             ""target"":{""type"":""string"",""enum"":[""auto"",""instance"",""type""]},
-            ""allOrNothing"":{""type"":""boolean""}},""required"":[""elementIds"",""guid"",""value""]}";
+            ""allOrNothing"":{""type"":""boolean""},
+            " + TypeEditGuard.SchemaFields + @"},""required"":[""elementIds"",""guid"",""value""]}";
         public bool ReadOnly => false;
 
         public CommandResult Execute(UIApplication app, JObject p)
@@ -93,15 +98,26 @@ namespace B2M.Revit.Commands.Parameters
                 return CommandResult.Fail("SET_FAILED: element " + failed[0].Value<long>("elementId") + ": " + failed[0].Value<string>("error") + ". Nothing changed.",
                     new JObject { ["failed"] = failed });
 
+            // The elementIds whose (type) owner is each shared element: on a copy, exactly these move onto it.
+            var named = new Dictionary<long, List<long>>();
+            foreach (var w in work)
+                if (w.used == "type") named[RevitCompat.GetId(w.owner.Id)] = new List<long> { w.id };
+            foreach (var skip in sharedTypeSkips) named[skip.Value<long>("typeId")].Add(skip.Value<long>("elementId"));
+            var edits = work.Where(w => TypeEditGuard.IsShared(w.owner))
+                .Select(w => new SharedEdit(w.owner, named.TryGetValue(RevitCompat.GetId(w.owner.Id), out var ids2) ? ids2 : null));
+            if (!TypeEditGuard.TryPlan(doc, p, edits, out var plan, out failure)) return failure;
+
             var updated = new JArray();
             using (var tx = new Transaction(doc, "B2M: Set parameter by GUID"))
             {
                 tx.Start();
                 try
                 {
+                    plan.Apply(doc);
                     foreach (var w in work)
                     {
-                        var parameter = w.owner.get_Parameter(guid);
+                        var owner = plan.TargetFor(w.owner);
+                        var parameter = owner.get_Parameter(guid);
                         var before = ParametersHelpers.Read(doc, parameter);
                         string error = null, unitUsed = null;
                         bool ok;
@@ -119,7 +135,8 @@ namespace B2M.Revit.Commands.Parameters
                         }
                         if (!ok)
                         {
-                            if (allOrNothing)
+                            // A copy made for this value must not be left behind without it (with elements moved onto it).
+                            if (allOrNothing || owner.Id != w.owner.Id)
                             {
                                 tx.RollBack();
                                 return CommandResult.Fail("SET_FAILED: element " + w.id + ": " + error + ". Nothing changed.");
@@ -131,7 +148,7 @@ namespace B2M.Revit.Commands.Parameters
                         {
                             ["elementId"] = w.id,
                             ["targetUsed"] = w.used,
-                            ["targetElementId"] = RevitCompat.GetId(w.owner.Id),
+                            ["targetElementId"] = RevitCompat.GetId(owner.Id),
                             ["parameterName"] = parameter.Definition.Name,
                             ["unitUsed"] = unitUsed,
                             ["old"] = before,
@@ -158,6 +175,7 @@ namespace B2M.Revit.Commands.Parameters
                 ["updated"] = updated,
                 ["failed"] = failed,
                 ["sharedTypeSkipped"] = sharedTypeSkips,
+                ["shared_edits"] = plan.Report(),
                 ["warnings"] = warnings
             });
         }

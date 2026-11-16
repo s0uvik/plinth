@@ -4,8 +4,12 @@
 // changes every instance of that type) and which element holds it; when no element could be changed the
 // transaction is rolled back and the command fails; checks run once for dry runs and real runs alike.
 // ReadOnly is false: dry_run only reports, but the same command writes otherwise.
+// Duplicate before edit (TypeEditGuard): when the keynote lives on the type (or an id is itself a type), the type is
+// changed only with duplicate_as (the copy gets the keynote and only the given elements of that type move onto it) or
+// confirm_edit_all (= its exact instance count); otherwise TYPE_IN_USE, also for dry runs, and nothing changes.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
@@ -22,11 +26,13 @@ namespace B2M.Revit.Commands.Annotation
         public string Name => "apply_keynote_to_element";
         public string Description =>
             "Set the Keynote value on elements (on the element itself, else on its type, which affects every instance of that type). "
-            + "keynote \"\" clears it. dry_run reports old and new values without changing anything.";
+            + "keynote \"\" clears it. dry_run reports old and new values without changing anything." + TypeEditGuard.Rule
+            + " Several types in one call: duplicate_as {\"<typeId>\": \"name\"} and confirm_edit_all {\"<typeId>\": N}.";
         public string ParametersSchema => @"{""type"":""object"",""properties"":{
             ""element_ids"":{""type"":""array"",""items"":{""type"":""integer""}},
             ""keynote"":{""type"":""string""},
-            ""dry_run"":{""type"":""boolean""}},
+            ""dry_run"":{""type"":""boolean""},
+            " + TypeEditGuard.SchemaFields + @"},
             ""required"":[""element_ids"",""keynote""]}";
         public bool ReadOnly => false;
 
@@ -40,6 +46,25 @@ namespace B2M.Revit.Commands.Annotation
             var keynote = p.Value<string>("keynote");
             var dryRun = p.Value<bool?>("dry_run") ?? false;
 
+            // Resolve every element first, so the duplicate-before-edit check sees every type this call would change.
+            var work = new List<(long id, Element element, Parameter parameter, Element holder, string error)>();
+            foreach (var id in ids)
+            {
+                var element = doc.GetElement(RevitCompat.ToElementId(id));
+                string error = null;
+                Parameter parameter = null;
+                Element holder = null;
+                if (element == null) error = "element not found.";
+                else if ((parameter = FindKeynote(doc, element, out holder)) == null) error = "the element and its type have no Keynote parameter.";
+                else if (parameter.IsReadOnly) error = "the Keynote parameter is read-only.";
+                else if (parameter.StorageType != StorageType.String) error = "the Keynote parameter is not text.";
+                work.Add((id, element, parameter, holder, error));
+            }
+            var edits = work.Where(w => w.error == null && TypeEditGuard.IsShared(w.holder))
+                .GroupBy(w => RevitCompat.GetId(w.holder.Id))
+                .Select(g => new SharedEdit(g.First().holder, g.Where(w => w.element.Id != w.holder.Id).Select(w => w.id)));
+            if (!TypeEditGuard.TryPlan(doc, p, edits, out var plan, out var failure)) return failure;
+
             var changes = new JArray();
             var failed = new JArray();
             Transaction tx = null;
@@ -49,31 +74,40 @@ namespace B2M.Revit.Commands.Annotation
                 {
                     tx = new Transaction(doc, "B2M: Apply Keynote");
                     tx.Start();
+                    plan.Apply(doc);
                 }
-                foreach (var id in ids)
+                var done = new HashSet<long>();
+                foreach (var w in work)
                 {
-                    var element = doc.GetElement(RevitCompat.ToElementId(id));
-                    string error = null;
-                    Parameter parameter = null;
-                    Element holder = null;
-                    if (element == null) error = "element not found.";
-                    else if ((parameter = FindKeynote(doc, element, out holder)) == null) error = "the element and its type have no Keynote parameter.";
-                    else if (parameter.IsReadOnly) error = "the Keynote parameter is read-only.";
-                    else if (parameter.StorageType != StorageType.String) error = "the Keynote parameter is not text.";
+                    var error = w.error;
                     if (error == null)
                     {
-                        var old = parameter.AsString() ?? "";
+                        var old = w.parameter.AsString() ?? "";
                         try
                         {
-                            if (!dryRun && !parameter.Set(keynote)) throw new InvalidOperationException("Revit refused the value.");
+                            var target = dryRun ? w.holder : plan.TargetFor(w.holder);
+                            // A type is set once, however many of the given elements use it.
+                            if (!dryRun && done.Add(RevitCompat.GetId(target.Id)))
+                            {
+                                var parameter = target.Id == w.holder.Id ? w.parameter : FindOwn(target);
+                                if (parameter == null || parameter.IsReadOnly || !parameter.Set(keynote))
+                                {
+                                    if (target.Id != w.holder.Id)
+                                    {
+                                        tx.RollBack();
+                                        return CommandResult.Fail("KEYNOTE_FAILED: the copy '" + target.Name + "' did not take the keynote. Nothing was changed.");
+                                    }
+                                    throw new InvalidOperationException("Revit refused the value.");
+                                }
+                            }
                             changes.Add(new JObject
                             {
-                                ["element_id"] = id,
-                                ["applied_to"] = holder.Id == element.Id ? "instance" : "type",
-                                ["holder_id"] = RevitCompat.GetId(holder.Id),
+                                ["element_id"] = w.id,
+                                ["applied_to"] = w.holder.Id == w.element.Id ? "instance" : "type",
+                                ["holder_id"] = RevitCompat.GetId(target.Id),
                                 ["old_keynote"] = old,
                                 ["new_keynote"] = keynote,
-                                ["parameter_name"] = parameter.Definition.Name
+                                ["parameter_name"] = w.parameter.Definition.Name
                             });
                             continue;
                         }
@@ -82,7 +116,7 @@ namespace B2M.Revit.Commands.Annotation
                             error = ex.Message;
                         }
                     }
-                    failed.Add(new JObject { ["element_id"] = id, ["error"] = error });
+                    failed.Add(new JObject { ["element_id"] = w.id, ["error"] = error });
                 }
 
                 var result = new JObject
@@ -91,7 +125,8 @@ namespace B2M.Revit.Commands.Annotation
                     ["requested"] = ids.Count,
                     ["updated"] = changes.Count,
                     ["changes"] = changes,
-                    ["failed"] = failed
+                    ["failed"] = failed,
+                    ["shared_edits"] = plan.Report()
                 };
                 if (changes.Count == 0)
                 {
@@ -112,6 +147,9 @@ namespace B2M.Revit.Commands.Annotation
                 tx?.Dispose();
             }
         }
+
+        private static Parameter FindOwn(Element element) =>
+            element.get_Parameter(BuiltInParameter.KEYNOTE_PARAM) ?? element.LookupParameter("Keynote");
 
         /// <summary>The element's Keynote parameter, else its type's; holder is the element that carries it.</summary>
         private static Parameter FindKeynote(Document doc, Element element, out Element holder)

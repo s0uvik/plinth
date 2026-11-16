@@ -2,6 +2,9 @@
 // file src/shared/Handlers/Families/RenameFamilyTypeHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
 // Modified for B2M: failures are errors instead of success with renamed=false; a name clash is caught before the
 // transaction and names the existing type; type_id is an integer.
+// Exempt from duplicate before edit (TypeEditGuard): a rename changes no element's geometry or data other than the type
+// name it shows, so it needs neither duplicate_as nor confirm_edit_all; the result reports instance_count so the
+// caller sees how many elements now show the new name.
 
 using System;
 using Autodesk.Revit.DB;
@@ -14,7 +17,9 @@ namespace B2M.Revit.Commands.Families
     public sealed class RenameFamilyTypeHandler : IRevitCommand
     {
         public string Name => "rename_family_type";
-        public string Description => "Rename a family type or system type. The new name must be unique within the family (or among types of that kind).";
+        public string Description => "Rename a family type or system type. The new name must be unique within the family (or among types of that kind). "
+            + "Renaming changes nothing but the name, so it is allowed without duplicate_as / confirm_edit_all; instance_count reports how many "
+            + "elements show the new name.";
         public string ParametersSchema => @"{""type"":""object"",""properties"":{
             ""type_id"":{""type"":""integer""},
             ""new_name"":{""type"":""string""}},""required"":[""type_id"",""new_name""]}";
@@ -34,7 +39,8 @@ namespace B2M.Revit.Commands.Families
                 ["type_id"] = RevitCompat.GetId(type.Id),
                 ["old_name"] = oldName,
                 ["family_name"] = FamiliesHelpers.FamilyNameOf(type),
-                ["category"] = type.Category?.Name
+                ["category"] = type.Category?.Name,
+                ["instance_count"] = TypeEditGuard.TypeUserCount(doc, type)
             };
             if (string.Equals(oldName, newName, StringComparison.Ordinal))
             {

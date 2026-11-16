@@ -3,6 +3,9 @@
 // Modified for B2M: all or nothing (rvt-mcp committed when at least one field was set and reported the rest);
 // fields are found by built-in parameter only (URL via ALL_MODEL_URL, not a name lookup that fails in other
 // languages); cost is a number; description is added; SetValueString guessing is dropped.
+// Duplicate before edit (TypeEditGuard): a material is shared, so it is changed only with duplicate_as (a copy named
+// so gets the change; nothing else moves onto it) or confirm_edit_all (= its best-effort user count); otherwise
+// MATERIAL_IN_USE before anything changes.
 
 using System;
 using System.Collections.Generic;
@@ -29,7 +32,7 @@ namespace B2M.Revit.Commands.Materials
         public string Name => "set_material_identity";
         public string Description =>
             "Set a material's identity data: manufacturer, model, cost (number), keynote, mark, url, description, material_class, "
-            + "material_category. All fields are set or none.";
+            + "material_category. All fields are set or none." + TypeEditGuard.Rule;
         public string ParametersSchema => @"{""type"":""object"",""properties"":{" + MaterialsHelpers.MaterialSchema + @",
             ""manufacturer"":{""type"":""string""},
             ""model"":{""type"":""string""},
@@ -39,7 +42,8 @@ namespace B2M.Revit.Commands.Materials
             ""url"":{""type"":""string""},
             ""description"":{""type"":""string""},
             ""material_class"":{""type"":""string""},
-            ""material_category"":{""type"":""string""}}}";
+            ""material_category"":{""type"":""string""},
+            " + TypeEditGuard.SchemaFields + @"}}";
         public bool ReadOnly => false;
 
         public CommandResult Execute(UIApplication app, JObject p)
@@ -63,12 +67,16 @@ namespace B2M.Revit.Commands.Materials
             if (given.Count == 0 && materialClass == null && materialCategory == null)
                 return CommandResult.Fail("INVALID_PARAMS: nothing to change; give at least one identity field.");
 
+            if (!TypeEditGuard.TryPlan(doc, p, new[] { new SharedEdit(mat) }, out var plan, out failure)) return failure;
+
             var result = new JObject { ["material_id"] = RevitCompat.GetId(mat.Id), ["name"] = mat.Name };
             using (var tx = new Transaction(doc, "B2M: Set material identity"))
             {
                 tx.Start();
                 try
                 {
+                    plan.Apply(doc);
+                    mat = (Material)plan.TargetFor(mat);
                     if (materialClass != null) mat.MaterialClass = materialClass;
                     if (materialCategory != null) mat.MaterialCategory = materialCategory;
                     foreach (var field in given)
@@ -104,6 +112,9 @@ namespace B2M.Revit.Commands.Materials
                 }
             }
 
+            result["material_id"] = RevitCompat.GetId(mat.Id);
+            result["name"] = mat.Name;
+            result["shared_edits"] = plan.Report();
             result["updated"] = true;
             result["material_class"] = mat.MaterialClass ?? "";
             result["material_category"] = mat.MaterialCategory ?? "";

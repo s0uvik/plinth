@@ -5,6 +5,9 @@
 // found is an error and nothing changes (rvt-mcp skipped it and could report success having set nothing);
 // a missing parameter lists the writable ones; values must have the parameter's JSON type (rvt-mcp parsed
 // numbers out of text); units through SheetsHelpers/Mm; the camelCase aliases are gone.
+// Duplicate before edit (TypeEditGuard): a write to the title block TYPE (target type or both) needs duplicate_as (the
+// type is copied, the copy gets the values and only this sheet's title block moves onto it) or confirm_edit_all
+// (= the exact number of title blocks of that type); otherwise TYPE_IN_USE and nothing changes.
 
 using System;
 using System.Collections.Generic;
@@ -21,14 +24,16 @@ namespace B2M.Revit.Commands.Sheets
         public string Name => "set_titleblock_parameters";
         public string Description =>
             "Set title block parameters on a sheet (sheet_id or sheet_number, default the active sheet): parameters is {\"name\": value}. "
-            + "target instance (default), type, or both; a type change affects every sheet using that title block type. "
-            + "Lengths are mm, areas m², volumes m³, angles degrees; yes/no accepts true/false. All or nothing.";
+            + "target instance (default), type, or both. Lengths are mm, areas m², volumes m³, angles degrees; yes/no accepts true/false. "
+            + "All or nothing. A type write affects every sheet using that title block type:" + TypeEditGuard.Rule
+            + " With duplicate_as only this sheet's title block moves onto the copy.";
         public string ParametersSchema => @"{""type"":""object"",""properties"":{
             ""sheet_id"":{""type"":""integer""},
             ""sheet_number"":{""type"":""string""},
             ""title_block_id"":{""type"":""integer""},
             ""target"":{""type"":""string"",""enum"":[""instance"",""type"",""both""]},
-            ""parameters"":{""type"":""object""}},
+            ""parameters"":{""type"":""object""},
+            " + TypeEditGuard.SchemaFields + @"},
             ""required"":[""parameters""]}";
         public bool ReadOnly => false;
 
@@ -74,14 +79,30 @@ namespace B2M.Revit.Commands.Sheets
                 results[property.Name] = new JObject { ["status"] = writable.Count == found.Count ? "set" : "partial", ["targets"] = targets };
             }
 
+            var typeEdits = plan.Any(step => step.Item2 == "type")
+                ? new[] { new SharedEdit(type, new[] { RevitCompat.GetId(titleBlock.Id) }) }
+                : new SharedEdit[0];
+            if (!TypeEditGuard.TryPlan(doc, p, typeEdits, out var guard, out failure)) return failure;
+
             using (var tx = new Transaction(doc, "B2M: Set Title Block Parameters"))
             {
                 tx.Start();
                 try
                 {
+                    guard.Apply(doc);
+                    var editedType = type == null ? null : guard.TargetFor(type);
                     foreach (var step in plan)
                     {
-                        if (!SheetsHelpers.TrySet(step.Item3, step.Item4, out var error))
+                        // After a copy the title block has a new type: read both parameters afresh.
+                        var copied = editedType != null && editedType.Id != type.Id;
+                        var parameter = !copied ? step.Item3
+                            : SheetsHelpers.FindParameter(step.Item2 == "type" ? (Element)editedType : titleBlock, step.Item1);
+                        if (parameter == null || parameter.IsReadOnly)
+                        {
+                            tx.RollBack();
+                            return CommandResult.Fail("SET_FAILED: the copied type has no writable parameter '" + step.Item1 + "'. Nothing was changed.");
+                        }
+                        if (!SheetsHelpers.TrySet(parameter, step.Item4, out var error))
                         {
                             tx.RollBack();
                             return CommandResult.Fail("SET_FAILED: " + step.Item2 + " parameter '" + step.Item1 + "': " + error + " Nothing was changed.");
@@ -102,7 +123,8 @@ namespace B2M.Revit.Commands.Sheets
                 ["sheet_id"] = RevitCompat.GetId(sheet.Id),
                 ["sheet_number"] = sheet.SheetNumber,
                 ["title_block_instance_id"] = RevitCompat.GetId(titleBlock.Id),
-                ["title_block_type_id"] = RevitCompat.GetIdOrNull(type?.Id),
+                ["title_block_type_id"] = RevitCompat.GetIdOrNull(type == null ? null : guard.TargetFor(type).Id),
+                ["shared_edits"] = guard.Report(),
                 ["parameters"] = results
             });
         }

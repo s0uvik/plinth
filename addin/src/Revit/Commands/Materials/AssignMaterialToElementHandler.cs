@@ -3,8 +3,11 @@
 // Modified for B2M: without parameter_name the element must have exactly one writable material parameter (or the
 // structural material parameter); rvt-mcp took the first ElementId parameter whose English name contained
 // "Material", which is a silent guess. Misses list the element's writable material parameters. Parameter.Set's
-// result is checked. The compound-layer modes are unchanged: a new duplicated type (default) or, with
-// allow_type_mutation, an edit of the shared type that changes every instance of it.
+// result is checked. Layer mode follows the shared duplicate-before-edit rule (TypeEditGuard): duplicate_as copies each
+// type, changes the layer on the copy and moves only the given elements onto it; confirm_edit_all (= the type's exact
+// instance count) edits the type in place; without either it refuses with TYPE_IN_USE. This replaces the earlier
+// duplicate_type_name (now duplicate_as, same meaning) and allow_type_mutation (now confirm_edit_all with the count);
+// elements of several types are allowed with the object forms {"<typeId>": ...}.
 
 using System;
 using System.Collections.Generic;
@@ -12,6 +15,7 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using B2M.Revit.Bridge;
+using B2M.Revit.Core.Safety;
 using Newtonsoft.Json.Linq;
 
 namespace B2M.Revit.Commands.Materials
@@ -23,15 +27,15 @@ namespace B2M.Revit.Commands.Materials
         public string Name => "assign_material_to_element";
         public string Description =>
             "Assign a material to elements. Parameter mode: sets parameter_name (or the element's only material parameter) on each "
-            + "instance. Layer mode (compound_layer_index, walls/floors/roofs/ceilings): duplicates the shared type as duplicate_type_name "
-            + "with the layer changed and moves the elements to it, or with allow_type_mutation edits the type itself (every instance changes).";
+            + "instance. Layer mode (compound_layer_index, walls/floors/roofs/ceilings) changes the elements' type:" + TypeEditGuard.Rule
+            + " With duplicate_as the copy gets the layer material and only element_ids move onto it. Elements of several types: "
+            + "duplicate_as {\"<typeId>\": \"name\"} or confirm_edit_all {\"<typeId>\": N}.";
         public string ParametersSchema => @"{""type"":""object"",""properties"":{
             ""element_ids"":{""type"":""array"",""items"":{""type"":""integer""}},
             " + MaterialsHelpers.MaterialSchema + @",
             ""parameter_name"":{""type"":""string""},
             ""compound_layer_index"":{""type"":""integer""},
-            ""allow_type_mutation"":{""type"":""boolean""},
-            ""duplicate_type_name"":{""type"":""string""}},""required"":[""element_ids""]}";
+            " + TypeEditGuard.SchemaFields + @"},""required"":[""element_ids""]}";
         public bool ReadOnly => false;
 
         public CommandResult Execute(UIApplication app, JObject p)
@@ -45,22 +49,23 @@ namespace B2M.Revit.Commands.Materials
                     "material_id", "material_name", out var material, out var failure)) return failure;
             var parameterName = p.Value<string>("parameter_name");
             var layer = p.Value<int?>("compound_layer_index");
-            var mutate = p.Value<bool?>("allow_type_mutation") ?? false;
-            var newTypeName = (p.Value<string>("duplicate_type_name") ?? "").Trim();
             if (layer.HasValue && !string.IsNullOrEmpty(parameterName))
                 return CommandResult.Fail("INVALID_PARAMS: pass parameter_name or compound_layer_index, not both.");
+            if (!layer.HasValue && (p[SharedEditRule.DuplicateAsField] != null || p[SharedEditRule.ConfirmField] != null))
+                return CommandResult.Fail("INVALID_PARAMS: duplicate_as and confirm_edit_all apply to layer mode (compound_layer_index) only; "
+                    + "parameter mode sets the elements' own parameters and changes no type.");
 
             var elements = new List<Element>();
             foreach (var id in ids)
             {
                 var e = doc.GetElement(RevitCompat.ToElementId(id));
-                if (e == null || e is ElementType) return CommandResult.Fail("ELEMENT_NOT_FOUND: element " + id + " is not a placed element in this document.");
+                if (e == null || TypeEditGuard.IsShared(e)) return CommandResult.Fail("ELEMENT_NOT_FOUND: element " + id + " is not a placed element in this document (types and materials are not assigned here).");
                 elements.Add(e);
             }
 
             // Preflight everything before the transaction.
             var parameters = new Dictionary<long, Parameter>();
-            HostObjAttributes sharedType = null;
+            var plan = new SharedEditPlan();
             if (layer.HasValue)
             {
                 foreach (var e in elements)
@@ -72,20 +77,10 @@ namespace B2M.Revit.Commands.Materials
                     if (layer.Value < 0 || layer.Value >= cs.LayerCount)
                         return CommandResult.Fail("INVALID_PARAMS: compound_layer_index " + layer.Value + " is outside 0.." + (cs.LayerCount - 1)
                             + " for element " + RevitCompat.GetId(e.Id) + ".");
-                    if (sharedType != null && sharedType.Id != type.Id && !mutate)
-                        return CommandResult.Fail("MIXED_TYPES: the elements use more than one type; split the request per type or pass allow_type_mutation: true.");
-                    sharedType = type;
                 }
-                if (!mutate)
-                {
-                    if (newTypeName.Length == 0)
-                        return CommandResult.Fail("INVALID_PARAMS: layer mode needs duplicate_type_name (or allow_type_mutation: true to edit the type in place).");
-                    var clash = new FilteredElementCollector(doc).OfClass(sharedType.GetType()).Cast<ElementType>()
-                        .FirstOrDefault(t => string.Equals(t.Name, newTypeName, StringComparison.OrdinalIgnoreCase));
-                    if (clash != null)
-                        return CommandResult.Fail("NAME_IN_USE: a type named '" + clash.Name + "' already exists.",
-                            new JObject { ["existing_type_id"] = RevitCompat.GetId(clash.Id) });
-                }
+                var edits = elements.GroupBy(e => RevitCompat.GetId(e.GetTypeId()))
+                    .Select(g => new SharedEdit(doc.GetElement(g.First().GetTypeId()), g.Select(e => RevitCompat.GetId(e.Id))));
+                if (!TypeEditGuard.TryPlan(doc, p, edits, out plan, out failure)) return failure;
             }
             else
             {
@@ -118,20 +113,23 @@ namespace B2M.Revit.Commands.Materials
                 {
                     if (layer.HasValue)
                     {
+                        // Copies are made and the elements moved onto them first; then each edited type gets the layer once.
+                        var originals = elements.ToDictionary(e => RevitCompat.GetId(e.Id), e => (HostObjAttributes)doc.GetElement(e.GetTypeId()));
+                        plan.Apply(doc);
                         var changedTypes = new Dictionary<long, HostObjAttributes>();
                         foreach (var e in elements)
                         {
-                            var type = (HostObjAttributes)doc.GetElement(e.GetTypeId());
+                            var type = originals[RevitCompat.GetId(e.Id)];
                             var key = RevitCompat.GetId(type.Id);
+                            var created = plan.EntryFor(type)?.Decision.Action == SharedEditAction.EditCopy;
                             if (!changedTypes.TryGetValue(key, out var target))
                             {
-                                target = mutate ? type : (HostObjAttributes)type.Duplicate(newTypeName);
+                                target = (HostObjAttributes)plan.TargetFor(type);
                                 var cs = target.GetCompoundStructure();
                                 cs.SetMaterialId(layer.Value, material.Id);
                                 target.SetCompoundStructure(cs);
                                 changedTypes[key] = target;
                             }
-                            if (!mutate) e.ChangeTypeId(target.Id);
                             results.Add(new JObject
                             {
                                 ["element_id"] = RevitCompat.GetId(e.Id),
@@ -139,7 +137,7 @@ namespace B2M.Revit.Commands.Materials
                                 ["compound_layer_index"] = layer.Value,
                                 ["type_id"] = RevitCompat.GetId(target.Id),
                                 ["type_name"] = target.Name,
-                                ["type_created"] = !mutate
+                                ["type_created"] = created
                             });
                         }
                     }
@@ -175,7 +173,8 @@ namespace B2M.Revit.Commands.Materials
                 ["updated"] = true,
                 ["material_id"] = RevitCompat.GetId(material.Id),
                 ["material_name"] = material.Name,
-                ["results"] = results
+                ["results"] = results,
+                ["shared_edits"] = plan.Report()
             });
         }
 

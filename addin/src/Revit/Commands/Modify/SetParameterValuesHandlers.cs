@@ -5,6 +5,10 @@
 // (length mm, area m2, volume m3, angle degrees; rvt-mcp read area in mm2 and volume in mm3); a name that matches two
 // parameters is an error instead of taking the first; old and new values are reported in the same units; elements that
 // fail are listed with failedCount, which makes batch_execute roll the batch back; at most 1000 IDs per list.
+// Duplicate before edit (TypeEditGuard): set_type_parameter_values never edits a type without duplicate_as (the change
+// goes to a new copy and the named elementIds move onto it) or confirm_edit_all (= the type's exact instance count);
+// set_element_parameter_values applies the same rule when an id is itself a type or material, and never falls back
+// to a type parameter (Element.GetParameters on an instance returns only its own parameters).
 
 using System.Collections.Generic;
 using System.Linq;
@@ -19,12 +23,14 @@ namespace B2M.Revit.Commands.Modify
     {
         public string Name => "set_element_parameter_values";
         public string Description => "Set one instance parameter on elements by ID. value is text; numbers are in the parameter's unit "
-            + "(mm, m2, m3, degrees). valueType auto|string|integer|double|elementId (default auto).";
+            + "(mm, m2, m3, degrees). valueType auto|string|integer|double|elementId (default auto). Only the elements' own parameters "
+            + "are set, never their type's (use set_type_parameter_values). An id that is itself a type or material is guarded:" + TypeEditGuard.Rule;
         public string ParametersSchema => @"{""type"":""object"",""properties"":{
             ""elementIds"":{""type"":""array"",""items"":{""type"":""integer""}},
             ""parameterName"":{""type"":""string""},
             ""value"":{""type"":""string""},
-            ""valueType"":{""type"":""string"",""enum"":[""auto"",""string"",""integer"",""double"",""elementId""]}},
+            ""valueType"":{""type"":""string"",""enum"":[""auto"",""string"",""integer"",""double"",""elementId""]},
+            " + TypeEditGuard.SchemaFields + @"},
             ""required"":[""elementIds"",""parameterName"",""value""]}";
         public bool ReadOnly => false;
 
@@ -34,7 +40,9 @@ namespace B2M.Revit.Commands.Modify
             if (doc == null) return CommandResult.Fail(ModifyHelpers.NoDocument);
             if (!ModifyHelpers.TryIds(p, "elementIds", 1000, out var ids, out var failure)) return failure;
             var targets = ids.Select(id => (id, element: doc.GetElement(RevitCompat.ToElementId(id)), sources: (List<long>)null)).ToList();
-            return ParameterSetter.Run(doc, "Set element parameter values", p, targets, "elementId");
+            if (!TypeEditGuard.TryPlan(doc, p, targets.Where(t => t.element != null).Select(t => new SharedEdit(t.element)), out var plan, out failure))
+                return failure;
+            return ParameterSetter.Run(doc, "Set element parameter values", p, targets, "elementId", plan);
         }
     }
 
@@ -42,13 +50,16 @@ namespace B2M.Revit.Commands.Modify
     {
         public string Name => "set_type_parameter_values";
         public string Description => "Set one type parameter on element types given by typeIds and/or by the types of elementIds. "
-            + "Changes every instance of those types. Numbers are in the parameter's unit (mm, m2, m3, degrees).";
+            + "Numbers are in the parameter's unit (mm, m2, m3, degrees)." + TypeEditGuard.Rule
+            + " With duplicate_as each type is copied, the copy gets the value and only the given elementIds of that type move onto it. "
+            + "Several types in one call: duplicate_as {\"<typeId>\": \"name\"} and confirm_edit_all {\"<typeId>\": N}.";
         public string ParametersSchema => @"{""type"":""object"",""properties"":{
             ""typeIds"":{""type"":""array"",""items"":{""type"":""integer""}},
             ""elementIds"":{""type"":""array"",""items"":{""type"":""integer""}},
             ""parameterName"":{""type"":""string""},
             ""value"":{""type"":""string""},
-            ""valueType"":{""type"":""string"",""enum"":[""auto"",""string"",""integer"",""double"",""elementId""]}},
+            ""valueType"":{""type"":""string"",""enum"":[""auto"",""string"",""integer"",""double"",""elementId""]},
+            " + TypeEditGuard.SchemaFields + @"},
             ""required"":[""parameterName"",""value""]}";
         public bool ReadOnly => false;
 
@@ -91,13 +102,16 @@ namespace B2M.Revit.Commands.Modify
             var bad = targets.Where(t => !(t.element is ElementType)).Select(t => t.id).ToList();
             if (bad.Count > 0)
                 return CommandResult.Fail("TYPE_NOT_FOUND: some typeIds are not element types. Nothing was changed.", new { invalidTypeIds = bad });
-            return ParameterSetter.Run(doc, "Set type parameter values", p, targets, "typeId");
+            if (!TypeEditGuard.TryPlan(doc, p, targets.Select(t => new SharedEdit(t.element, t.sources)), out var plan, out var failure))
+                return failure;
+            return ParameterSetter.Run(doc, "Set type parameter values", p, targets, "typeId", plan);
         }
     }
 
     internal static class ParameterSetter
     {
-        public static CommandResult Run(Document doc, string title, JObject p, List<(long id, Element element, List<long> sources)> targets, string idKey)
+        public static CommandResult Run(Document doc, string title, JObject p, List<(long id, Element element, List<long> sources)> targets, string idKey,
+            SharedEditPlan plan)
         {
             var name = p.Value<string>("parameterName");
             var value = p.Value<string>("value");
@@ -107,8 +121,10 @@ namespace B2M.Revit.Commands.Modify
 
             var result = ModifyHelpers.InTransaction(doc, title, () =>
             {
-                foreach (var (id, element, sources) in targets)
+                plan.Apply(doc);
+                foreach (var (id, original, sources) in targets)
                 {
+                    var element = plan.TargetFor(original);
                     var row = new JObject { [idKey] = id };
                     if (sources != null) row["sourceElementIds"] = new JArray(sources);
                     if (element == null)
@@ -117,9 +133,13 @@ namespace B2M.Revit.Commands.Modify
                         failed.Add(row);
                         continue;
                     }
+                    if (element.Id != original.Id) row["editedCopyId"] = RevitCompat.GetId(element.Id);
                     row["name"] = element.Name;
                     row["category"] = element.Category?.Name;
                     var parameter = ModifyHelpers.FindParameter(element, name, out var findError);
+                    if (parameter == null && element.Id != original.Id)
+                        return CommandResult.Fail("SET_FAILED: the copy '" + element.Name + "' of " + idKey + " " + id + ": " + findError
+                            + ". The copy is not kept. Nothing was changed.");
                     if (parameter == null)
                     {
                         row["error"] = findError;
@@ -140,6 +160,9 @@ namespace B2M.Revit.Commands.Modify
                     }
                     row["newValue"] = ModifyHelpers.Value(parameter);
                     row["newDisplayValue"] = ModifyHelpers.Display(parameter);
+                    if (error != null && element.Id != original.Id)
+                        return CommandResult.Fail("SET_FAILED: the copy '" + element.Name + "' of " + idKey + " " + id + " did not take the value: " + error
+                            + ". The copy is not kept. Nothing was changed.", new { failed = new JArray(row) });
                     if (error != null)
                     {
                         row["error"] = error;
@@ -161,7 +184,8 @@ namespace B2M.Revit.Commands.Modify
                 ["updatedCount"] = updated.Count,
                 ["failedCount"] = failed.Count,
                 ["updated"] = updated,
-                ["failed"] = failed
+                ["failed"] = failed,
+                ["shared_edits"] = plan.Report()
             });
         }
     }
