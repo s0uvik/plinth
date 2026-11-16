@@ -293,6 +293,41 @@ class _Wall:
         return _add(self.s, self.u, offset)
 
 
+def _corner_fills(walls: list[_Wall]) -> list[Polygon]:
+    """The pieces Revit's join adds where two walls' free ends meet at an L corner without touching.
+
+    Revit joins two non-parallel walls whose ends lie near each other (here: each end within the other wall's
+    thickness plus 50 mm of where the centrelines cross), extending both to the corner. Without that piece a room
+    leaks through the corner (the G+4 sample's live plan: a wall put across a flat's entrance door gap ended 125 mm
+    short of the wall it turns into, and the lobby and two flats read as one 125 m2 space where Revit has three rooms
+    of 31.8, 46.7 and 46.7 m2)."""
+    out: list[Polygon] = []
+    for i, a in enumerate(walls):
+        for b in walls[i + 1:]:
+            cross = a.u[0] * b.u[1] - a.u[1] * b.u[0]
+            if abs(cross) < 0.5:  # parallel or nearly: no L corner
+                continue
+            dx, dy = b.s[0] - a.s[0], b.s[1] - a.s[1]
+            ta = (dx * b.u[1] - dy * b.u[0]) / cross  # where the centrelines cross, along each wall
+            tb = (dx * a.u[1] - dy * a.u[0]) / cross
+            beyond_a = -ta if ta < 0 else (ta - a.length if ta > a.length else 0.0)
+            beyond_b = -tb if tb < 0 else (tb - b.length if tb > b.length else 0.0)
+            if beyond_a == 0 and beyond_b == 0:
+                continue  # crossing inside both walls: they already meet
+            if beyond_a > b.t + 50 or beyond_b > a.t + 50:
+                continue
+            corner = _add(a.s, a.u, ta)
+            for w, t_w, other in ((a, ta, b), (b, tb, a)):
+                if 0 <= t_w <= w.length:
+                    continue  # this wall already reaches the corner
+                end = w.s if t_w < 0 else w.e
+                out_dir = (-w.u[0], -w.u[1]) if t_w < 0 else w.u
+                far = _add(corner, out_dir, other.t / 2)
+                h = w.t / 2
+                out.append(Polygon([_add(end, w.n, h), _add(far, w.n, h), _add(far, w.n, -h), _add(end, w.n, -h)]))
+    return [g for g in out if g.is_valid and g.area > 1.0]
+
+
 # ------------------------------------------------------------------------------------------------ the builder
 
 def build(plan: BuildPlan, rules: FitoutRules, answers: Answers | None = None) -> RoomModel:
@@ -423,7 +458,7 @@ class _Builder:
         if waiting or not walls:
             return [Room(**base[op.key], status="waiting" if waiting else "not_enclosed") for op in ops]
 
-        rects = [w.rect() for w in walls]
+        rects = [w.rect() for w in walls] + _corner_fills(walls)
         mass = unary_union(rects)
         mass = mass.buffer(CLOSE_MM, join_style="mitre").buffer(-CLOSE_MM, join_style="mitre")
         minx, miny, maxx, maxy = mass.bounds

@@ -165,7 +165,7 @@ def test_fire_band_at_13_5_m_gives_its_provisions(sample_mep, wb_rules):
 def test_sample_asks_what_the_plan_does_not_tell(sample_mep):
     _, _, _, layout = sample_mep
     assert [q.id for q in layout.questions] == [
-        "fitout:ac:living dining:39.4", "fitout:ac:living dining:39.6",  # kitchens are their own rooms
+        "fitout:ac:living dining:39.3", "fitout:ac:living dining:39.6",  # kitchens are their own rooms
         "fitout:extinguisher_room:Ground Floor", "fitout:meter_room", "fitout:underground_tank"]
     assert all(q.text for q in layout.questions)
     assumed = {a.id: a for a in layout.assumptions}
