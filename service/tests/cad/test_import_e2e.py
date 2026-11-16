@@ -25,6 +25,7 @@ from b2m.cad import plan_bridge
 from b2m.cad.building import RecognisedBuilding
 from b2m.cad.project import ImportStore
 from b2m.imported.to_plan import ImportPlan
+from b2m.revit.commands import RAILINGS
 from b2m.revit.types import TypeMap
 from b2m.runs import RunStore
 from tests.cad.conftest import SAMPLE, SAMPLE_DXF
@@ -52,11 +53,26 @@ ESTIMATE = {  # what the estimate asks (materials and railings are on no drawing
     "estimate:material:Entrance": "wood",
     "estimate:material:D1": {"ground": "pvc", "typical": {"wood": 12, "pvc": 8}},
     "estimate:material:door-1025-sliding": "exclude",  # lift landing doors: not in the door/window estimate
-    "estimate:railings:stair": {"length_mm": 2800, "count": 10},
     "estimate:railings:balcony": [{"kind": "verandah", "subkind": "main", "length_mm": 8125, "count": 16},
                                   {"kind": "verandah", "subkind": "attached", "length_mm": 8500, "count": 16}],
 }
 REFERENCE = SAMPLE / "door-window-estimate.xlsx"
+STAIR_RAILING_MM = 2800.0  # the office workbook's stair railing (10 x 2.8 m): two per stair, five stairs
+
+
+def railings_as_revit_makes_them(plan, created: dict, readback: dict) -> None:
+    """As in the live run: create_stair comes back with the two railings Revit gives a stair (run keys key#2,
+    key#3), so the plan's railing op never runs; each railing reads back with its host and path length."""
+    next_id = max(readback) + 1
+    for op in plan.ops:
+        if op.op != "railing":
+            continue
+        readback.pop(created.pop(op.key))
+        for n in (2, 3):
+            created[f"{op.stair_key}#{n}"] = next_id
+            readback[next_id] = {"id": next_id, "exists": True, "category": RAILINGS,
+                                 "railing": {"host_id": created[op.stair_key], "path_length_mm": STAIR_RAILING_MM}}
+            next_id += 1
 
 
 def value_for(q: dict) -> object:
@@ -108,7 +124,8 @@ def fake_runner(state):
 
         def build(self, plan):
             created = state["created"]
-            assert set(op.key for op in plan.ops) <= {k.split("#")[0] for k in created}
+            stood_in = {op.key for op in plan.ops if op.op == "railing" and f"{op.stair_key}#2" in created}
+            assert set(op.key for op in plan.ops) - stood_in <= {k.split("#")[0] for k in created}
             return SimpleNamespace(status="built", batches_total=1, batches_succeeded=1, created=dict(created),
                                    error=None, error_code=None, failed_key=None, error_data=None, failures=[])
 
@@ -178,6 +195,7 @@ def test_sample_drawings_to_model_drawings_and_estimate(flow):
     result = plan_bridge.to_plan(project, raw)
     assert result.plan is not None, [m.id for m in result.missing]
     state["created"], state["readback"] = perfect_readback(result, plan_bridge.building_for_plan(project, raw))
+    railings_as_revit_makes_them(result.plan, state["created"], state["readback"])
     built = api.post(f"/imports/{import_id}/build", json={"document_title": "Scratch"})
     assert built.status_code == 202, built.json()
     run_id = built.json()["run_id"]
@@ -216,9 +234,10 @@ def test_sample_drawings_to_model_drawings_and_estimate(flow):
     first = api.post(f"/imports/{import_id}/estimate", json={"run_id": run_id, "reference_xlsx": str(REFERENCE)})
     assert first.status_code == 200, first.json()
     est = first.json()
-    assert est["source"] == "model" and est["source_detail"]["elements_read"] == 155 + 153 + 5
+    assert est["source"] == "model" and est["source_detail"]["elements_read"] == 155 + 153 + 10
     asked = {q["id"] for q in est["questions"]}
     assert set(ESTIMATE) <= asked, asked - set(ESTIMATE)
+    assert "estimate:railings:stair" not in asked  # measured from the model, not asked
     for qid in ESTIMATE:
         assert api.post(f"/imports/{import_id}/answers",
                         json={"question_id": qid, "answer": ESTIMATE[qid]}).status_code == 200
@@ -236,6 +255,10 @@ def test_sample_drawings_to_model_drawings_and_estimate(flow):
                      ("D47", "number"), ("G47", "value"), ("G51", "value"), ("G52", "value"),
                      ("D65", "number"), ("G65", "value"), ("G69", "value"), ("G70", "value")}
     assert est["comparison"]["rows_compared"] == 69  # every row aligned: none missing, none extra
+    stair = [r for r in json.loads((run.dir / "estimate.json").read_text(encoding="utf-8"))["quantities"]["railings"]
+             if r["kind"] == "stair"]
+    assert [(r["count"], r["length_mm"]) for r in stair] == [(2, STAIR_RAILING_MM)] * 5  # per storey, from the model
+    assert all(r["source"].startswith("model: 2 railing(s)") for r in stair)
     open_estimate = est["questions"]
     assert not any(q["id"].startswith(("estimate:material:", "estimate:railings:")) for q in open_estimate)
     reference_rows = sorted(q["id"] for q in open_estimate if q["topic"] == "estimate_reference")
