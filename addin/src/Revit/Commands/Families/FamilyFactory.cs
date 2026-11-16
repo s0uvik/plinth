@@ -40,20 +40,38 @@ namespace B2M.Revit.Commands.Families
     }
 
     /// <summary>A section size given on the wire in mm: its key, the family parameter it drives and the alternative
-    /// name accepted on families that already exist (Width for b, Depth for h).</summary>
+    /// name accepted on families that already exist (Width for b, Depth for h). Door and window sizes instead name
+    /// built-in parameters looked up first (DOOR_WIDTH, FAMILY_WIDTH_PARAM...) and then several parameter names; their
+    /// Parameter is only the label used in results.</summary>
     internal sealed class SectionDimension
     {
+        private readonly string[] _names;
+
         public SectionDimension(string key, string parameter, string alternative)
         {
             Key = key;
             Parameter = parameter;
             Alternative = alternative;
+            _names = new[] { parameter, alternative };
+            BuiltIns = new BuiltInParameter[0];
+        }
+
+        public SectionDimension(string key, string label, string[] names, BuiltInParameter[] builtIns)
+        {
+            Key = key;
+            Parameter = label;
+            Alternative = names.Length > 1 ? names[1] : null;
+            _names = names;
+            BuiltIns = builtIns;
         }
 
         public string Key { get; }
         public string Parameter { get; }
         public string Alternative { get; }
-        public string[] Names => new[] { Parameter, Alternative };
+        public string[] Names => _names;
+
+        /// <summary>Built-in parameters tried, in order, before the names (none for structural sections).</summary>
+        public BuiltInParameter[] BuiltIns { get; }
     }
 
     /// <summary>What a recipe built, for the flex check.</summary>
@@ -86,10 +104,18 @@ namespace B2M.Revit.Commands.Families
 
         public static FamilyRecipe Find(string key) => All.FirstOrDefault(r => string.Equals(r.Key, key, StringComparison.Ordinal));
 
+        /// <summary>Every category ensure_family_type takes: the buildable ones plus door and window (find, adapt a type, ask; never built).</summary>
+        public static readonly FamilyRecipe[] Ensurable = All.Concat(new FamilyRecipe[] { new DoorRecipe(), new WindowRecipe() }).ToArray();
+
+        public static FamilyRecipe FindEnsurable(string key) => Ensurable.FirstOrDefault(r => string.Equals(r.Key, key, StringComparison.Ordinal));
+
         public abstract string Key { get; }
         public abstract BuiltInCategory Category { get; }
         public abstract string TemplateFileName { get; }
-        public IReadOnlyList<SectionDimension> Dimensions => new[] { B, H };
+        public virtual IReadOnlyList<SectionDimension> Dimensions => new[] { B, H };
+
+        /// <summary>Door or window: no template build, no adapt; types are matched by size and Type Mark. Null for structural.</summary>
+        public virtual Core.Families.OpeningKind? Opening => null;
 
         /// <summary>
         /// A related family worth adapting has a name containing one word of every group (case-insensitive, any separators),

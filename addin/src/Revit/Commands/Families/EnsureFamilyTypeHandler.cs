@@ -15,7 +15,11 @@
 // It opens, saves and closes separate family documents and may write files, which no TransactionGroup rollback can
 // undo, so it is refused inside batch_execute (BatchExecutor) and must be called directly.
 // Duplicate before edit (see TypeEditGuard): it only ever creates types (duplicated, loaded or built); a type that already
-// exists is checked and returned, never edited, even for material_name.
+// exists is checked and returned, never edited, even for material_name or type_mark (a Type Mark is set only on a type
+// this call made; a mark already carried by another type of the category is TYPE_MARK_IN_USE).
+// Doors and windows (category door / window, see OpeningFamilies): types are matched by width/height and Type Mark,
+// family_name may be omitted (the loaded family that fits best is chosen, or FAMILY_CHOICE_NEEDED), type_name defaults
+// to "<w> x <h>mm", there is no ADAPT step and no recipe to CREATE (nothing found is FAMILY_NOT_FOUND, can_create false).
 
 using System;
 using System.Collections.Generic;
@@ -26,6 +30,7 @@ using Autodesk.Revit.UI;
 using B2M.Revit.Bridge;
 using B2M.Revit.Commands.Materials;
 using B2M.Revit.Commands.Parameters;
+using B2M.Revit.Core.Families;
 using Newtonsoft.Json.Linq;
 
 namespace B2M.Revit.Commands.Families
@@ -41,6 +46,35 @@ namespace B2M.Revit.Commands.Families
         public Material Material;
         public bool DryRun;
         public bool AllowCreate;
+
+        /// <summary>False when a door/window call omitted type_name (TypeName then starts as DefaultTypeName).</summary>
+        public bool TypeNameGiven = true;
+
+        /// <summary>The asked Type Mark (trimmed, not empty); null when none is asked.</summary>
+        public string TypeMark;
+
+        /// <summary>Door/window only: words that steer the family choice (e.g. exterior).</summary>
+        public string Hint;
+
+        /// <summary>Door/window only: why the family was chosen, and the other families looked at.</summary>
+        public string ChosenReason;
+
+        public JArray Alternatives;
+
+        /// <summary>How the returned existing type matched: name, size or size_and_mark.</summary>
+        public string MatchedBy;
+
+        public string DefaultTypeName => Recipe.Dimensions.Count == 2
+            ? TypeMatchRule.DefaultName(Mm[Recipe.Dimensions[0]], Mm[Recipe.Dimensions[1]]) : null;
+    }
+
+    /// <summary>The type step: an existing type to return (never edited), or the name of a new type and the type to copy.</summary>
+    internal sealed class TypePlan
+    {
+        public FamilySymbol Existing;
+        public JObject Dims;
+        public string NewName;
+        public FamilySymbol Source;
     }
 
     public sealed class EnsureFamilyTypeHandler : IRevitCommand
@@ -49,26 +83,38 @@ namespace B2M.Revit.Commands.Families
         private const double MaxSectionMm = 10000;
         private const int MaxOptions = 100;
         private const int MaxClosest = 10;
+        private const int MaxMarkLength = 100;
+        private const int MaxHintLength = 200;
         internal const string Unchanged = " Nothing was changed.";
 
         public string Name => "ensure_family_type";
         public string Description =>
-            "Make sure a loadable family type exists in the project. category: structural_column or structural_framing; dimensions: "
-            + "{b_mm (width), h_mm (depth)}. Order: FIND (existing: type found, b/h must match within 0.5 mm, never edited; duplicated: "
-            + "family loaded, a new type is made; loaded: <family_name>.rfa found in search_folders, %LOCALAPPDATA%\\B2M\\families or "
-            + "the Revit library), then ADAPT (adapted: a related family such as M_Concrete-Rectangular Beam gets the new type; the "
-            + "result's family_name is that family), then ASK (FAMILY_NOT_FOUND: ask the user). allow_create: true builds the family "
-            + "from Revit's template instead of asking (created). material_name sets the type's Structural Material. dry_run "
-            + "reports what would happen. Call directly, not inside batch_execute.";
+            "Make sure a loadable family type exists in the project. category: structural_column or structural_framing (dimensions "
+            + "{b_mm (width), h_mm (depth)}), or door or window (dimensions {width_mm, height_mm}). Order: FIND (existing: type found, "
+            + "size must match within 0.5 mm, never edited; duplicated: family loaded, a new type is made; loaded: <family_name>.rfa found "
+            + "in search_folders, %LOCALAPPDATA%\\B2M\\families or the Revit library), then ADAPT (structural only: a related family such "
+            + "as M_Concrete-Rectangular Beam gets the new type; the result's family_name is that family), then ASK (FAMILY_NOT_FOUND: ask "
+            + "the user). allow_create: true builds a structural family from Revit's template instead of asking (created); doors and "
+            + "windows are never built. material_name (structural) sets the type's Structural Material. type_mark: the Type Mark, set only "
+            + "on a type this call makes; an existing type with another mark is never edited (TYPE_MARK_MISMATCH, or for door/window "
+            + "without type_name a new type '<w> x <h>mm <mark>'); a mark another type of the category carries is TYPE_MARK_IN_USE. "
+            + "Door/window: type_name defaults to '<w> x <h>mm' and a type of that size (and mark) is reused whatever its name; "
+            + "family_name may be omitted: the loaded family that fits best is chosen (single leaf up to 1200 mm, double above; "
+            + "Flush/Passage for interior doors, Exterior/Entrance only with hint \"exterior\"; Fixed/Casement windows; other hint words "
+            + "prefer families naming them) and the result gives chosen_family_reason and alternatives; a tie is FAMILY_CHOICE_NEEDED "
+            + "(ask the user, pass family_name). Width/height must be type parameters. dry_run reports the same decisions and changes "
+            + "nothing. Call directly, not inside batch_execute.";
         public string ParametersSchema => @"{""type"":""object"",""properties"":{
-            ""category"":{""type"":""string"",""enum"":[""structural_column"",""structural_framing""]},
-            ""family_name"":{""type"":""string""},
-            ""type_name"":{""type"":""string""},
-            ""dimensions"":{""type"":""object"",""description"":""{b_mm, h_mm}: b = width, h = depth""},
-            ""material_name"":{""type"":""string""},
+            ""category"":{""type"":""string"",""enum"":[""structural_column"",""structural_framing"",""door"",""window""]},
+            ""family_name"":{""type"":""string"",""description"":""required for structural; door/window: omit to choose among loaded families""},
+            ""type_name"":{""type"":""string"",""description"":""required for structural; door/window default '<w> x <h>mm'""},
+            ""dimensions"":{""type"":""object"",""description"":""structural {b_mm, h_mm}: b = width, h = depth; door/window {width_mm, height_mm}""},
+            ""type_mark"":{""type"":""string"",""description"":""Type Mark of the type, e.g. D1 or W2; set only on a type this call makes""},
+            ""hint"":{""type"":""string"",""description"":""door/window: words steering the family choice, e.g. exterior, pvc, sliding""},
+            ""material_name"":{""type"":""string"",""description"":""structural only""},
             " + FamilyFileSearch.SearchFoldersSchema + @",
-            ""allow_create"":{""type"":""boolean"",""description"":""build the family from Revit's template when nothing is found (default false)""},
-            ""dry_run"":{""type"":""boolean""}},""required"":[""category"",""family_name"",""type_name"",""dimensions""]}";
+            ""allow_create"":{""type"":""boolean"",""description"":""structural: build the family from Revit's template when nothing is found (default false)""},
+            ""dry_run"":{""type"":""boolean""}},""required"":[""category"",""dimensions""]}";
         public bool ReadOnly => false;
 
         public CommandResult Execute(UIApplication app, JObject p)
@@ -77,9 +123,10 @@ namespace B2M.Revit.Commands.Families
             if (doc == null) return CommandResult.Fail("NO_DOCUMENT: no document is open in Revit.");
             if (doc.IsFamilyDocument) return CommandResult.Fail("NOT_A_PROJECT: ensure_family_type works on a project document, not a family.");
 
-            var recipe = FamilyRecipe.Find(p.Value<string>("category"));
+            var recipe = FamilyRecipe.FindEnsurable(p.Value<string>("category"));
             if (recipe == null)
-                return CommandResult.Fail("INVALID_PARAMS: category must be one of " + string.Join(", ", FamilyRecipe.All.Select(x => x.Key)) + ".");
+                return CommandResult.Fail("INVALID_PARAMS: category must be one of " + string.Join(", ", FamilyRecipe.Ensurable.Select(x => x.Key)) + ".");
+            var opening = recipe.Opening != null;
             var r = new EnsureRequest
             {
                 Doc = doc,
@@ -87,17 +134,29 @@ namespace B2M.Revit.Commands.Families
                 FamilyName = (p.Value<string>("family_name") ?? "").Trim(),
                 TypeName = (p.Value<string>("type_name") ?? "").Trim(),
                 DryRun = p.Value<bool?>("dry_run") ?? false,
-                AllowCreate = p.Value<bool?>("allow_create") ?? false
+                AllowCreate = p.Value<bool?>("allow_create") ?? false,
+                TypeNameGiven = !opening || !IsAbsent(p["type_name"])
             };
-            if (r.FamilyName.Length == 0 || r.FamilyName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || r.FamilyName.EndsWith(".", StringComparison.Ordinal))
+            // A door/window call may omit family_name (the loaded family that fits best is chosen); structural calls name it.
+            if ((!opening || !IsAbsent(p["family_name"]))
+                && (r.FamilyName.Length == 0 || r.FamilyName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || r.FamilyName.EndsWith(".", StringComparison.Ordinal)))
                 return CommandResult.Fail("INVALID_PARAMS: family_name must be a non-empty name that is also a valid file name (no \\ / : * ? \" < > |).");
-            if (r.TypeName.Length == 0) return CommandResult.Fail("INVALID_PARAMS: type_name must not be empty.");
+            if (r.TypeNameGiven && r.TypeName.Length == 0)
+                return CommandResult.Fail("INVALID_PARAMS: type_name must not be empty" + (opening ? " (omit it for the default name '<w> x <h>mm')." : "."));
             if (!TryDimensions(p["dimensions"] as JObject, recipe, out r.Mm, out var failure)) return failure;
+            if (!r.TypeNameGiven) r.TypeName = r.DefaultTypeName;
+            if (!TryOpeningFields(p, r, out failure)) return failure;
             var materialName = p.Value<string>("material_name");
+            if (opening && !IsAbsent(p["material_name"]))
+                return CommandResult.Fail("INVALID_PARAMS: material_name applies to structural_column and structural_framing only.");
             if (!string.IsNullOrWhiteSpace(materialName)
                 && !MaterialsHelpers.TryMaterial(doc, null, materialName.Trim(), "material_id", "material_name", out r.Material, out failure)) return failure;
             var year = app.Application.VersionNumber;
             if (!FamilyFileSearch.TryRoots(p["search_folders"], year, out var roots, out failure)) return failure;
+
+            // Door/window without family_name: choose among the loaded families (or ask).
+            if (opening && r.FamilyName.Length == 0) return OpeningFamilies.EnsureChosen(r, roots, year);
+            if (opening) r.ChosenReason = "family_name given by the caller";
 
             // FIND (a)/(b): the family is already in the project.
             if (!TryLoadedFamily(doc, r.FamilyName, out var family, out failure)) return failure;
@@ -116,6 +175,9 @@ namespace B2M.Revit.Commands.Families
                 return LoadAndEnsure(r, exact.Path, "loaded", "search", exact.FileName, exact.Folder, false, null);
             }
 
+            // Doors and windows are neither adapted nor built: ASK.
+            if (opening) return OpeningFamilies.NotFound(r, roots, year, null);
+
             // ADAPT a related family.
             var rejected = new JArray();
             var adapted = FamilyAdapter.TryAdapt(app, r, files, rejected);
@@ -129,6 +191,34 @@ namespace B2M.Revit.Commands.Families
 
         // ---- input ------------------------------------------------------------------------
 
+        private static bool IsAbsent(JToken token) => token == null || token.Type == JTokenType.Null || token.Type == JTokenType.Undefined;
+
+        /// <summary>type_mark (any category) and hint (door/window only).</summary>
+        private static bool TryOpeningFields(JObject p, EnsureRequest r, out CommandResult failure)
+        {
+            failure = null;
+            var mark = p["type_mark"];
+            if (!IsAbsent(mark))
+            {
+                r.TypeMark = mark.Type == JTokenType.String ? TypeMatchRule.NormalizeMark(mark.Value<string>()) : "";
+                if (r.TypeMark.Length == 0 || r.TypeMark.Length > MaxMarkLength)
+                {
+                    failure = CommandResult.Fail("INVALID_PARAMS: type_mark must be non-empty text of at most " + MaxMarkLength + " characters (omit it for no mark).");
+                    return false;
+                }
+            }
+            var hint = p["hint"];
+            if (IsAbsent(hint)) return true;
+            if (r.Recipe.Opening == null)
+            {
+                failure = CommandResult.Fail("INVALID_PARAMS: hint applies to door and window only.");
+                return false;
+            }
+            r.Hint = hint.Type == JTokenType.String ? hint.Value<string>().Trim() : null;
+            if (r.Hint != null && r.Hint.Length <= MaxHintLength) return true;
+            failure = CommandResult.Fail("INVALID_PARAMS: hint must be text of at most " + MaxHintLength + " characters, e.g. \"exterior\".");
+            return false;
+        }
         private static bool TryDimensions(JObject dims, FamilyRecipe recipe, out Dictionary<SectionDimension, double> mm, out CommandResult failure)
         {
             mm = new Dictionary<SectionDimension, double>();
@@ -201,15 +291,28 @@ namespace B2M.Revit.Commands.Families
                 ?? types.FirstOrDefault(s => string.Equals(s.Name, typeName, StringComparison.OrdinalIgnoreCase));
         }
 
-        /// <summary>The type parameter for each section size (b or Width, h or Depth): a length stored on the type.</summary>
-        private static bool TryDimensionParameters(EnsureRequest r, FamilySymbol symbol, out Dictionary<SectionDimension, Parameter> found,
+        /// <summary>
+        /// The type parameter for each size (b or Width, h or Depth; doors/windows: built-in width/height, then Width / Rough
+        /// Width, Height / Rough Height): a length stored on the type. Instance parameters are not on the type, so never found.
+        /// </summary>
+        internal static bool TryDimensionParameters(EnsureRequest r, FamilySymbol symbol, out Dictionary<SectionDimension, Parameter> found,
             out CommandResult failure)
         {
             found = new Dictionary<SectionDimension, Parameter>();
             failure = null;
             foreach (var d in r.Recipe.Dimensions)
             {
-                var parameter = d.Names.Select(n => ParametersHelpers.FindByName(symbol, n)).FirstOrDefault(IsLength);
+                var parameter = d.BuiltIns.Select(b => symbol.get_Parameter(b))
+                    .Concat(d.Names.Select(n => ParametersHelpers.FindByName(symbol, n))).FirstOrDefault(IsLength);
+                if (parameter == null && r.Recipe.Opening != null)
+                {
+                    failure = CommandResult.Fail("PARAMETER_NOT_FOUND: family '" + symbol.FamilyName + "' has no length TYPE parameter for its "
+                        + d.Parameter + " (built-in " + string.Join(" / ", d.BuiltIns) + ", or " + string.Join(" / ", d.Names.Select(n => "'" + n + "'"))
+                        + "). If its " + d.Parameter + " is an instance parameter, its types cannot carry a size; B2M does not edit " + r.Recipe.Key
+                        + " families, so pick another family (family_name). Its numeric type parameters are listed.",
+                        new JObject { ["numeric_type_parameters"] = NumericParameters(r.Doc, symbol) });
+                    return false;
+                }
                 if (parameter == null)
                 {
                     failure = CommandResult.Fail("PARAMETER_NOT_FOUND: family '" + symbol.FamilyName + "' has no length type parameter named "
@@ -314,29 +417,192 @@ namespace B2M.Revit.Commands.Families
             return true;
         }
 
-        /// <summary>Inside an open project transaction: a NEW type named type_name, from the family's first type.</summary>
-        private static bool DuplicateInTransaction(EnsureRequest r, Family family, out FamilySymbol created, out JObject dims, out CommandResult failure)
+        /// <summary>
+        /// Whether a copy of source can be given the requested size (and material, and Type Mark) without editing the family.
+        /// Structural: as before (TryOverrides). Doors/windows: the width/height type parameters must be writable (not driven
+        /// by a formula).
+        /// </summary>
+        internal static bool TryCanCreate(EnsureRequest r, FamilySymbol source, out CommandResult failure)
+        {
+            if (r.Recipe.Opening == null)
+            {
+                if (!TryOverrides(r, source, out _, out failure)) return false;
+            }
+            else
+            {
+                if (!TryDimensionParameters(r, source, out var parameters, out failure)) return false;
+                var locked = r.Recipe.Dimensions.FirstOrDefault(d => parameters[d].IsReadOnly);
+                if (locked != null)
+                {
+                    failure = CommandResult.Fail("SIZE_PARAMETER_READ_ONLY: family '" + source.FamilyName + "' computes its " + locked.Parameter + " ('"
+                        + parameters[locked].Definition.Name + "') by a formula, so a new type cannot be given " + locked.Parameter + " = "
+                        + TypeMatchRule.Number(r.Mm[locked]) + " mm. Existing types are never edited and " + r.Recipe.Key + " families are not "
+                        + "adapted; pick another family (family_name).", new JObject { ["type_id"] = RevitCompat.GetId(source.Id) });
+                    return false;
+                }
+            }
+            if (r.TypeMark == null) return true;
+            var mark = source.get_Parameter(BuiltInParameter.ALL_MODEL_TYPE_MARK);
+            if (mark != null && !mark.IsReadOnly && mark.StorageType == StorageType.String) return true;
+            failure = CommandResult.Fail("TYPE_MARK_NOT_SUPPORTED: types of family '" + source.FamilyName + "' have no writable Type Mark, so type_mark "
+                + "cannot be set.");
+            return false;
+        }
+
+        private static CommandResult NoTypes(Family family) =>
+            CommandResult.Fail("FAMILY_HAS_NO_TYPES: family '" + family.Name + "' has no types to duplicate.");
+
+        /// <summary>
+        /// The type step, changing nothing. Structural without type_mark: the type named type_name is returned when its
+        /// size (and material) match, else a new type of that name is copied from the family's first type, exactly as
+        /// before. With type_mark, or for doors/windows, TypeMatchRule decides (by name, or by size and mark when type_name
+        /// was omitted); a new type copies the type closest in size (doors/windows) and its mark must be free in the category.
+        /// </summary>
+        internal static bool TryPlanType(EnsureRequest r, Family family, out TypePlan plan, out CommandResult failure)
+        {
+            plan = null;
+            failure = null;
+            var types = TypesOf(family);
+            JObject dims;
+            if (r.Recipe.Opening == null && r.TypeMark == null)
+            {
+                var named = TypeIn(family, r.TypeName);
+                if (named != null)
+                {
+                    if (!CheckExisting(r, named, out dims, out failure)) return false;
+                    plan = new TypePlan { Existing = named, Dims = dims };
+                    return true;
+                }
+                if (types.Count == 0)
+                {
+                    failure = NoTypes(family);
+                    return false;
+                }
+                plan = new TypePlan { NewName = r.TypeName, Source = types[0] };
+                return true;
+            }
+
+            // An existing type named type_name keeps today's size and material messages; the mark is checked next.
+            if (r.TypeNameGiven)
+            {
+                var named = TypeIn(family, r.TypeName);
+                if (named != null && !CheckExisting(r, named, out _, out failure)) return false;
+            }
+            var facts = types.Select(t => OpeningFamilies.Facts(r, t)).ToList();
+            var request = OpeningFamilies.Request(r);
+            var decision = TypeMatchRule.Decide(facts, family.Name, request);
+            switch (decision.Step)
+            {
+                case TypeStep.UseExisting:
+                    var existing = types[decision.Index];
+                    if (!CheckExisting(r, existing, out dims, out failure)) return false;
+                    r.MatchedBy = decision.MatchedBy;
+                    plan = new TypePlan { Existing = existing, Dims = dims };
+                    return true;
+                case TypeStep.CreateNew:
+                    if (types.Count == 0)
+                    {
+                        failure = NoTypes(family);
+                        return false;
+                    }
+                    if (r.TypeMark != null && !CheckMarkFree(r, null, out failure)) return false;
+                    var source = r.Recipe.Opening == null ? types[0] : types[Math.Max(0, TypeMatchRule.ClosestIndex(facts, request.SizesMm))];
+                    r.TypeName = decision.TypeName;
+                    plan = new TypePlan { NewName = decision.TypeName, Source = source };
+                    return true;
+                default:
+                    var data = decision.Data ?? new JObject();
+                    if (decision.Index >= 0) data["type_id"] = RevitCompat.GetId(types[decision.Index].Id);
+                    failure = CommandResult.Fail(decision.Error, data);
+                    return false;
+            }
+        }
+
+        /// <summary>A Type Mark set by this call must not already be carried by another type of the category (except: the type itself).</summary>
+        private static bool CheckMarkFree(EnsureRequest r, ElementId except, out CommandResult failure)
+        {
+            failure = null;
+            var holders = OpeningFamilies.MarkHolders(r.Doc, r.Recipe.Category, r.TypeMark, except);
+            if (holders.Count == 0) return true;
+            var first = holders[0];
+            failure = CommandResult.Fail("TYPE_MARK_IN_USE: Type Mark '" + r.TypeMark + "' is already carried by type '" + first.FamilyName + " : " + first.Name
+                + "'" + (holders.Count > 1 ? " and " + (holders.Count - 1) + " more" : "") + " (see holders); one mark on two " + r.Recipe.Key
+                + " types would make tags and schedules ambiguous. Existing types are never edited: use that type (its family_name, and its "
+                + "type_name or no type_name), or ask the user for another mark.", new JObject
+                {
+                    ["holders"] = new JArray(holders.Take(MaxClosest).Select(h => new JObject
+                    {
+                        ["type_id"] = RevitCompat.GetId(h.Id),
+                        ["family_name"] = h.FamilyName,
+                        ["type_name"] = h.Name,
+                        ["dimensions_mm"] = SizeOf(r, h)
+                    }))
+                });
+            return false;
+        }
+
+        private static JObject SizeOf(EnsureRequest r, FamilySymbol symbol) =>
+            TryDimensionParameters(r, symbol, out var parameters, out _) ? Dimensions(r, parameters) : null;
+
+        /// <summary>Sets the Type Mark on a type this call made (never on an existing one) and reads it back.</summary>
+        private static bool TrySetMark(EnsureRequest r, FamilySymbol created, string mark, out CommandResult failure)
+        {
+            failure = null;
+            var parameter = created.get_Parameter(BuiltInParameter.ALL_MODEL_TYPE_MARK);
+            if (parameter == null || parameter.IsReadOnly || parameter.StorageType != StorageType.String)
+            {
+                if (r.TypeMark == null) return true; // nothing asked; nothing to clear
+                failure = CommandResult.Fail("TYPE_MARK_NOT_SUPPORTED: type '" + created.Name + "' has no writable Type Mark, so type_mark cannot be set.");
+                return false;
+            }
+            if ((parameter.AsString() ?? "") == mark) return true;
+            if (parameter.Set(mark) && (parameter.AsString() ?? "") == mark) return true;
+            failure = CommandResult.Fail("MARK_NOT_APPLIED: Revit did not set Type Mark '" + mark + "' on the new type '" + created.Name + "'.");
+            return false;
+        }
+
+        /// <summary>
+        /// Inside an open project transaction: a NEW type named plan.NewName, copied from plan.Source, given the size (and
+        /// material) and, for doors/windows or when asked, the Type Mark. A door/window copy without type_mark gets no mark,
+        /// so it never carries the copied type's mark.
+        /// </summary>
+        private static bool DuplicateInTransaction(EnsureRequest r, TypePlan plan, out FamilySymbol created, out JObject dims, out CommandResult failure)
         {
             created = null;
             dims = null;
-            var source = TypesOf(family).FirstOrDefault();
-            if (source == null)
+            var source = plan.Source;
+            JObject overrides = null;
+            if (r.Recipe.Opening == null)
             {
-                failure = CommandResult.Fail("FAMILY_HAS_NO_TYPES: family '" + family.Name + "' has no types to duplicate.");
-                return false;
+                if (!TryOverrides(r, source, out overrides, out failure)) return false;
             }
-            if (!TryOverrides(r, source, out var overrides, out failure)) return false;
-            created = source.Duplicate(r.TypeName) as FamilySymbol;
+            if (!TryCanCreate(r, source, out failure)) return false;
+            created = source.Duplicate(plan.NewName) as FamilySymbol;
             if (created == null)
             {
                 failure = CommandResult.Fail("DUPLICATE_FAILED: Revit did not duplicate '" + source.Name + "'.");
                 return false;
             }
-            if (!FamiliesHelpers.TrySetTypeParameters(r.Doc, created, overrides, out _, out var error, out var errorData))
+            if (overrides != null)
             {
-                failure = CommandResult.Fail(error, errorData);
-                return false;
+                if (!FamiliesHelpers.TrySetTypeParameters(r.Doc, created, overrides, out _, out var error, out var errorData))
+                {
+                    failure = CommandResult.Fail(error, errorData);
+                    return false;
+                }
             }
+            else
+            {
+                // Doors/windows: set the new type's own parameters found by built-in id or name (names can repeat on a door type).
+                if (!TryDimensionParameters(r, created, out var parameters, out failure)) return false;
+                foreach (var d in r.Recipe.Dimensions)
+                    if (!ParametersHelpers.TrySet(r.Doc, parameters[d], new JValue(r.Mm[d]), "auto", out _, out var setError))
+                    {
+                        failure = CommandResult.Fail("SET_FAILED: '" + parameters[d].Definition.Name + "': " + setError + ".");
+                        return false;
+                    }
+            }
+            if ((r.TypeMark != null || r.Recipe.Opening != null) && !TrySetMark(r, created, r.TypeMark ?? "", out failure)) return false;
             r.Doc.Regenerate();
             // Read back: a family formula or constraint can refuse a size silently.
             return CheckSize(r, created, false, out dims, out failure);
@@ -349,17 +615,14 @@ namespace B2M.Revit.Commands.Families
         internal static CommandResult EnsureInLoaded(EnsureRequest r, Family family, string source, JObject extra)
         {
             var adapted = extra != null;
-            var symbol = TypeIn(family, r.TypeName);
-            if (symbol != null)
-            {
-                if (!CheckExisting(r, symbol, out var existingDims, out var failure)) return failure;
-                return CommandResult.Ok(With(Result(r, adapted ? "adapted" : "existing", source, family, symbol, existingDims, null, null, "existing"), extra));
-            }
+            if (!TryPlanType(r, family, out var plan, out var planFailure))
+                return !r.DryRun && planFailure.Error.StartsWith("FAMILY_HAS_NO_TYPES:", StringComparison.Ordinal)
+                    ? CommandResult.Fail(planFailure.Error + Unchanged, planFailure.Data) : planFailure;
+            if (plan.Existing != null)
+                return CommandResult.Ok(With(Result(r, adapted ? "adapted" : "existing", source, family, plan.Existing, plan.Dims, null, null, "existing"), extra));
             if (r.DryRun)
             {
-                var first = TypesOf(family).FirstOrDefault();
-                if (first == null) return CommandResult.Fail("FAMILY_HAS_NO_TYPES: family '" + family.Name + "' has no types to duplicate.");
-                if (!TryOverrides(r, first, out _, out var failure)) return failure;
+                if (!TryCanCreate(r, plan.Source, out var failure)) return failure;
                 return CommandResult.Ok(With(Result(r, adapted ? "adapted" : "duplicated", source, family, null, null, null, null, "duplicated"), extra));
             }
             using (var tx = new Transaction(r.Doc, "B2M: Ensure family type"))
@@ -367,7 +630,7 @@ namespace B2M.Revit.Commands.Families
                 tx.Start();
                 try
                 {
-                    if (!DuplicateInTransaction(r, family, out var created, out var dims, out var failure)) return RolledBack(tx, failure, Unchanged);
+                    if (!DuplicateInTransaction(r, plan, out var created, out var dims, out var failure)) return RolledBack(tx, failure, Unchanged);
                     if (tx.Commit() != TransactionStatus.Committed)
                         return CommandResult.Fail("NOT_COMMITTED: Revit rolled the new type back; see failures." + Unchanged);
                     return CommandResult.Ok(With(Result(r, adapted ? "adapted" : "duplicated", source, family, created, dims, null, null, "duplicated"), extra));
@@ -381,7 +644,7 @@ namespace B2M.Revit.Commands.Families
 
         /// <summary>
         /// Loads the file and makes sure the type exists, all in one project transaction. ownTypes: this command made the
-        /// family file, so an existing type of that name was made for this request and may take the material.
+        /// family file, so an existing type of that name was made for this request and may take the material and Type Mark.
         /// </summary>
         internal static CommandResult LoadAndEnsure(EnsureRequest r, string path, string action, string source, string fileName, string folder,
             bool ownTypes, JObject extra)
@@ -400,12 +663,14 @@ namespace B2M.Revit.Commands.Families
 
                     FamilySymbol symbol;
                     JObject dims;
-                    var existing = TypeIn(family, r.TypeName);
+                    var own = ownTypes ? TypeIn(family, r.TypeName) : null;
+                    var typeStep = "duplicated";
                     // Duplicate before edit holds: with ownTypes the family was made by this call and loaded in this transaction (LoadFamily
-                    // never overwrites), so this type is new and unused; an existing project type is never edited (CheckExisting refuses).
-                    if (existing != null && ownTypes)
+                    // never overwrites), so this type is new and unused; an existing project type is never edited (TryPlanType refuses).
+                    if (own != null)
                     {
-                        symbol = existing;
+                        symbol = own;
+                        typeStep = "existing";
                         if (r.Material != null)
                         {
                             if (!TryMaterialParameter(symbol, out var materialParameter, out failure)) return RolledBack(tx, failure, note);
@@ -413,19 +678,28 @@ namespace B2M.Revit.Commands.Families
                                     new JObject { [materialParameter.Definition.Name] = RevitCompat.GetId(r.Material.Id) }, out _, out var error, out var errorData))
                                 return RolledBack(tx, CommandResult.Fail(error, errorData), note);
                         }
+                        if (r.TypeMark != null)
+                        {
+                            if (!CheckMarkFree(r, symbol.Id, out failure) || !TrySetMark(r, symbol, r.TypeMark, out failure)) return RolledBack(tx, failure, note);
+                        }
                         if (!CheckSize(r, symbol, false, out dims, out failure)) return RolledBack(tx, failure, note);
                     }
-                    else if (existing != null)
+                    else
                     {
-                        symbol = existing;
-                        if (!CheckExisting(r, symbol, out dims, out failure)) return RolledBack(tx, failure, note);
+                        if (!TryPlanType(r, family, out var plan, out failure)) return RolledBack(tx, failure, note);
+                        if (plan.Existing != null)
+                        {
+                            symbol = plan.Existing;
+                            dims = plan.Dims;
+                            typeStep = "existing";
+                        }
+                        else if (!DuplicateInTransaction(r, plan, out symbol, out dims, out failure))
+                            return RolledBack(tx, failure, note);
                     }
-                    else if (!DuplicateInTransaction(r, family, out symbol, out dims, out failure))
-                        return RolledBack(tx, failure, note);
 
                     if (tx.Commit() != TransactionStatus.Committed)
                         return CommandResult.Fail("NOT_COMMITTED: Revit rolled the family load back; see failures." + note);
-                    return CommandResult.Ok(With(Result(r, action, source, family, symbol, dims, fileName, folder, existing != null ? "existing" : "duplicated"), extra));
+                    return CommandResult.Ok(With(Result(r, action, source, family, symbol, dims, fileName, folder, typeStep), extra));
                 }
                 catch (Exception ex)
                 {
@@ -452,8 +726,7 @@ namespace B2M.Revit.Commands.Families
             var closest = loaded.Concat(onDisk).Where(c => c.Score > 0).OrderByDescending(c => c.Score)
                 .ThenBy(c => c.Name, StringComparer.OrdinalIgnoreCase).Take(MaxClosest).Select(c => c.Json);
             var canCreate = File.Exists(templatePath);
-            var searched = string.Join(", ", roots.Select(root => root.Kind == "given" ? "search folder " + Path.GetFileName(root.Folder.TrimEnd('\\', '/'))
-                : root.Kind == "b2m" ? "the B2M families folder" : "the Revit " + year + " content library"));
+            var searched = Searched(roots, year);
             return CommandResult.Fail("FAMILY_NOT_FOUND: no " + r.Recipe.Key + " family named '" + r.FamilyName + "' or similar was found in the "
                 + "project or in " + searched + ". Ask the user whether B2M may create one from Revit's family template (call again with "
                 + "allow_create: true" + (canCreate ? "" : ", which needs the template that is missing here") + "), or which family file to use "
@@ -468,7 +741,12 @@ namespace B2M.Revit.Commands.Families
                 });
         }
 
-        private static IEnumerable<string> Words(string name) =>
+        /// <summary>The searched roots in words, for messages.</summary>
+        internal static string Searched(List<FamilyFileSearch.Root> roots, string year) =>
+            string.Join(", ", roots.Select(root => root.Kind == "given" ? "search folder " + Path.GetFileName(root.Folder.TrimEnd('\\', '/'))
+                : root.Kind == "b2m" ? "the B2M families folder" : "the Revit " + year + " content library"));
+
+        internal static IEnumerable<string> Words(string name) =>
             System.Text.RegularExpressions.Regex.Split(name.ToLowerInvariant(), "[^a-z0-9]+").Where(w => w.Length >= 2);
 
         /// <summary>CREATE (allow_create only): build the family from Revit's template, save it in B2M's folder and load it.</summary>
@@ -483,6 +761,7 @@ namespace B2M.Revit.Commands.Families
             var fileName = r.FamilyName + ".rfa";
             var savePath = Path.Combine(folder, fileName);
             var extra = new JObject { ["template"] = r.Recipe.TemplateFileName };
+            if (r.TypeMark != null && !CheckMarkFree(r, null, out var markFailure)) return markFailure;
             if (r.DryRun) return CommandResult.Ok(With(Result(r, "created", "created", null, null, null, fileName, folder, "existing"), extra));
             if (File.Exists(savePath))
                 return CommandResult.Fail("FILE_EXISTS: " + fileName + " already exists in the B2M families folder but was not found by the search "
@@ -547,8 +826,26 @@ namespace B2M.Revit.Commands.Families
             return target;
         }
 
-        /// <summary>The wire result. typeStep: whether the type was found ("existing") or made ("duplicated").</summary>
+        /// <summary>
+        /// The wire result. typeStep: whether the type was found ("existing") or made ("duplicated"). Doors/windows and calls
+        /// with type_mark add type_mark (the returned type's, or the one a new type gets); doors/windows add
+        /// chosen_family_reason, alternatives and matched_by. A structural call without type_mark gets exactly the fields it always had.
+        /// </summary>
         internal static JObject Result(EnsureRequest r, string action, string source, Family family, FamilySymbol symbol, JObject dims, string fileName,
+            string folder, string typeStep)
+        {
+            var result = BaseResult(r, action, source, family, symbol, dims, fileName, folder, typeStep);
+            var opening = r.Recipe.Opening != null;
+            if (opening || r.TypeMark != null)
+                result["type_mark"] = symbol != null ? OpeningFamilies.MarkOf(symbol) : r.TypeMark ?? "";
+            if (!opening) return result;
+            result["chosen_family_reason"] = r.ChosenReason;
+            result["alternatives"] = r.Alternatives ?? new JArray();
+            result["matched_by"] = typeStep == "existing" ? r.MatchedBy : null;
+            return result;
+        }
+
+        private static JObject BaseResult(EnsureRequest r, string action, string source, Family family, FamilySymbol symbol, JObject dims, string fileName,
             string folder, string typeStep) => new JObject
             {
                 ["action"] = action,
