@@ -269,6 +269,11 @@ namespace B2M.Revit.Commands.Create
                     if (r.FlipFacing && instance.CanFlipFacing) instance.flipFacing();
                     if (r.FlipHand && instance.CanFlipHand) instance.flipHand();
                     doc.Regenerate();
+                    if (mode == PlacementRules.Mode.Level && !isOpening)
+                    {
+                        var fixedHeight = PutBackAtHeight(doc, instance, level, point);
+                        if (fixedHeight != null) placed.Warning = placed.Warning == null ? fixedHeight : placed.Warning + " " + fixedHeight;
+                    }
 
                     if (side != null && mode == PlacementRules.Mode.WallHosted)
                     {
@@ -340,6 +345,37 @@ namespace B2M.Revit.Commands.Create
             if (plane.Normal.Z > -0.999) throw new InvalidOperationException("could not make a horizontal reference plane facing down.");
             plane.Name = "B2M fit-out " + RevitCompat.GetId(plane.Id);
             return plane;
+        }
+
+        /// <summary>
+        /// Some level-based families take the point's z (the level's elevation plus the offset) as their offset above the
+        /// level, so they stand the level's elevation too high. Puts such an instance back at the height asked for (by its
+        /// offset parameter, else by moving it down) and says so; null when it already stands right.
+        /// </summary>
+        private static string PutBackAtHeight(Document doc, FamilyInstance instance, Level level, XYZ point)
+        {
+            var wanted = Mm.FromFeet(point.Z - level.ProjectElevation);
+            var offset = Commands.Families.MeasureFamilyTypesHandler.OffsetParameter(instance);
+            var location = (instance.Location as LocationPoint)?.Point;
+            var extra = FamilyMeasure.BaseOffsetMm(wanted, offset.HasValue ? Mm.FromFeet(offset.Value) : (double?)null,
+                location != null ? Mm.FromFeet(location.Z - level.ProjectElevation) : (double?)null, Mm.FromFeet(level.ProjectElevation));
+            if (extra == 0) return null;
+            var down = Mm.ToFeet(extra);
+            Parameter writable = null;
+            foreach (var bip in new[] { BuiltInParameter.INSTANCE_ELEVATION_PARAM, BuiltInParameter.INSTANCE_FREE_HOST_OFFSET_PARAM })
+            {
+                var parameter = instance.get_Parameter(bip);
+                if (parameter != null && !parameter.IsReadOnly && parameter.StorageType == StorageType.Double && parameter.HasValue
+                    && Math.Abs(parameter.AsDouble() - (point.Z - level.ProjectElevation) - down) < Tolerance)
+                {
+                    writable = parameter;
+                    break;
+                }
+            }
+            if (writable != null) writable.Set(writable.AsDouble() - down);
+            else ElementTransformUtils.MoveElement(doc, instance.Id, new XYZ(0, 0, -down));
+            doc.Regenerate();
+            return FormattableString.Invariant($"The family took the point's height as its offset above the level and stood {extra} mm too high; it was put back at the height asked for.");
         }
 
         /// <summary>Raises a work-plane-based instance off the level by its offset parameter.</summary>

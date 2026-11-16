@@ -239,5 +239,40 @@ namespace B2M.Revit.Core.Tests
             Assert.Null(Choose(type, host, o, out var error));
             Assert.StartsWith(code + ":", error);
         }
+
+        // ---- FamilyMeasure ----------------------------------------------------------------------------
+
+        [Theory]
+        [InlineData(0, 2700.0, 2700.0, 2700, 2700)]     // took the point's z as its offset: by its parameter and location
+        [InlineData(0, null, 2700.0, 2700, 2700)]       // only the location tells
+        [InlineData(0, 2700.0, null, 2700, 2700)]       // only the parameter tells
+        [InlineData(850, 3550.0, 3550.0, 2700, 2700)]   // with an offset asked for
+        [InlineData(0, 0.0, 0.0, 2700, 0)]              // stands right
+        [InlineData(0, 400.0, 400.0, 2700, 0)]          // another offset is the family's own, not the quirk
+        [InlineData(0, 0.0, 0.0, 0, 0)]                 // on a level at 0 nothing can show
+        public void BaseOffsetIsOnlyTheLevelsElevationTakenAsOffset(double wanted, double? parameter, double? location, double elevation, double expected)
+        {
+            Assert.Equal(expected, FamilyMeasure.BaseOffsetMm(wanted, parameter, location, elevation));
+        }
+
+        [Fact]
+        public void BoxesAreRelativeToThePointAndTheDefaultLevelIsTheLowestAboveZero()
+        {
+            Assert.Equal(new[] { -952.0, -455.0, 2700.0 }, FamilyMeasure.Relative(P(-952, -455, 5400), P(0, 0, 2700)));
+            var levels = new Dictionary<string, double> { ["GL"] = -600, ["Ground Floor"] = 0, ["Floor 2"] = 5400, ["Floor 1"] = 2700 };
+            Assert.Equal("Floor 1", FamilyMeasure.DefaultLevel(levels));
+            Assert.Equal("GL", FamilyMeasure.DefaultLevel(new Dictionary<string, double> { ["GL"] = -600, ["Ground Floor"] = 0 }));
+            Assert.Null(FamilyMeasure.DefaultLevel(new Dictionary<string, double>()));
+        }
+
+        [Theory]
+        [InlineData("OneLevelBased", true)]
+        [InlineData("WorkPlaneBased", true)]
+        [InlineData("OneLevelBasedHosted", false)]
+        [InlineData("CurveBased", false)]
+        public void LevelAndWorkPlaneBasedFamiliesAreMeasured(string placement, bool measured)
+        {
+            Assert.Equal(measured, FamilyMeasure.NotMeasuredReason(placement) == null);
+        }
     }
 }
