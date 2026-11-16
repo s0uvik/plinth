@@ -13,10 +13,16 @@ to a common area or the outside, else the first), on the latch side at ``switchb
 the door opens (decided with the user). Sockets spread along the walls away from the door, first beside the bed's
 side table, the TV unit, the study table, never behind tall furniture or in a door or window; a 16 A point is the AC's
 (beside the indoor unit: a room with several answered AC units gets one per unit), the geyser's (beside it) or an
-appliance's (above the kitchen counter). One distribution
-board per flat beside its entrance door (hinge side, the switchboard having the latch side), one common board for the
-lobbies, stairs, terraces and pumps, in a common lobby on the lowest storey that has one (listed as an assumption).
-The meter board stands in the meter room on the lowest storey; without one it is asked.
+appliance's (above the kitchen counter). One distribution board per flat beside its entrance door (hinge side, the
+switchboard having the latch side).
+
+The meter board stands on the lowest storey in its meter room, or where ``fitout:meter_room`` puts it: a room key, or
+a place on a wall when no room holds it (``{"near": "stair"}``: the wall nearest the foot of the stair, under it
+where it fits, clear of its run and headroom; ``{"point": [x, y], "level": "<name>"}``: the wall nearest that point;
+see ``b2m.fitout.siting``); without either it is asked, and asked again when the answered place has no wall for it.
+The common board for the lobbies, stairs, terraces and pumps stands where ``fitout:common_board`` says (a room key,
+``"meter_board"``: beside the meter board, or a place on a wall), else in the lowest common lobby or stair (an
+assumption), else beside the meter board (an assumption). The electrical riser starts at the meter board.
 
 Circuits (per board, IS 732 / NBC practice): lights, fans and exhaust fans up to ``lighting_max_points`` or
 ``lighting_max_w``; 6 A sockets likewise; other 16 A sockets two to a circuit; an AC or a geyser (``dedicated``) on a
@@ -33,6 +39,7 @@ from collections import defaultdict
 
 from b2m.fitout.mepcore import (Circuit, Ctx, Device, Host, add, ceiling_points, centre_of, common_core, core_points,
                                 nearest_spot, r1, spread, sub, unit, wall_spots)
+from b2m.fitout import siting
 from b2m.fitout.rooms import Opening, Room
 
 COMMON_DB_CLASSES = ("lobby", "stair")
@@ -249,45 +256,100 @@ def boards(ctx: Ctx, st: State) -> None:
             ctx.unplace("distribution_board", None, level, f"flat {flat}: no wall space for its board")
         else:
             st.dbs[(level, flat)] = placed
-    # the common board
+    meter_board(ctx, st)
     if db.common_board:
-        lobbies = sorted((r for r in ctx.fit_rooms
-                          if not r.flat and any(c in COMMON_DB_CLASSES for c in ctx.classes(r))),
-                         key=lambda r: (ctx.elev(r.level), r.key))
-        for room in lobbies:
-            sp = nearest_spot(wall_spots(ctx, room, w, db.height_mm - 250, db.height_mm + 250), centre_of(room))
-            if sp is None:
-                continue
-            st.dbs[(None, None)] = ctx.on_wall("distribution_board", "power", room, sp, db.height_mm, panel=True,
-                                               load=False, scope=room.key, source=db.source,
-                                               note="common board: lobbies, stairs, terraces, pumps")
-            ctx.assume("fitout:common_board", f"The common areas' board stands in {room.name} on {room.level} (the "
-                       "lowest common lobby or stair)", room.key, db.source, [room.key])
-            break
-        else:
-            ctx.unplace("distribution_board", None, None, "common board: no common lobby or stair to put it in")
-    # the meter board
+        common_board(ctx, st, w)
+
+
+def meter_board(ctx: Ctx, st: State) -> None:
+    """The meter board on the lowest storey: in its meter room, or where ``fitout:meter_room`` says (a room key or a
+    location: ``siting.LOCATION_SHAPES``); else asked."""
+    el = ctx.rules.electrical
     ground = ctx.storeys[0]
+    spec = ctx.spec("meter_board")
+    h = float(el.mounting_mm["meter_board"].value)
+    size = spec.size
+    width = size.width_mm if size else 1500
+    bh = size.height_mm if size else 900
     meter_rooms = ctx.rooms_of("meter_room", level=ground)
     given = ctx.answer("fitout:meter_room")
-    if given in ctx.by_key and ctx.by_key[given] in ctx.fit_rooms:
+    loc = siting.location(given)
+    if isinstance(given, str) and given in ctx.by_key and ctx.by_key[given] in ctx.fit_rooms:
         meter_rooms = [ctx.by_key[given]]
-    if not meter_rooms:
-        ctx.ask("fitout:meter_room", "fitout_meter_room", f"Which room on {ground} holds the electricity meters "
-                f"({el.meter_room.value})? The plan has no meter room there; answer a room key.",
-                options=[r.key for r in ctx.fit_rooms if r.level == ground])
-        ctx.unplace("meter_board", None, ground, "no meter room on the lowest storey (asked)")
-    else:
+    reason = None
+    if loc is not None:
+        level = loc.level if loc.level in ctx.levels else ground
+        spots, reason = siting.wall_spots_at(ctx, loc, level, width, size.depth_mm if size else 250, h - bh / 2,
+                                             h + bh / 2)
+        if spots:
+            sp = spots[0]
+            st.meter = siting.place_on_wall(ctx, "meter_board", "power", sp, h, panel=True, load=False,
+                                            source=el.meter_room.source,
+                                            note=f"{el.meter_room.value}; {siting.spot_note(sp, loc)} (answer)")
+            return
+    elif meter_rooms:
         room = meter_rooms[0]
-        spec = ctx.spec("meter_board")
-        h = float(el.mounting_mm["meter_board"].value)
-        size = spec.size
-        sp = nearest_spot(wall_spots(ctx, room, size.width_mm if size else 1500, h - 450, h + 450), centre_of(room))
+        sp = nearest_spot(wall_spots(ctx, room, width, h - bh / 2, h + bh / 2), centre_of(room))
         if sp is None:
             ctx.unplace("meter_board", room, ground, "no wall in the meter room long enough for the board")
         else:
             st.meter = ctx.on_wall("meter_board", "power", room, sp, h, panel=True, load=False,
                                    source=el.meter_room.source, note=el.meter_room.value)
+        return
+    ctx.ask("fitout:meter_room", "fitout_meter_room", f"Where on {ground} do the electricity meters go "
+            f"({el.meter_room.value})? " + (f"The answered place has no wall for the board: {reason}. " if reason
+                                             else "The plan has no meter room there. ") +
+            f"Answer a room key, or a place on a wall: {siting.LOCATION_SHAPES}.",
+            options=[r.key for r in ctx.fit_rooms if r.level == ground])
+    ctx.unplace("meter_board", None, ground, "no meter room on the lowest storey (asked)" if not reason else
+                f"{reason} (asked)")
+
+
+def common_board(ctx: Ctx, st: State, w: float) -> None:
+    """The common areas' board: where ``fitout:common_board`` says (a room key; "meter_board": beside the meter board;
+    a location), else in the lowest common lobby or stair (an assumption), else beside the meter board."""
+    db = ctx.rules.electrical.distribution_board
+    given = ctx.answer("fitout:common_board")
+    note = "common board: lobbies, stairs, terraces, pumps"
+    lobbies = sorted((r for r in ctx.fit_rooms if not r.flat and any(c in COMMON_DB_CLASSES for c in ctx.classes(r))),
+                     key=lambda r: (ctx.elev(r.level), r.key))
+    if isinstance(given, str) and given in ctx.by_key and ctx.by_key[given] in ctx.fit_rooms:
+        lobbies = [ctx.by_key[given]]
+    with_meter = given in ("meter_board", "with_meter_board")
+    loc = siting.location(given)
+    if not with_meter and loc is None:
+        for room in lobbies:
+            sp = nearest_spot(wall_spots(ctx, room, w, db.height_mm - 250, db.height_mm + 250), centre_of(room))
+            if sp is None:
+                continue
+            st.dbs[(None, None)] = ctx.on_wall("distribution_board", "power", room, sp, db.height_mm, panel=True,
+                                               load=False, scope=room.key, source=db.source, note=note)
+            if given is None:
+                ctx.assume("fitout:common_board", f"The common areas' board stands in {room.name} on {room.level} "
+                           "(the lowest common lobby or stair; answer a room key, \"meter_board\" or a place on a "
+                           "wall to move it)", room.key, db.source, [room.key])
+            return
+    spec = ctx.spec("distribution_board")
+    depth = spec.size.depth_mm if spec.size else 100
+    level = loc.level if loc and loc.level in ctx.levels else (st.meter.level if st.meter else ctx.storeys[0])
+    if loc is None and st.meter is not None:  # beside the meter board, on its wall when there is room
+        loc = siting.Location(point=st.meter.insertion, level=st.meter.level)
+    if loc is None:
+        ctx.unplace("distribution_board", None, None, "common board: no common lobby or stair to put it in, and no "
+                    "meter board to put it beside")
+        return
+    spots, reason = siting.wall_spots_at(ctx, loc, level, w, depth, db.height_mm - 250, db.height_mm + 250)
+    if not spots:
+        ctx.unplace("distribution_board", None, level, f"common board: {reason}")
+        return
+    sp = spots[0]
+    where = f"beside the meter board {st.meter.key}" if (with_meter or given is None) and st.meter else         siting.spot_note(sp, loc)
+    st.dbs[(None, None)] = siting.place_on_wall(ctx, "distribution_board", "power", sp, db.height_mm, panel=True,
+                                                load=False, scope=sp.room.key if sp.room else level, source=db.source,
+                                                note=f"{note}; {where}")
+    if given is None:
+        ctx.assume("fitout:common_board", f"The common areas' board stands beside the meter board (no common lobby "
+                   "or stair to put it in)", "meter_board", db.source)
 
 
 # ------------------------------------------------------------------------------------------------ circuits, conduits

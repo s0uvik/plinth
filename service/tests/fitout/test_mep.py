@@ -3,8 +3,8 @@
 On the G+4 sample (stilt + 4 floors of 4 flats, two ducts, two roof terraces, 13.5 m): every WC drains to a soil stack
 in a duct, every fixture is fed, every bedroom gets a split AC on an outside wall with its outdoor unit outside, every
 electrical load is on a circuit of its flat's board or the common board, the fire band below 15 m gives extinguishers
-and exit signs, and what the plan does not tell (meter room, underground tank, the large living rooms' AC, the stilt
-floor's extinguishers) is asked; the audit finds nothing. A small synthetic flat (bedroom, kitchen, toilet beside a
+and exit signs (on the stilt floor, by the stair: assumed), and what the plan does not tell (meter room, underground
+tank, the large living rooms' AC) is asked; the audit finds nothing. A small synthetic flat (bedroom, kitchen, toilet beside a
 duct, a stair, a roof terrace) pins the conventions: switchboard at the latch side at 1200 mm, the tees beside their
 mains, the answers that place the underground tank and set a taller building's fire band.
 """
@@ -47,7 +47,7 @@ def test_sample_counts_per_system(sample_mep):
     assert Counter(d.what for d in layout.devices) == {
         "socket_6a": 370, "light": 253, "socket_16a": 145, "fan": 112, "switchboard": 119, "tv_outlet": 64,
         "exhaust_fan": 49, "geyser": 49, "ac_indoor": 48, "ac_outdoor": 48, "floor_trap": 33, "exit_sign": 9,
-        "distribution_board": 17, "data_outlet": 16, "extinguisher": 15, "roof_outlet": 12, "overhead_tank": 2}
+        "distribution_board": 17, "data_outlet": 16, "extinguisher": 17, "roof_outlet": 12, "overhead_tank": 2}
     assert Counter((r.kind, r.system) for r in layout.runs) == {
         ("conduit", "power"): 639, ("conduit", "lighting"): 533, ("pipe", "cold_water"): 182, ("pipe", "waste"): 133,
         ("pipe", "hot_water"): 113, ("pipe", "soil"): 51, ("pipe", "rainwater"): 12, ("pipe", "vent"): 2}
@@ -152,11 +152,17 @@ def test_fire_band_at_13_5_m_gives_its_provisions(sample_mep, wb_rules):
                                                                                           "exit_signage"]
     assert all(p.status == "placed" and p.devices for p in layout.provisions)
     ext = Counter(d.level for d in layout.devices if d.what == "extinguisher")
-    assert ext == {"Floor 1": 3, "Floor 2": 3, "Floor 3": 3, "Floor 4": 3, "Roof": 3}
-    assert [(u.what, u.level) for u in layout.unplaced if u.what == "extinguisher"] == [
-        ("extinguisher", "Ground Floor")] * 2
-    assert all(by_lobby for by_lobby in (model.by_key()[d.room_key].flat is None for d in layout.devices
-                                         if d.system == "fire"))
+    assert ext == {"Ground Floor": 2, "Floor 1": 3, "Floor 2": 3, "Floor 3": 3, "Floor 4": 3, "Roof": 3}
+    assert not [u for u in layout.unplaced if u.what == "extinguisher"]
+    assert all(d.room_key is None or model.by_key()[d.room_key].flat is None for d in layout.devices
+               if d.system == "fire")
+    # the stilt floor has no common room: its two hang by the stair (assumed, listed back), clear of its run
+    assumed = {a.id: a for a in layout.assumptions}["fitout:extinguisher_room:Ground Floor"]
+    assert assumed.value == {"near": "stair"}
+    stilt = [d for d in layout.devices if d.what == "extinguisher" and d.level == "Ground Floor"]
+    assert all(d.room_key is None and d.host.kind == "wall" and "stair" in d.note and "(assumed)" in d.note
+               for d in stilt)
+    assert math.dist(stilt[0].insertion, stilt[1].insertion) >= 1500
     # exit signs face the stairs arriving at and leaving each lobby (and the stair up into the mumty), not the lifts
     signs = Counter(d.level for d in layout.devices if d.what == "exit_sign")
     assert signs == {"Floor 1": 2, "Floor 2": 2, "Floor 3": 2, "Floor 4": 2, "Roof": 1}
@@ -166,7 +172,7 @@ def test_sample_asks_what_the_plan_does_not_tell(sample_mep):
     _, _, _, layout = sample_mep
     assert [q.id for q in layout.questions] == [
         "fitout:ac:living dining:39.4", "fitout:ac:living dining:39.6",  # kitchens are their own rooms
-        "fitout:extinguisher_room:Ground Floor", "fitout:meter_room", "fitout:underground_tank"]
+        "fitout:meter_room", "fitout:underground_tank"]
     assert all(q.text for q in layout.questions)
     assumed = {a.id: a for a in layout.assumptions}
     assert assumed["fitout:persons_per_flat"].value == 5 and "16 flats" in assumed["fitout:persons_per_flat"].text
@@ -179,8 +185,7 @@ def test_sample_asks_what_the_plan_does_not_tell(sample_mep):
         ("electrical riser: meter board end", "the meter room is asked"),
         ("rising main", "from the pump at the underground tank")]
     assert Counter(u.what for u in layout.unplaced) == {
-        "ac_indoor": 16, "extinguisher": 2, "switchboard": 2, "shower": 1, "underground_tank": 1, "pump": 1,
-        "meter_board": 1}
+        "ac_indoor": 16, "switchboard": 2, "shower": 1, "underground_tank": 1, "pump": 1, "meter_board": 1}
 
 
 def test_sample_layout_is_deterministic(sample_mep, wb_rules):
