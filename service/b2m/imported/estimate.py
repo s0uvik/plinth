@@ -5,8 +5,10 @@ written rules (``b2m.estimate``), checked against the drawings and, given the of
 
 Where the counts come from (``source`` in the result):
 - ``model``: the built model, read back (``model_quantities_record`` runs inside the run's Revit session): every door
-  and window with its Type Mark, width, height and level, every railing with its host. Levels map to storeys through
-  the plan's op sources (which sheet and storey each op was built from).
+  and window with its Type Mark, width, height and level, every railing with its host and path length. Levels map to
+  storeys through the plan's op sources (which sheet and storey each op was built from). The railings are the ones
+  the run made: a railing op's, and the ones Revit attached to a stair on its own (run keys ``<stair key>#2``...),
+  which stand for the stair's railing op when it did not run; both are stair railings, counted per length read back.
 - ``drawings``: no run given: the recognised building with the answers applied (marks, widths, heights as answered).
 
 Nothing is guessed. What the model and the drawings do not say is a question whose id is the answer key read here
@@ -14,8 +16,8 @@ Nothing is guessed. What the model and the drawings do not say is a question who
 - ``estimate:material:<mark>``: asked for every door/window mark of a kind the rules measure by material. Answer one
   material for all ("wood"), counts per storey ({"wood": 12, "pvc": 8}), either of those per storey kind
   ({"ground": "pvc", "typical": {"wood": 12, "pvc": 8}}), or "exclude" (not in this estimate).
-- ``estimate:railings:<what>``: asked for stairs with railings and for balconies / verandahs when the rules measure
-  railings; the drawings give no railing lengths. Answer {"kind", "subkind", "length_mm", "count", "storey"} (or a
+- ``estimate:railings:<what>``: asked when the rules measure railings, for railings nothing measured: balconies /
+  verandahs (not modelled), and stair railings when there is no built model or the model gave no length. Answer {"kind", "subkind", "length_mm", "count", "storey"} (or a
   list of them; kind defaults to <what>, storey to the whole building), or "none".
 The engine's own questions (a mark with two sizes, per-storey counts that differ, an opening no rule measures), the
 cross-check's disagreements with the drawings and every reference row that differs become questions too, with ids
@@ -41,6 +43,7 @@ from b2m.cad.project import ImportProject
 from b2m.estimate import (DrawingObservation, Opening, ProjectInfo, Quantities, Railing, Storey, build_estimate,
                           compare_workbooks, crosscheck, load_rules, write_xlsx)
 from b2m.estimate.ruleset import Rules
+from b2m.revit.commands import op_key
 
 RULES_KEY = "estimate:rules"
 DEFAULT_RULES = "office-default"
@@ -119,6 +122,12 @@ def _names(project: ImportProject) -> dict[str, str]:
 
 # ------------------------------------------------------------------------------------------------ counting
 
+def _is_railing(key: str, op) -> bool:
+    """A run-store entry that is a railing: every element of a railing op, and a stair's further elements (the
+    railings Revit gave the stair on its own; the stair's runs and landings are not kept)."""
+    return op.op == "railing" or (op.op == "stair" and key != op.key)
+
+
 def model_quantities_record(revit, run) -> dict[str, Any]:
     """Inside the run's Revit session: read back every door, window and railing the run built (compact records)."""
     from b2m.imported import selfcheck
@@ -127,17 +136,22 @@ def model_quantities_record(revit, run) -> dict[str, Any]:
     result = ImportPlan.model_validate(run.load("import_plan"))
     created = (run.load("run") or {}).get("created") or {}
     by_key = result.plan.by_key()
-    keys = {created[k]: k for k, op in by_key.items() if op.op in ("door", "window", "railing") and k in created}
+    keys = {}
+    for k, element_id in created.items():
+        op = by_key.get(op_key(k))
+        if op is not None and ((op.op in ("door", "window") and k == op.key) or _is_railing(k, op)):
+            keys[element_id] = k
     records = selfcheck.read_back(revit, list(keys))
     out = []
     for element_id, key in keys.items():
         r = records.get(int(element_id)) or {}
-        op = by_key[key]
+        op = by_key[op_key(key)]
         if not r.get("exists", True):
             continue
-        if op.op == "railing":
-            out.append({"op_key": key, "kind": "railing", "id": element_id,
-                        "host_id": (r.get("railing") or {}).get("host_id")})
+        if _is_railing(key, op):
+            rail = r.get("railing") or {}
+            out.append({"op_key": key, "kind": "railing", "id": element_id, "host_id": rail.get("host_id"),
+                        "path_length_mm": rail.get("path_length_mm"), "length_mm": rail.get("length_mm")})
             continue
         o = r.get("opening") or {}
         out.append({"op_key": key, "kind": op.op, "id": element_id, "type_mark": r.get("type_mark"),
@@ -146,7 +160,9 @@ def model_quantities_record(revit, run) -> dict[str, Any]:
     return {"source": "model", "read": len(records), "elements": out}
 
 
-def _from_model(measured: dict[str, Any], run, storeys: _Storeys) -> tuple[list[dict], int, list[str]]:
+def _from_model(measured: dict[str, Any], run, storeys: _Storeys
+                ) -> tuple[list[dict], list[Railing], int, list[str]]:
+    """Doors/windows, the stair railings measured, and the stair railings the model gave no length for."""
     from b2m.imported.to_plan import ImportPlan
 
     result = ImportPlan.model_validate(run.load("import_plan"))
@@ -156,10 +172,15 @@ def _from_model(measured: dict[str, Any], run, storeys: _Storeys) -> tuple[list[
         src = result.sources.get(key)
         if level and src is not None and storeys.of(src.storey) is not None:
             level_storey[level][storeys.of(src.storey)] += 1
-    items, railings, notes = [], 0, []
+    items, rails, unmeasured, notes = [], [], 0, []
     for e in measured.get("elements") or []:
         if e["kind"] == "railing":
-            railings += 1
+            src = result.sources.get(op_key(e["op_key"]))
+            if e.get("path_length_mm"):
+                rails.append({"id": e["id"], "length_mm": e["path_length_mm"],
+                              "storey": storeys.of(src.storey) if src is not None else None})
+            else:
+                unmeasured += 1
             continue
         storey = level_storey[e.get("level")].most_common(1)[0][0] if level_storey.get(e.get("level")) else None
         if storey is None or not e.get("width_mm") or not e.get("height_mm"):
@@ -168,11 +189,12 @@ def _from_model(measured: dict[str, Any], run, storeys: _Storeys) -> tuple[list[
         items.append({"kind": e["kind"], "mark": e.get("type_mark"), "type": e.get("type"), "width_mm": e["width_mm"],
                       "height_mm": e["height_mm"], "storey": storey, "material": e.get("material"),
                       "source": f"model element {e['id']}"})
-    return items, railings, notes
+    return items, measured_railings(rails, "stair"), unmeasured, notes
 
 
 def _from_drawings(project: ImportProject, building: RecognisedBuilding, storeys: _Storeys
-                   ) -> tuple[list[dict], int, list[str]]:
+                   ) -> tuple[list[dict], list[Railing], int, list[str]]:
+    """Doors/windows as answered, no railings measured, and one stair railing to ask about per stair and storey."""
     applied = answers_mod.apply(project, building)
     items, railings, notes = [], 0, []
     for p in applied.plans:
@@ -189,7 +211,21 @@ def _from_drawings(project: ImportProject, building: RecognisedBuilding, storeys
                 items.append({"kind": o.kind, "mark": mark, "type": f"{o.kind}-{o.width_mm:g}",
                               "width_mm": o.width_mm, "height_mm": o.height_mm, "storey": s, "material": None,
                               "source": f"{p.sheet}#{o.id}"})
-    return items, railings, notes
+    return items, [], railings, notes
+
+
+def measured_railings(records: list[dict[str, Any]], kind: str) -> list[Railing]:
+    """Railings read back, one estimate line per storey and length, to the mm (the path curves' float sum is no
+    measurement to the micron, and equal railings must group). Records: {"id", "length_mm", "storey"}; storey None
+    when the source does not say."""
+    groups: dict[tuple, list] = defaultdict(list)
+    for r in records:
+        groups[(r.get("storey"), round(float(r["length_mm"])))].append(r["id"])
+    ordered = sorted(groups.items(), key=lambda kv: (kv[0][0] is None, kv[0][0] or 0, kv[0][1]))
+    return [Railing(kind=kind, length_mm=length, count=len(ids), storey=storey,
+                    source=f"model: {len(ids)} railing(s) ({', '.join(str(i) for i in ids[:3])}"
+                           f"{' ...' if len(ids) > 3 else ''}), path length read back")
+            for (storey, length), ids in ordered]
 
 
 # ------------------------------------------------------------------------------------------------ answers
@@ -243,11 +279,11 @@ def quantities(project: ImportProject, building: RecognisedBuilding, rules: Rule
     storeys = _Storeys(project)
     values = project.inputs.values
     if measured is not None and run is not None:
-        items, stair_railings, notes = _from_model(measured, run, storeys)
+        items, railings, stair_railings, notes = _from_model(measured, run, storeys)
         source = {"source": "model", "run_id": run.id, "elements_read": measured.get("read"),
                   "note": "doors, windows and railings read back from the built model"}
     else:
-        items, stair_railings, notes = _from_drawings(project, building, storeys)
+        items, railings, stair_railings, notes = _from_drawings(project, building, storeys)
         source = {"source": "drawings", "note": "no build given: the recognised building with the answers applied"}
     names = _names(project)
     by_material = _material_rules(rules)
@@ -294,8 +330,9 @@ def quantities(project: ImportProject, building: RecognisedBuilding, rules: Rule
                          '{"wood": 12, "pvc": 8}}, or "exclude" to leave them out of this estimate.'),
                 "instances": [f"storey {s}: {n}" for s, n in unsettled]})
 
-    railings: list[Railing] = []
-    if _railing_kinds(rules):
+    if not _railing_kinds(rules):
+        railings = []
+    else:
         things = {"stair": stair_railings}
         for p in building.plans:
             for pr in p.projections:
@@ -307,8 +344,8 @@ def quantities(project: ImportProject, building: RecognisedBuilding, rules: Rule
             qid = f"estimate:railings:{what}"
             got = _railings(values.get(qid), what) if values.get(qid) is not None else None
             if got is None:
-                seen = (f"{n} stair railings in the model (one per stair)" if what == "stair" and source["source"] ==
-                        "model" else f"{n} {what}{'s' if n != 1 else ''} on the plans")
+                seen = (f"{n} stair railings in the model with no length read back" if what == "stair" and
+                        source["source"] == "model" else f"{n} {what}{'s' if n != 1 else ''} on the plans")
                 questions.append({
                     "id": qid, "topic": "railings", "options": ["none"],
                     "text": (f"Which {what} railings does the estimate measure? There are {seen}, but the drawings "
