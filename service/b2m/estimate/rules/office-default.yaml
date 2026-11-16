@@ -1,0 +1,188 @@
+# Door and window estimate: the office's measurement rules.
+#
+# This file is data, not code: an estimator can change it without touching Python. It was written from the office's
+# own estimate (tests/fixtures/samples/g4-sample/door-window-estimate.xlsx) and reproduces its layout.
+#
+# How it reads
+#   sections      in sheet order. sl = the SL. NO printed on the section's first row (none = blank).
+#                 heading = the section's first row; heading_on_previous_row puts it in the ITEM NAME cell of the
+#                 previous section's last row (the office does this for "Wood paint").
+#                 space_after = blank rows after the section. units_on: where the unit goes: totals (on total rows
+#                 whose unit is true), rows (on every measured row) or heading (on the section heading row).
+#   groups        select = which openings/railings:   kind door|window (or railing: stair|verandah ...),
+#                 marks, material, zone (any | none | a zone name), storeys (any | ground | typical | roof | other).
+#                 count: per_storey (n = count on one storey; every storey must have the same count, otherwise
+#                 the estimate asks) or total (n = count over all selected storeys).
+#                 mark_heading = a row above each mark's rows; rows = the measured rows, one set per mark.
+#   expressions   n, storeys (number of storeys the selector covers), W and H (opening size in m), L (railing
+#                 length in m) and the constants below. number: [a, b] is written as the formula =a*b.
+#   labels        {roman} i, ii, iii...  {mark}  {width_mm} {height_mm}  {n}  {subkind} {Subkind}
+#                 {typical_from} {typical_to} (first/last typical storey), {typical_from_ord} {typical_to_ord}
+#                 (1st, 4th), {marks} (marks selected by the section).
+#   units         follow from the measured dimensions: one dimension = length, two = area, three = volume.
+#   totals        label in the HEIGHT column. sum = only rows with that id. of: previous + times = the previous
+#                 total multiplied (e.g. "All Floor" = per-floor total x number of typical storeys).
+
+name: office-default
+title: Door Window Estimation
+
+units: {length: "m.", area: "Sqm.", volume: "Cum."}
+
+# Marks (and railing subkinds) listed here come first, in this order; the rest follow in natural order
+# (D, D1, D2 ... W, W1, W2 ...).
+order: [Entrance, main, attached]
+
+constants:
+  frame_section: 0.1   # m; wooden door frame section 100 x 100 mm (the WIDTH and HEIGHT of a frame row)
+  girth: 0.3           # m; painted girth of a door frame
+  faces: 2             # painted faces of a door shutter
+  members: 2           # window frame members per window in each direction (top + bottom, two sides)
+
+templates:
+  door_frame: &door_frame
+    label: "{roman}) {mark} ({width_mm} x {height_mm})"
+    number: n
+    length: 2*H + W            # running length of a frame: two jambs and the head
+    width: frame_section
+    height: frame_section
+  door_shutter: &door_shutter
+    label: "{roman}) {mark} ({width_mm} x {height_mm})"
+    number: n
+    length: W
+    height: H
+  window_shutter: &window_shutter
+    label: "{roman}){mark}"
+    number: n
+    length: W
+    height: H
+
+layout:
+  title_merge: "A1:I3"
+  header_row: 4
+  headers: [SL. NO, ITEM NAME, NUMBER, LENGTH, WIDTH, HEIGHT, VOLUME/AREA, UNITS, REMARKS]
+  column_widths: {A: 7.7109375, B: 39.7109375, C: 10.42578125, D: 10.0, E: 8.42578125, F: 11.85546875,
+                  G: 17.140625, H: 17.140625, I: 15.0}
+  header_row_height: 18.75
+  font: Times New Roman
+  font_size: 11
+  title_font_size: 24
+  number_format: General
+  quantity_formula: "=IF(ISBLANK(D{r}), C{r}*E{r}*F{r}, IF(ISBLANK(E{r}), C{r}*D{r}*F{r}, IF(ISBLANK(F{r}), C{r}*D{r}*E{r}, C{r}*D{r}*E{r}*F{r})))"
+  quantity_formula_one_dimension: "=C{r}*{col}{r}"
+
+sections:
+  # 1. Wooden door frames, in cubic metres: number x running length x frame section.
+  #    Note: the office's total is for ONE typical floor (no "All Floor" row here, unlike window shutters).
+  - sl: 1
+    heading: Wood Work(Door Frame)
+    groups:
+      - heading: "a). ( In - {typical_from_ord} to {typical_to_ord})"
+        select: {kind: door, material: wood, storeys: typical, zone: none}
+        count: per_storey
+        rows: [*door_frame]
+        totals: [{label: Total}]
+      - heading: b) In Terrace
+        select: {kind: door, material: wood, zone: terrace}
+        count: total
+        units_on: rows
+        rows: [*door_frame]
+    space_after: 1
+
+  # 2. Wooden door shutters, in square metres: number x width x height (per typical floor, see note above).
+  - sl: 2
+    heading: Door Shutter( In Each Floor - {typical_from} to {typical_to} th)
+    groups:
+      - select: {kind: door, material: wood, storeys: typical, zone: none}
+        count: per_storey
+        rows: [*door_shutter]
+        totals: [{label: Total}]
+      - heading: b) In Terrace
+        select: {kind: door, material: wood, zone: terrace}
+        count: total
+        units_on: rows
+        rows: [*door_shutter]
+    space_after: 1
+
+  # 3. PVC door frames: number (all storeys) x running length.
+  - sl: 3
+    units_on: rows
+    groups:
+      - select: {kind: door, material: pvc}
+        count: total
+        rows:
+          - label: PVC door Frame ({mark})
+            number: n
+            length: 2*H + W
+    space_after: 1
+
+  # 3. PVC door shutters: ground floor and each typical floor, number x width x height.
+  - sl: 3
+    heading: PVC door shutter ({marks})
+    units_on: heading
+    groups:
+      - select: {kind: door, material: pvc, storeys: ground}
+        count: per_storey
+        rows: [{label: Ground Floor, number: n, length: W, height: H}]
+      - select: {kind: door, material: pvc, storeys: typical}
+        count: per_storey
+        rows: [{label: "In Each Floor - {typical_from} to {typical_to} th", number: n, length: W, height: H}]
+
+  # 4. Window frames, running metres: top and bottom members x width, side members x height, all typical floors.
+  - sl: 4
+    heading: Window Frame (Total)
+    groups:
+      - select: {kind: window, storeys: typical}
+        count: per_storey
+        # The office's sheet writes the window count (=24*4) in NUMBER on the first mark's heading only; four of five
+        # leave it blank, so it is left out here and the difference is asked, not decided.
+        # To print it on every mark: number: [n, storeys]
+        mark_heading: {label: "{roman}){mark}", remark: "Total:- {n}"}
+        rows:
+          - {id: top_bottom, label: (a) Bottom & Top Frame, number: [members * n, storeys], length: W}
+          - {id: sides, label: (b) Side Frame, number: [members * n, storeys], length: H}
+    totals:
+      - {label: Top bottom, sum: top_bottom, unit: false}
+      - {label: Side Frame, sum: sides}
+
+  # 5. Window shutters per typical floor, then all typical floors.
+  - sl: 5
+    heading: Window Shutter (In Each Floor- {typical_from_ord} to {typical_to_ord})
+    groups:
+      - select: {kind: window, storeys: typical}
+        count: per_storey
+        rows: [*window_shutter]
+    totals:
+      - {label: Total}
+      - {label: All Floor, of: previous, times: storeys}
+
+  # Wood paint, all storeys: frames = number x running length x girth; shutters = number x faces x width x height.
+  - heading: Wood paint
+    heading_on_previous_row: true
+    groups:
+      - select: {kind: door, material: wood}
+        count: total
+        mark_heading: {label: "{roman}) {mark} ({width_mm} x {height_mm})"}
+        rows:
+          - {label: (a) Frame, number: n, length: 2*H + W, width: girth}
+          - {label: (b) Shutter, number: [n, faces], length: W, height: H}
+    totals: [{label: Total}]
+
+  # Steel paint on windows per typical floor, then all typical floors.
+  - heading: Steel Paint  (In Each Floor- {typical_from_ord} to {typical_to_ord})
+    groups:
+      - select: {kind: window, storeys: typical}
+        count: per_storey
+        rows: [*window_shutter]
+    totals:
+      - {label: Total, unit: false}
+      - {label: All Floor, of: previous, times: storeys}
+
+  # Stainless steel railings, running metres: number x length.
+  - heading: S.S Railing
+    groups:
+      - select: {railing: stair}
+        rows: [{label: (a) Stair, number: n, length: L}]
+      - heading: (b) Baranda
+        select: {railing: verandah}
+        rows: [{label: "{Subkind}", number: n, length: L}]
+    totals: [{label: Total}]
