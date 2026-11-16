@@ -232,3 +232,11 @@ def test_overlay_of_a_real_sample_plan_sheet(tmp_path, real_plan):
     assert walls and all(e["handles"] and "mm thick" in e["size"] for e in walls)
     assert any(e["kind"] == "finding" for e in elements.values())
     assert api.get(f"/imports/{import_id}/sheets/2/overlay.svg").status_code == 404
+
+
+def test_review_page_is_served_and_linked_from_the_brief_page(tmp_path):
+    _, _, api = _app(tmp_path)
+    page = api.get("/import")
+    assert page.status_code == 200 and "Drawings to model" in page.text
+    assert 'id="assume" disabled' in page.text  # "assume" starts disabled until the location is set
+    assert 'href="/import"' in api.get("/").text
