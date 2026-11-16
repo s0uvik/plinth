@@ -125,7 +125,25 @@
             margin-top: var(--s1); flex-wrap: wrap; }
   .q-opts { display: flex; gap: var(--s2); flex-wrap: wrap; margin-top: var(--s2); }
   .q-input { display: flex; gap: var(--s2); margin-top: var(--s2); }
-  .q-input input { padding: var(--s1) var(--s2); font-size: var(--t-sm); }
+  .q-input input { padding: var(--s1) var(--s2); font-size: var(--t-sm); flex: 1; min-width: 0; width: auto; }
+  .q-opts button[aria-pressed=true] { box-shadow: inset 0 0 0 2px var(--blue-600); }
+  /* answer forms: built from the answer's shape; labels lighter than the values typed */
+  .q-form { margin-top: var(--s3); padding: var(--s4); background: var(--grey-50); border-radius: var(--radius);
+            border: 1px solid var(--grey-200); }
+  .q-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: var(--s3); }
+  .q-fields .wide { grid-column: 1 / -1; }
+  .q-form label { font-size: var(--t-xs); font-weight: 600; color: var(--grey-600); margin-bottom: var(--s1);
+                  text-transform: none; }
+  .q-form input, .q-form select, .q-form textarea { width: 100%; font: inherit; font-size: var(--t-sm); color: var(--grey-800);
+       padding: var(--s1) var(--s2); border: 1px solid var(--grey-200); border-radius: var(--radius); background: white; }
+  .q-form textarea { font-family: ui-monospace, Consolas, monospace; font-size: var(--t-xs); min-height: 72px; resize: vertical; }
+  .q-form fieldset { border: 0; padding: 0; margin: 0; }
+  .q-form legend { font-size: var(--t-xs); font-weight: 600; color: var(--grey-600); padding: 0; margin-bottom: var(--s2); }
+  .q-row { display: flex; gap: var(--s3); align-items: end; padding: var(--s3) 0; border-top: 1px solid var(--grey-200); }
+  .q-row:first-child { border-top: 0; padding-top: 0; }
+  .q-row .q-fields { flex: 1; }
+  .q-form .actions { margin-top: var(--s4); }
+  .q-json { margin-top: var(--s2); }
   .pill { display: inline-block; font-size: var(--t-xs); font-weight: 600; border-radius: 999px; padding: 0 var(--s2);
           letter-spacing: .02em; }
   .pill.user { background: var(--green-50); color: var(--green-700); }
@@ -562,33 +580,213 @@ function questionView(q) {
     meta.append(link);
   }
   node.append(el("p", {class: "q-text"}, q.text), meta);
-  const controls = () => {
-    if (q.options && q.options.length) {
-      return el("div", {class: "q-opts"}, ...q.options.map(o => {
-        const b = el("button", {class: "secondary small"}, o);
-        b.onclick = () => busy(b, () => answer(q.id, o));
-        return b;
-      }));
+  if (q.answered_by) {
+    const change = el("button", {class: "link"}, "Change");
+    const row = el("div", {class: "answer"}, el("span", {class: `pill ${q.answered_by}`}, q.answered_by === "user" ? "Answered by you" : "Assumed"),
+                   el("strong", {}, answerText(q.answer)), change);
+    change.onclick = () => row.replaceWith(answerControls(q, q.answer));
+    node.append(row);
+  } else {
+    node.append(answerControls(q));
+  }
+  return node;
+}
+
+// ---- answer controls: option buttons, a form where the answer is structured, free text, and JSON as a fallback.
+// A choice's value is what is sent: a plain option is sent as clicked; a shape (an object, or a list of one object)
+// opens a form built from it. A shape is the answer with blanks: null for a number to give, "" for text, a non-empty
+// string or a boolean for a fixed part (sent as it is), [one object] for rows to add. plan_input questions carry
+// their machine values in key.options_raw; the other shapes mirror b2m.cad.answers (by answer_type) and the
+// estimate's own questions (by id).
+
+const ENUMS = {function: ["interior", "exterior"], kind: ["stair", "verandah", "balcony"]};
+const isNumberKey = (k) => /_mm$/.test(k) || k === "count" || k === "storey";
+const FIELD_LABELS = {thickness_mm: "Thickness (mm)", length_mm: "Length of one (mm)", count: "How many",
+                      storey: "Storey (blank: all)", subkind: "Subkind (e.g. main)", new_marks: "New mark for the other width"};
+
+function fieldLabel(k) {
+  if (/^\d+(\.\d+)?$/.test(k)) return `The ${k} mm wide ones`;  // new_marks: by drawn width
+  return FIELD_LABELS[k] || cap(k.replace(/_mm$/, " (mm)").replaceAll("_", " "));
+}
+
+function choicesFor(q) {
+  const opts = q.options || [], raw = q.key?.options_raw, t = q.answer_type, id = q.id;
+  const plain = opts.map(o => ({label: o, value: o}));
+  const mapped = (test, shape) => opts.map(o => ({label: o, value: test(o) ? shape() : o}));
+  if (Array.isArray(raw) && raw.length && raw.length === opts.length)  // a plain option goes as its words, as before
+    return opts.map((o, i) => ({label: o, value: isShape(raw[i]) ? raw[i] : o}));
+  if (t === "opening_host")
+    return opts.map(o => ({label: o, value: /^skip/i.test(o) ? "skip" : {mode: "new_wall", thickness_mm: null, function: "interior"}}));
+  if (t === "opening_mark") return mapped(o => /new mark/i.test(o), () => ({mark: ""}));
+  if (t === "mark_width") {
+    const others = (q.key?.widths || []).filter(w => w !== q.key?.keep);
+    return mapped(o => /two types|new mark/i.test(o), () => ({split: true, new_marks: Object.fromEntries(others.map(w => [String(w), ""]))}));
+  }
+  if (t === "rooms")
+    return opts.map(o => ({label: o, value: /^one room/i.test(o) ? {one_room: true, name: ""} : /^skip/i.test(o) ? {skip: true}
+      : {lines: Object.fromEntries((q.key?.instances || []).map(i => [i.ref, []]))}}));
+  if (t === "location") return mapped(o => /^another place/i.test(o), () => ({city: "", municipality: "", state: ""}));
+  if (t === "rule_set") return mapped(o => /^other rules/i.test(o), () => ({rule_sets: []}));
+  if (t === "door_height") return [...plain, {label: "Give the height", value: {height_mm: null}}];
+  if (t === "window_size") return [...plain, {label: "Give sill and head", value: {sill_mm: null, head_mm: null}}];
+  if (t === "length") return [...plain, {label: "Give the length", value: {value_mm: null}}];
+  if (id.startsWith("estimate:railings:"))
+    return [...plain, {label: "Give the railings", value: [{kind: id.split(":")[2], subkind: "", length_mm: null, count: null, storey: null}]}];
+  if (id.startsWith("estimate:material:")) {
+    const materials = opts.filter(o => o !== "exclude");
+    return [...plain, {label: "Counts per material", value: Object.fromEntries(materials.map(m => [m, 0]))}];
+  }
+  return plain;
+}
+
+const isShape = (v) => v !== null && typeof v === "object";
+const isFixed = (k, v) => !ENUMS[k] && (typeof v === "boolean" || (typeof v === "string" && v !== ""));
+// A shape with nothing to fill in ({"skip": true}) is sent on click like a plain option.
+const needsForm = (v) => isShape(v) && (Array.isArray(v) || Object.entries(v).some(([k, x]) => !isFixed(k, x)));
+const sameShape = (shape, a) => isShape(a) && Array.isArray(shape) === Array.isArray(a)
+  && (Array.isArray(a) || Object.keys(a).every(k => k in shape));
+
+function answerControls(q, current) {
+  const box = el("div");
+  const choices = choicesFor(q);
+  const free = ["text", "choice_or_text"].includes(q.answer_type) || !choices.length;
+  const formBox = el("div"), errors = el("div");  // a failed answer is shown here, by the question
+  const buttons = [];
+  let form = null;  // the open form: {node, read}
+  const openForm = (choice, initial, button) => {
+    buttons.forEach(b => b.setAttribute("aria-pressed", String(b === button)));
+    form = shapeForm(choice.value, initial);
+    const save = el("button", {class: "primary small"}, "Save answer");
+    save.onclick = () => busy(save, () => answer(q.id, form.read()), errors);
+    formBox.replaceChildren(el("div", {class: "q-form"}, form.node, el("div", {class: "actions"}, save)));
+  };
+  if (choices.length) {
+    const opts = el("div", {class: "q-opts"});
+    for (const c of choices) {
+      const b = el("button", {class: "secondary small"}, c.label);
+      if (needsForm(c.value)) { b.setAttribute("aria-pressed", "false"); b.onclick = () => openForm(c, null, b); buttons.push(b); }
+      else b.onclick = () => busy(b, () => answer(q.id, c.value), errors);
+      opts.append(b);
     }
+    box.append(opts);
+  }
+  if (free) {
     const input = el("input", {type: "text", placeholder: "Your answer"});
+    if (typeof current === "string") input.value = current;
     const save = el("button", {class: "secondary small"}, "Save");
     save.onclick = () => busy(save, () => {
       if (!input.value.trim()) throw new Error("Type an answer first.");
       return answer(q.id, input.value.trim());
-    });
+    }, errors);
     input.onkeydown = (e) => { if (e.key === "Enter") save.click(); };
-    return el("div", {class: "q-input"}, input, save);
-  };
-  if (q.answered_by) {
-    const change = el("button", {class: "link"}, "Change");
-    const row = el("div", {class: "answer"}, el("span", {class: `pill ${q.answered_by}`}, q.answered_by === "user" ? "Answered by you" : "Assumed"),
-                   el("strong", {}, typeof q.answer === "string" ? q.answer : JSON.stringify(q.answer)), change);
-    change.onclick = () => row.replaceWith(controls());
-    node.append(row);
-  } else {
-    node.append(controls());
+    box.append(el("div", {class: "q-input"}, input, save));
   }
-  return node;
+  box.append(formBox);
+  // An answer being changed opens the form it fits, filled in; a question with nothing but a form opens it at once.
+  const shaped = choices.filter(c => needsForm(c.value));
+  const fits = shaped.find(c => sameShape(c.value, current)) || (!free && choices.length === 1 && shaped.length === 1 ? shaped[0] : null);
+  if (fits) openForm(fits, sameShape(fits.value, current) ? current : null, buttons[shaped.indexOf(fits)]);
+
+  const jsonBox = el("div", {class: "q-json"});
+  const toggle = el("button", {class: "link"}, "Type the answer as JSON");
+  toggle.onclick = () => {
+    if (jsonBox.childElementCount) { jsonBox.replaceChildren(); toggle.textContent = "Type the answer as JSON"; return; }
+    let start = current;
+    try { if (form) start = form.read(); } catch (e) { /* a half-filled form: start from the answer */ }
+    const area = el("textarea", {rows: "4", spellcheck: "false", "aria-label": "Answer as JSON"});
+    area.value = start === undefined || start === null ? "" : JSON.stringify(start, null, 1);
+    const save = el("button", {class: "secondary small"}, "Save JSON answer");
+    save.onclick = () => busy(save, () => {
+      let value;
+      try { value = JSON.parse(area.value); }
+      catch (e) { throw new Error(`That is not valid JSON (${e.message}). Text goes in double quotes: "north".`); }
+      return answer(q.id, value);
+    }, errors);
+    jsonBox.replaceChildren(el("div", {class: "q-form"}, area, el("div", {class: "actions"}, save)));
+    toggle.textContent = "Hide JSON";
+  };
+  if (shaped.length || isShape(current)) box.append(el("div", {class: "q-meta"}, toggle), jsonBox);
+  box.append(errors);
+  return box;
+}
+
+// A form for a shape: {node, read()}. read() gives the answer to send (it throws when a field cannot be read).
+function shapeForm(shape, initial) {
+  if (Array.isArray(shape)) return rowsForm(shape[0], Array.isArray(initial) ? initial : null);
+  const fields = objectFields(shape, initial);
+  return {node: fields.node, read: fields.read};
+}
+
+function rowsForm(rowShape, initial) {
+  const list = el("div");
+  const rows = [];
+  const addRow = (value) => {
+    const fields = objectFields(rowShape, value);
+    const remove = el("button", {class: "link", type: "button"}, "Remove");
+    const row = el("div", {class: "q-row"}, fields.node, remove);
+    const entry = {row, read: fields.read};
+    remove.onclick = () => { rows.splice(rows.indexOf(entry), 1); row.remove(); };
+    rows.push(entry);
+    list.append(row);
+  };
+  (initial && initial.length ? initial : [null]).forEach(addRow);
+  const add = el("button", {class: "link", type: "button"}, "Add another");
+  add.onclick = () => addRow(null);
+  return {node: el("div", {}, list, el("div", {class: "q-meta"}, add)), read: () => rows.map(r => r.read())};
+}
+
+function objectFields(shape, initial) {
+  const grid = el("div", {class: "q-fields"});
+  const readers = [];
+  for (const [k, v] of Object.entries(shape)) {
+    const given = initial && k in initial ? initial[k] : undefined;
+    const id = `f${Math.random().toString(36).slice(2, 9)}`;
+    if (ENUMS[k]) {
+      const values = [...new Set([...ENUMS[k], ...(typeof v === "string" && v ? [v] : []), ...(typeof given === "string" ? [given] : [])])];
+      const select = el("select", {id}, ...values.map(x => el("option", {value: x}, x)));
+      select.value = given ?? v ?? values[0];
+      grid.append(el("div", {}, el("label", {for: id}, fieldLabel(k)), select));
+      readers.push([k, () => select.value]);
+    } else if (isFixed(k, v)) {
+      readers.push([k, () => v]);  // a fixed part of the answer (mode, one_room ...)
+    } else if (isNumberKey(k) || typeof v === "number") {
+      const input = el("input", {id, type: "number", step: "any", min: "0"});
+      if (given !== undefined && given !== null) input.value = given;
+      else if (typeof v === "number" && v) input.value = v;
+      grid.append(el("div", {}, el("label", {for: id}, fieldLabel(k)), input));
+      readers.push([k, () => input.value.trim() === "" ? (typeof v === "number" ? 0 : null) : Number(input.value)]);
+    } else if (isShape(v) && !Array.isArray(v) && Object.keys(v).length) {
+      const inner = objectFields(v, isShape(given) ? given : null);
+      grid.append(el("fieldset", {class: "wide"}, el("legend", {}, fieldLabel(k)), inner.node));
+      readers.push([k, inner.read]);
+    } else if (isShape(v)) {  // a list or map whose items have no shape here (separation lines, rule set ids)
+      const area = el("textarea", {id, rows: "2", spellcheck: "false"});
+      area.value = JSON.stringify(given ?? v);
+      grid.append(el("div", {class: "wide"}, el("label", {for: id}, `${fieldLabel(k)} (JSON)`), area));
+      readers.push([k, () => {
+        try { return JSON.parse(area.value); }
+        catch (e) { throw new Error(`${fieldLabel(k)}: not valid JSON (${e.message}).`); }
+      }]);
+    } else {
+      const input = el("input", {id, type: "text"});
+      if (given !== undefined && given !== null) input.value = given;
+      grid.append(el("div", {}, el("label", {for: id}, fieldLabel(k)), input));
+      readers.push([k, () => input.value.trim() || null]);
+    }
+  }
+  return {node: grid, read: () => Object.fromEntries(readers.map(([k, read]) => [k, read()]))};
+}
+
+// An answer in words: "thickness 125 mm · function interior"; rows on their own lines.
+function answerText(a) {
+  if (a === null || a === undefined) return "";
+  if (Array.isArray(a)) return a.map(answerText).join("; ");
+  if (typeof a !== "object") return String(a);
+  return Object.entries(a).filter(([, v]) => v !== null && v !== "" && !(isShape(v) && !Object.keys(v).length))
+    .map(([k, v]) => /_mm$/.test(k) && typeof v === "number" ? `${k.replace(/_mm$/, "").replaceAll("_", " ")} ${v} mm`
+                     : typeof v === "boolean" ? (v ? k.replaceAll("_", " ") : null)
+                     : `${k.replaceAll("_", " ")} ${isShape(v) ? `(${answerText(v)})` : v}`)
+    .filter(Boolean).join(" · ");
 }
 
 async function answer(questionId, value) {
@@ -714,19 +912,28 @@ function afterBuild(run) {
   out.push(el("h3", {}, "Drawing set"));
   const d = run.drawings;
   const drawBox = el("div", {id: "drawings-body"});
+  // One action at a time: make the set, or once it is made, remake it (B2M deletes its own sheets first).
+  const drawingsButton = (label, body) => {
+    const b = el("button", {class: "secondary small"}, label);
+    b.onclick = () => {
+      if (body.remake && !confirm(`Remake the drawing set? B2M deletes the sheets it made for this run (${d.sheets.join(", ")}) ` +
+                                  "and makes them again from the model as it is now.")) return;
+      busy(b, async () => {
+        try { await call(`/imports/${importId}/drawings`, body); }
+        catch (e) { if (e.detail?.questions) await refreshReview(); throw e; }
+        refreshRun();
+      }, $("drawings-notice"));
+    };
+    return el("div", {class: "actions"}, b);
+  };
   if (d?.sheets?.length) {
     drawBox.append(el("div", {class: `note ${d.status === "done" ? "ok" : "warn"} small`},
       `Sheets ${d.sheets.join(", ")}` + (d.failed?.length ? `; ${d.failed.length} steps failed` : ""),
       el("div", {}, d.pdf ? link(`/runs/${run.run_id}/drawings.pdf`, "PDF") : "", " · ",
-         link(`/runs/${run.run_id}/drawings-comparison.html`, "Comparison with the source sheets"))));
+         link(`/runs/${run.run_id}/drawings-comparison.html`, "Comparison with the source sheets"))),
+      drawingsButton("Remake drawing set", {run_id: run.run_id, remake: true}));
   } else {
-    const make = el("button", {class: "secondary small"}, "Make drawing set");
-    make.onclick = () => busy(make, async () => {
-      try { await call(`/imports/${importId}/drawings`, {run_id: run.run_id}); }
-      catch (e) { if (e.detail?.questions) await refreshReview(); throw e; }
-      refreshRun();
-    }, $("drawings-notice"));
-    drawBox.append(el("div", {class: "actions"}, make));
+    drawBox.append(drawingsButton("Make drawing set", {run_id: run.run_id}));
   }
   out.push(drawBox, el("div", {id: "drawings-notice"}), el("div", {id: "drawings-questions"}));
 
