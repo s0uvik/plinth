@@ -12,7 +12,10 @@ wet riser with a landing valve per floor, call points, tanks and pumps, sprinkle
 places in the common lobbies and the common core where they are devices or a riser, and lists for the fire consultant
 where they are systems (sprinklers, detection, PA, fire lift, refuge areas, yard hydrants). Extinguishers: one per
 ``per_area_m2`` of the floor, at least ``min_per_floor``, on the walls of the common rooms by their doors; a floor
-with no common room (a stilt floor) is asked. Exit signs: above each door of a common room that leads outside, and
+with no common room (a stilt floor) hangs them on the walls nearest the foot of the stair starting on it, clear of
+the stair's run and headroom, 1.5 m apart (an assumption, listed back), and is asked when it has no stair or no such
+wall: ``fitout:extinguisher_room:<level>`` answers a room key, or a place on a wall (``{"near": "stair"}``, or
+``{"point": [x, y]}``: the walls nearest that point; see ``b2m.fitout.siting``). Exit signs: above each door of a common room that leads outside, and
 facing each stair that starts or ends in it. Every provision gets a record saying what was laid out for it.
 """
 
@@ -24,6 +27,7 @@ from shapely.geometry import Point as SPoint, Polygon
 
 from b2m.fitout.mepcore import (Ctx, Host, Provision, add, centre_of, common_core, core_points, nearest_spot, spread,
                                 wall_spots)
+from b2m.fitout import siting
 from b2m.fitout.rooms import Room
 from b2m.plan import ShaftOp
 
@@ -90,17 +94,42 @@ def extinguishers(ctx: Ctx) -> list[str]:
         area = sum(r.area_m2 or 0 for r in ctx.fit_rooms if r.level == level)
         n = max(ex.min_per_floor, math.ceil(area / ex.per_area_m2))
         rooms = common_rooms(ctx, level)
+        qid = f"fitout:extinguisher_room:{level}"
+        given = ctx.answer(qid)
+        if not rooms and isinstance(given, str) and given in ctx.by_key and ctx.by_key[given].level == level:
+            rooms = [ctx.by_key[given]]
         if not rooms:
-            given = ctx.answer(f"fitout:extinguisher_room:{level}")
-            if given in ctx.by_key and ctx.by_key[given].level == level:
-                rooms = [ctx.by_key[given]]
-        if not rooms:
-            ctx.ask(f"fitout:extinguisher_room:{level}", "fitout_fire", f"Where do the {n} extinguishers of {level} "
-                    "go? "
-                    "The floor has no common room (lobby, stair, parking) to hang them in; answer a room key.",
+            loc = siting.location(given)
+            assumed = loc is None and given is None and any(s.op.base_level == level for s in siting.stairs_of(ctx))
+            if assumed:  # a stilt floor with its stair: by the stair, where people pass (listed back)
+                loc = siting.Location(near="stair")
+            reason = None
+            if loc is not None:
+                spots, reason = siting.wall_spots_at(ctx, loc, level, w, spec.size.depth_mm if spec.size else 200,
+                                                     ex.height_mm - h, ex.height_mm, n=n, min_gap=1500)
+                for sp in spots:
+                    keys.append(siting.place_on_wall(ctx, "extinguisher", "fire", sp, ex.height_mm - h / 2,
+                                                     load=False, rating=ex.kind, source=ex.source,
+                                                     note=siting.spot_note(sp, loc) +
+                                                     (" (assumed)" if assumed else " (answer)")).key)
+                for _ in range(n - len(spots) if spots else 0):
+                    ctx.unplace("extinguisher", None, level, "no more wall near the stair, 1.5 m from the other "
+                                "extinguishers")
+                if spots:
+                    if assumed:
+                        ctx.assume(qid, f"The {n} extinguishers of {level} (no common room on it) hang on the walls "
+                                   "nearest the foot of its stair, clear of the stair's run and headroom (answer a "
+                                   "room key or a place on a wall to move them)", {"near": "stair"}, ex.source,
+                                   [level])
+                    continue
+            ctx.ask(qid, "fitout_fire", f"Where do the {n} extinguishers of {level} go? " +
+                    (f"The {'assumed' if assumed else 'answered'} place has no wall for them: {reason}. " if reason
+                     else "The floor has no common room (lobby, stair, parking) to hang them in. ") +
+                    f"Answer a room key, or a place on a wall: {siting.LOCATION_SHAPES}.",
                     options=[r.key for r in ctx.fit_rooms if r.level == level])
             for _ in range(n):
-                ctx.unplace("extinguisher", None, level, "no common room on the floor (asked)")
+                ctx.unplace("extinguisher", None, level, "no common room on the floor (asked)" if not reason else
+                            f"{reason} (asked)")
             continue
         left = n
         for i, room in enumerate(rooms):

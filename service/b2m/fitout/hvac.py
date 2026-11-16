@@ -8,7 +8,10 @@ Why so: Indian apartments are cooled room by room with wall-mounted split units,
 goes high (``indoor_bottom_mm``) on an outside wall so the refrigerant pipe goes straight through the wall to the
 outdoor unit on brackets outside it (well within ``max_pipe_run_m``). It may sit above a window (its head is below
 the unit) but not above a door, nor over a wardrobe. The size steps with the room's area (``split_ac.sizing``);
-a room larger than the last step is asked (how many units of what size), never guessed. Exhaust fans go high on a
+a room larger than the last step is asked (how many units of what size), never guessed: ``fitout:ac:<name>:<area>``
+answers one size in TR, a list of sizes (``[1.5, 1.5]``: two units) or "none". Several units in one room stand on its
+outside walls as far apart as the walls let them (up to ``AC_SPACING_MM``, then nearest the middle), each with its
+outdoor unit outside its wall clear of the others; the electrical layout gives each its 16 A socket and circuit. Exhaust fans go high on a
 wall that opens to the outside or onto an open-to-sky duct (the toilets of the G+4 sample have no outside wall: their
 windows open onto the duct), near the wet area (shower, WC) or the hob. Refrigerant piping and condensate drains are
 not drawn (listed in the unit's note).
@@ -20,9 +23,12 @@ import math
 
 from shapely.geometry import Point as SPoint
 
-from b2m.fitout.mepcore import Ctx, Host, add, centre_of, face_point, nearest_spot, r1, wall_spots
+from b2m.fitout.mepcore import (OPENING_MARGIN_MM, Ctx, Host, Spot, centre_of, face_point, nearest_spot, r1,
+                                wall_spots)
 from b2m.fitout.rooms import Room
 from b2m.fitout.rules import Size, normalise
+
+AC_SPACING_MM = 3000.0  # several units in one room: this far apart is far enough (each cools its part)
 
 
 def lay_out(ctx: Ctx) -> None:
@@ -35,7 +41,7 @@ def _ac_sizes(ctx: Ctx, room: Room) -> list[float] | None:
     tr = ac.tr_for(room.area_m2 or 0)
     if tr is not None:
         return [tr]
-    qid = f"fitout:ac:{normalise(room.name) or room.key}:{(room.area_m2 or 0):.1f}"
+    qid = f"fitout:ac:{normalise(room.name) or room.key}:{(room.area_m2 or 0):.0f}"  # whole m², so a small change in the geometry keeps the answer
     given = ctx.answer(qid)
     if given == "none":
         return []
@@ -68,34 +74,80 @@ def split_acs(ctx: Ctx) -> None:
             ctx.unplace("ac_indoor", room, room.level, f"the ceiling ({ctx.ceiling(room):.0f} mm) is too low for the "
                         f"indoor unit ({ac.indoor_bottom_mm:g}-{top:g} mm)")
             continue
-        for i, tr in enumerate(sizes):
-            outer = [fi for fi, f in enumerate(room.faces) if f.kind == "wall" and f.outer]
-            if not outer:
-                ctx.unplace("ac_indoor", room, room.level, "no outside wall for the indoor unit (the outdoor unit "
-                            "must stand outside it)")
-                break
-            spots = []
-            for sp in wall_spots(ctx, room, ac.indoor.width_mm, ac.indoor_bottom_mm, top, faces=outer):
-                f = room.faces[sp.face]
-                out = face_point(f, sp.s, -((f.thickness_mm or 250) + ac.outdoor.depth_mm / 2 + 50))
-                if not ctx.footprint(room.level).covers(SPoint(out)):
-                    spots.append(sp)
-            sp = nearest_spot(spots, centre_of(room))
-            if sp is None:
-                ctx.unplace("ac_indoor", room, room.level, "no stretch of outside wall clear of doors, windows above "
-                            f"{ac.indoor_bottom_mm:g} mm and tall furniture for a {ac.indoor.width_mm:g} mm unit")
-                break
+        outer = [fi for fi, f in enumerate(room.faces) if f.kind == "wall" and f.outer]
+        if not outer:
+            ctx.unplace("ac_indoor", room, room.level, "no outside wall for the indoor unit (the outdoor unit must "
+                        "stand outside it)")
+            continue
+        spots = []
+        for sp in wall_spots(ctx, room, ac.indoor.width_mm, ac.indoor_bottom_mm, top, faces=outer):
+            if not ctx.footprint(room.level).covers(SPoint(_outdoor_point(ac, room, sp))):
+                spots.append(sp)
+        chosen = _choose(ac, room, spots, len(sizes))
+        for _ in range(len(sizes) - len(chosen)):
+            ctx.unplace("ac_indoor", room, room.level, "no stretch of outside wall clear of doors, windows above "
+                        f"{ac.indoor_bottom_mm:g} mm and tall furniture for a {ac.indoor.width_mm:g} mm unit" +
+                        (f" (only {len(chosen)} of the {len(sizes)} units fit)" if chosen else ""))
+        for sp, tr in zip(chosen, sizes):
             f = room.faces[sp.face]
             indoor = ctx.on_wall("ac_indoor", "hvac", room, sp, ac.indoor_bottom_mm + ac.indoor.height_mm / 2,
                                  size=ac.indoor, rating=f"{tr:g} TR", source=ac.source,
                                  note="refrigerant pipes and condensate drain through the wall (not drawn)")
-            out = face_point(f, sp.s, -((f.thickness_mm or 250) + ac.outdoor.depth_mm / 2 + 50))
             other = "right" if f.side == "left" else "left"
-            ctx.place("ac_outdoor", "hvac", room, room.level, out, ac.outdoor_bottom_mm, (-f.inward[0], -f.inward[1]),
+            ctx.place("ac_outdoor", "hvac", room, room.level, _outdoor_point(ac, room, sp), ac.outdoor_bottom_mm,
+                      (-f.inward[0], -f.inward[1]),
                       Host(kind="outside_wall", wall_key=f.wall_key, side=other,
                            height_mm=r1(ac.outdoor_bottom_mm + ac.outdoor.height_mm / 2)),
                       size=ac.outdoor, rating=f"{tr:g} TR", load=False, source=ac.source,
                       note=f"outdoor unit of {indoor.key}, powered through it")
+
+
+def _outdoor_point(ac, room: Room, sp: Spot):
+    f = room.faces[sp.face]
+    return face_point(f, sp.s, -((f.thickness_mm or 250) + ac.outdoor.depth_mm / 2 + 50))
+
+
+def _apart(ac, room: Room, a: Spot, b: Spot) -> bool:
+    """Two units' spots do not overlap: on one face a unit's width and the margins apart, and the outdoor units'
+    boxes clear of each other."""
+    if a.face == b.face and abs(a.s - b.s) < ac.indoor.width_mm + 2 * OPENING_MARGIN_MM:
+        return False
+    oa, ob = _outdoor_point(ac, room, a), _outdoor_point(ac, room, b)
+    return math.dist(oa, ob) >= ac.outdoor.width_mm + OPENING_MARGIN_MM
+
+
+def _choose(ac, room: Room, spots: list[Spot], n: int) -> list[Spot]:
+    """``n`` spots for a room's units: one unit nearest the room's middle; several as far apart as the outside walls
+    let them (up to ``AC_SPACING_MM``, so each cools its part of the room), then nearest the middle."""
+    centre = centre_of(room)
+    if n <= 1 or len(spots) < 2:
+        sp = nearest_spot(spots, centre)
+        return [sp] if sp is not None and n >= 1 else []
+
+    def gap(group):
+        return min(math.dist(p.point, q.point) for i, p in enumerate(group) for q in group[i + 1:])
+
+    best = None
+    for i, a in enumerate(spots):
+        for b in spots[i + 1:]:
+            if not _apart(ac, room, a, b):
+                continue
+            pair = [a, b]
+            key = (-min(gap(pair), AC_SPACING_MM), sum(math.dist(p.point, centre) for p in pair),
+                   [(p.face, p.s) for p in pair])
+            if best is None or key < best[0]:
+                best = (key, pair)
+    if best is None:
+        sp = nearest_spot(spots, centre)
+        return [sp] if sp is not None else []
+    chosen = sorted(best[1], key=lambda p: (p.face, p.s))
+    while len(chosen) < n:
+        rest = [sp for sp in spots if all(_apart(ac, room, sp, c) for c in chosen)]
+        if not rest:
+            break
+        chosen.append(max(rest, key=lambda sp: (min(min(math.dist(sp.point, c.point) for c in chosen),
+                                                    AC_SPACING_MM), -math.dist(sp.point, centre), -sp.face, -sp.s)))
+    return chosen
 
 
 def exhausts(ctx: Ctx) -> None:
