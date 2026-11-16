@@ -166,12 +166,17 @@ def measured_point(m: Measurement, front: str, point: tuple[float, float], rotat
     return (round(point[0] - back[0], 1), round(point[1] - back[1], 1)), rotation_deg + FRONT_TURN[front]
 
 
+OWN_MOUNTING_MM = 300.0  # a fixture whose geometry starts this high above its origin carries its own mounting height
+
+
 def measured_offset(m: Measurement, elevation: float, on_counter: bool) -> float:
     """The offset above the level: the layout's elevation (a counter top for a sink or hob, whose family origin is on
     the surface it sits in), raised for an item on the floor whose geometry reaches below its origin. The measured
     base offset (a family that took the point's z as an offset) is the add-in's way of placing, not the family's."""
     if not on_counter and m.base_mm < -BASE_TOL_MM:
         return elevation - m.base_mm
+    if on_counter and m.base_mm > OWN_MOUNTING_MM:
+        return 0.0  # drawn at its own counter height (a kitchen sink starting 684 mm up): on the level, not raised again
     return elevation
 
 

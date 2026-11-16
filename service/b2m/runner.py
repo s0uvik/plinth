@@ -310,11 +310,26 @@ class Runner:
         }
 
     def remove(self, created: dict[str, int]) -> dict[str, Any]:
-        """Delete everything a run created, newest first, as one Revit undo step."""
+        """Delete everything a run created, newest first: the elements, then the types and families its type steps
+        made (keys TYPE-... and FIT-TYPE...). Two calls, because the add-in refuses to delete a type still in use, and
+        the elements placed with a copied type count as its users until they are gone."""
         if not created:
             return {"deleted": 0, "failedCount": 0}
-        ids = list(reversed(list(created.values())))
-        result = self.revit.call("delete_element", {"elementIds": ids}, timeout_seconds=BATCH_TIMEOUT_SECONDS)
+        types = [i for k, i in created.items() if k.startswith(TYPE_KEY_PREFIXES)]
+        elements = [i for k, i in created.items() if not k.startswith(TYPE_KEY_PREFIXES)]
+        result: dict[str, Any] = {"deleted": 0, "failedIds": [], "errors": []}
+        for ids in (list(reversed(elements)), list(reversed(types))):
+            if not ids:
+                continue
+            part = self.revit.call("delete_element", {"elementIds": ids}, timeout_seconds=BATCH_TIMEOUT_SECONDS)
+            for k, v in part.items():
+                if k == "deleted" or k == "deletedCount":
+                    result[k] = result.get(k, 0) + (v or 0)
+                elif isinstance(v, list):
+                    result[k] = (result.get(k) or []) + v
+                else:
+                    result.setdefault(k, v)
+        result["failedCount"] = len(result.get("failedIds") or [])
         if result.get("failedIds"):
             # Elements the user already removed (Ctrl+Z on a batch, or deleted by hand) are not failures.
             missing = set(self.revit.call("analyze_model_statistics", {"elementIds": result["failedIds"]}).get("missingIds") or [])
@@ -324,6 +339,9 @@ class Runner:
                 result["failedCount"] = len(result["failedIds"])
                 result["errors"] = [e for e in result.get("errors") or [] if int(e.split(":", 1)[0]) not in missing]
         return result
+
+
+TYPE_KEY_PREFIXES = ("TYPE-", "FIT-TYPE")  # keys of type steps (types and families a run made)
 
 
 def _failed_index(data: Any) -> int | None:

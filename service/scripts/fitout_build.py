@@ -194,6 +194,7 @@ def main(argv: list[str] | None = None, *, connect: Callable[[], Any] | None = N
     if not found.ready and not args.partial:
         print("not built: there are open questions (answer them, or pass --partial to build what is planned)")
         return 1
+    to_build = found.plan
     if args.flat:
         keep = {r.key for r in model.rooms if r.flat == args.flat and (not args.level or r.level == args.level)}
         if not keep:
@@ -201,12 +202,12 @@ def main(argv: list[str] | None = None, *, connect: Callable[[], Any] | None = N
                   + f"; flats: {sorted({str(r.flat) for r in model.rooms if r.flat})}")
             return 2
         ops = [o for o in found.plan.ops if getattr(o, "op", None) != "family" or getattr(o, "room_key", None) in keep]
-        found.plan = found.plan.model_copy(update={"ops": ops})
+        to_build = found.plan.model_copy(update={"ops": ops})
         print(f"pilot: flat {args.flat}{' on ' + args.level if args.level else ''}: "
               f"{sum(1 for o in ops if o.op == 'family')} families in {len(keep)} rooms")
     build_connect = connect or (lambda: RevitClient.connect(required_commands=BUILD_COMMANDS))
     service = BuildService(store, connect=build_connect, types=types if types is not None else TypeMap.load(args.types))
-    built_run = service.build_now(found.plan, args.title)
+    built_run = service.build_now(to_build, args.title)
     fitout_run = store.get(built_run["run_id"])
     fitout_run.save("fitout_report", {**result, "building_run": args.run, "answers": answers})
     print(f"\nbuild {built_run['run_id']}: {built_run['status']}"
