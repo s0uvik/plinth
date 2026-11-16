@@ -13,7 +13,8 @@ COMMANDS = [
 
 B2M_TOOLS = {"b2m_plan_from_brief", "b2m_preview", "b2m_check", "b2m_build", "b2m_run_status", "b2m_drawing_set", "b2m_remove",
              "b2m_import_start", "b2m_import_status", "b2m_import_questions", "b2m_import_answer",
-             "b2m_import_set_location", "b2m_import_assume", "b2m_import_approve", "b2m_import_build"}
+             "b2m_import_set_location", "b2m_import_assume", "b2m_import_approve", "b2m_import_build",
+             "b2m_import_selfcheck", "b2m_import_drawings", "b2m_import_estimate"}
 GATEWAY_READS = {"revit_list_available_targets", "revit_get_current_target", "revit_health", "revit_get_operation_status",
                  "revit_lookup_message", "revit_analyze_usage_patterns", "revit_get_failure_records",
                  "revit_get_change_records", "revit_list_code_modules", "revit_list_bake_suggestions"}
@@ -104,6 +105,12 @@ def test_import_tools_forward_to_the_local_service():
     run(server.call_tool("b2m_import_assume", {"import_id": "i1", "question_ids": "all"}))
     run(server.call_tool("b2m_import_approve", {"import_id": "i1"}))
     run(server.call_tool("b2m_import_build", {"import_id": "i1", "document_title": "Scratch"}))
+    run(server.call_tool("b2m_import_answer", {"import_id": "i1", "question_id": "estimate:material:D1",
+                                               "answer": {"wood": 12, "pvc": 8}}))
+    run(server.call_tool("b2m_import_selfcheck", {"run_id": "r1"}))
+    run(server.call_tool("b2m_import_drawings", {"import_id": "i1", "run_id": "r1"}))
+    run(server.call_tool("b2m_import_estimate", {"import_id": "i1", "run_id": "r1", "reference_xlsx": "D:/est.xlsx"}))
+    run(server.call_tool("b2m_import_estimate", {"import_id": "i1"}))
     assert api.calls == [
         ("POST", "/imports", {"folder": "D:/Jobs/G4/dwg"}),
         ("GET", "/imports/i1", None),
@@ -115,6 +122,11 @@ def test_import_tools_forward_to_the_local_service():
         ("POST", "/imports/i1/assume", {"question_ids": "all"}),
         ("POST", "/imports/i1/approve", {"note": None}),
         ("POST", "/imports/i1/build", {"document_title": "Scratch"}),
+        ("POST", "/imports/i1/answers", {"question_id": "estimate:material:D1", "answer": {"wood": 12, "pvc": 8}}),
+        ("GET", "/runs/r1", None),
+        ("POST", "/imports/i1/drawings", {"run_id": "r1"}),
+        ("POST", "/imports/i1/estimate", {"run_id": "r1", "reference_xlsx": "D:/est.xlsx", "rules": None}),
+        ("POST", "/imports/i1/estimate", {"run_id": None, "reference_xlsx": None, "rules": None}),
     ]
 
 
