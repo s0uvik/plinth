@@ -245,3 +245,14 @@ def test_rules_are_not_mutated_by_a_build():
     before = copy.deepcopy(rules.model_dump())
     build_estimate(Quantities(project=project(1), openings=[door(storey=1)]), rules)
     assert rules.model_dump() == before
+
+
+def test_units_on_heading_for_a_section_and_a_group():
+    rules = small_rules(units_on="heading", groups=[
+        {"select": {"kind": "door"}, "rows": [{"label": "{mark}", "length": "W", "height": "H"}]},
+        {"heading": "Windows", "units_on": "heading", "select": {"kind": "window"},
+         "rows": [{"label": "{mark}", "length": "W"}]}])
+    q = Quantities(project=project(1), openings=[door(storey=1), window(storey=1)])
+    cells = build_estimate(q, rules).cells()
+    assert cells["H5"] == "Sqm." and cells["B7"] == "Windows" and cells["H7"] == "m."
+    assert "H6" not in cells and "H8" not in cells

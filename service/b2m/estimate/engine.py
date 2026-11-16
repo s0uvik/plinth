@@ -296,17 +296,22 @@ class _Builder:
         path = [title] if title else []
 
         measured: list[EstimateRow] = []
+        per_group: list[list[EstimateRow]] = []
         storeys_seen: set[int] = set()
         for g, items, storey_set in chosen:
-            units_on = g.units_on or sec.units_on
-            rows = self.group(g, items, storey_set, path, fields, units_on, heading_row)
+            rows = self.group(g, items, storey_set, path, fields, g.units_on or sec.units_on)
+            per_group.append(rows)
             measured += rows
             if g.count == "per_storey":
                 storeys_seen.add(len(storey_set))
         if sec.sl is not None and self.rows[start].sl is None:
             self.rows[start].sl = sec.sl
-        if heading_row is not None and sec.units_on == "heading":
-            heading_row.units = self.unit_of(measured, title or "section")
+        if sec.units_on == "heading" and any(g.units_on is None for g, _, _ in chosen):
+            if heading_row is None:
+                self.ask("rules", f"{_sec_name(sec)}: units_on is heading, but the section has no heading row.")
+            else:
+                heading_row.units = self.unit_of([r for (g, _, _), rs in zip(chosen, per_group)
+                                                  if g.units_on is None for r in rs], title or "section")
         sec_storeys = next(iter(storeys_seen)) if len(storeys_seen) == 1 else None
         if len(storeys_seen) > 1 and any(t.of for t in sec.totals):
             self.ask("rules", f"Section {title!r}: its groups cover different numbers of storeys, so 'storeys' in its "
@@ -316,11 +321,12 @@ class _Builder:
             self.new_row("blank", path)
 
     def group(self, g: GroupSpec, items: list[_Item], storey_set: list[int], path: list[str], fields: dict,
-              units_on: str, section_heading: EstimateRow | None) -> list[EstimateRow]:
+              units_on: str) -> list[EstimateRow]:
         gpath = list(path)
+        group_row: EstimateRow | None = None
         if g.heading:
             heading = self.label(g.heading, fields, "group heading")
-            self.new_row("group", path, item=heading)
+            group_row = self.new_row("group", path, item=heading)
             gpath.append(heading)
         measured: list[EstimateRow] = []
         for idx, it in enumerate(items, start=1):
@@ -335,6 +341,11 @@ class _Builder:
         if units_on == "rows":
             for r in measured:
                 r.units = self.unit_of([r], r.item or "")
+        elif units_on == "heading" and g.units_on == "heading":  # the group's own heading row
+            if group_row is None:
+                self.ask("rules", f"{' / '.join(gpath) or 'group'}: units_on is heading, but the group has no heading.")
+            else:
+                group_row.units = self.unit_of(measured, group_row.item or "")
         self.totals(g.totals, measured, gpath, len(storey_set) if g.count == "per_storey" else None,
                     g.heading or (path[0] if path else "group"))
         return measured
