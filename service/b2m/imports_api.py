@@ -63,14 +63,28 @@ def ready_to_build(project: ImportProject, building: RecognisedBuilding | None) 
     return _engine("readiness").ready_to_build(project)
 
 
-def to_plan(project: ImportProject, building: RecognisedBuilding) -> BuildPlan | list[Any]:
-    """T6: the build plan, or the list of inputs still missing. The building is the recognised one as saved; T5's
+def to_plan(project: ImportProject, building: RecognisedBuilding) -> Any:
+    """T6: the full ImportPlan (build plan, op sources, standards, counts, not_modelled), or the list of inputs still
+    missing. A plain BuildPlan is accepted from a stand-in engine. The building is the recognised one as saved; T5's
     plan bridge gives T6 the building with the answers applied and the answers in T6's own form
     (b2m.cad.plan_bridge.to_plan -> b2m.cad.to_plan.to_plan(building, answers, rules))."""
     result = _engine("plan_bridge").to_plan(project, building)
     if result.plan is None:
         return [m.model_dump(mode="json") for m in result.missing]
-    return result.plan
+    return result
+
+
+def plan_context(project: ImportProject, building: RecognisedBuilding) -> tuple[RecognisedBuilding, dict[str, Any]]:
+    """What T6 was given for the plan: the recognised building with the answers applied (the drawings as answered,
+    what the self-check compares the model with) and T6's answer map (what explains the plan's departures)."""
+    bridge = _engine("plan_bridge")
+    applied = bridge.building_for_plan(project, building)
+    return applied, bridge.plan_answers(project, applied)
+
+
+def plan_of(result: Any) -> BuildPlan:
+    """The BuildPlan inside a to_plan result (an ImportPlan, or a plain BuildPlan from a stand-in)."""
+    return result if isinstance(result, BuildPlan) else result.plan
 
 
 def save_building(directory: Path, building: RecognisedBuilding) -> None:
