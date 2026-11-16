@@ -293,7 +293,7 @@ class _Converter:
         floor_plans = sorted((p for p in self.b.plans if p.role == "floor_plan"), key=lambda p: (min(p.storeys or [0]), p.sheet))
         roof_plans = [p for p in self.b.plans if p.role == "roof_plan"]
         self.make_levels(floor_plans, roof_plans)
-        self.make_grids(floor_plans)
+        self.make_grids(floor_plans, roof_plans)
         self.slab_thickness = self.section_value("slab_thickness_mm", "slab_thickness", "the floor slab thickness")
         self.catalogue()
         storey_plan: dict[int, PlanRecognition] = {}
@@ -459,7 +459,7 @@ class _Converter:
 
     # ---------------------------------------------------------------------------------------- grids
 
-    def make_grids(self, floor_plans: list[PlanRecognition]) -> None:
+    def make_grids(self, floor_plans: list[PlanRecognition], roof_plans: list[PlanRecognition] = ()) -> None:
         lines: list[dict] = []  # merged collinear lines
         for p in floor_plans:
             t = self.xf(p.sheet)
@@ -495,6 +495,21 @@ class _Converter:
         letters = (name for name in _letters() if name not in used)
         for ln in horizontal:
             ln["name"] = next(letters)
+        # The floor plans define the building's grid. A roof-plan centre line on one of those lines is the same grid;
+        # one on none of them (a parapet or roof-structure centre line) is listed, never silently dropped.
+        for p in roof_plans:
+            t = self.xf(p.sheet)
+            off = []
+            for g in p.grids:
+                a, b = t(g.start), t(g.end)
+                u, length = _unit(a, b)
+                on = length > 0 and any(abs(abs(_dot(ln["u"], u)) - 1) < 1e-6 and abs(_dot(_sub(a, ln["a"]), ln["n"])) <= 1
+                                        for ln in lines)
+                if not on:
+                    off.append(_ref(p.sheet, g.id))
+            if off:
+                self.skip("roof-plan centre lines off the building grid",
+                          "the floor plans define the grid; these roof centre lines lie on none of its lines", off)
         for ln in lines:
             sheet, gid = ln["refs"][0]
             key = f"{sheet}-{gid}"
@@ -715,7 +730,8 @@ class _Converter:
             return
         b, h = sorted((c.width_mm, c.depth_mm))
         name, family = self.frame_type("column", b, h)
-        rotation = (c.rotation_deg + (90 if c.width_mm > c.depth_mm else 0)) % 180
+        reg = self.regs.get(sheet)  # the sheet may be turned against the building frame
+        rotation = round((c.rotation_deg + (reg.rotation_deg if reg else 0) + (90 if c.width_mm > c.depth_mm else 0)) % 180, 6)
         op = {"op": "column", "key": f"{sheet}-{c.id}-{storey}", "level": level, "top_level": top,
               "point": t(c.center), "type": name, "family": family}
         if rotation:

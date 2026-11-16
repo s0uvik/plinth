@@ -370,9 +370,6 @@ def test_room_separation_lines_segment_by_segment():
     assert unexplained(report) == [("room_separator", "plan_to_model", f"{key}#2", "segment 2")]
 
 
-@pytest.mark.xfail(strict=True, reason="b2m.imported.to_plan.column_op turns a column by its drawn rotation (+90 when "
-                   "wider than deep) but not by its sheet's registration rotation; the self-check reports it as a "
-                   "drawing_to_plan rotation difference")
 def test_a_non_square_column_on_a_turned_sheet():
     building = make_building(**{"plans.0.columns.0.width_mm": 500})
     result = to_plan(building, ANSWERS)

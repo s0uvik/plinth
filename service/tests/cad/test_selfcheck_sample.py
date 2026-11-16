@@ -2,9 +2,8 @@
 as planned, then a few values changed in that read-back.
 
 A perfect build leaves no difference between plan and model, nor between drawing and plan beyond what the answers
-explain. What remains unexplained is one finding of the self-check itself: 14 centre lines on the roof plan lie on none
-of the floor plans' grid lines (100, 87.5, 125 and 900 mm off them); the plan conversion builds grids from the floor
-plans only and does not list these in not_modelled.
+explain, and nothing is unaccounted: the 14 roof-plan centre lines that lie on none of the floor plans' grid lines
+(100, 87.5, 125 and 900 mm off them) are listed in not_modelled with their reason.
 """
 
 import copy
@@ -56,15 +55,14 @@ def test_a_perfect_build_of_the_sample(sample):
         ("room", "name", f"answered question rooms:{TYPICAL}:rooms-share-space-5"): 4,
     }
     # accounting: every recognised element is planned, listed as not modelled, or accounted for by a rule
-    assert report.accounting == {"recognised": 641, "planned": 549, "not_modelled": 13, "explained": 65,
-                                 "unaccounted": 14}
+    assert report.accounting == {"recognised": 641, "planned": 549, "not_modelled": 27, "explained": 65,
+                                 "unaccounted": 0}
     rules = Counter(d.kind for d in report.differences if d.stage == "accounting" and d.explained)
     assert rules == {"recognised grids": 32, "recognised levels": 16, "recognised rooms": 9,
                      "recognised section_marks": 6, "recognised column_sections": 2}
-    left = unexplained(report)
-    assert sorted((d.kind, d.sheet, d.element) for d in left) == sorted(
-        ("recognised grids", ROOF, g) for g in ROOF_LINES_OFF_GRID)
-    assert all(d.handles for d in left)
+    assert unexplained(report) == []
+    off_grid = next(n for n in result.not_modelled if n.what == "roof-plan centre lines off the building grid")
+    assert sorted(off_grid.elements) == sorted(f"{ROOF}#{g}" for g in ROOF_LINES_OFF_GRID)
 
 
 def test_changed_values_are_exactly_the_differences(sample):
