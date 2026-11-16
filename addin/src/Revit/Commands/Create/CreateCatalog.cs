@@ -12,6 +12,8 @@ namespace B2M.Revit.Commands.Create
             dispatcher.Register(new CreateStairHandler());
             dispatcher.Register(new CreateRailingHandler());
             dispatcher.Register(new CreateRoofHandler());
+            // New in B2M (Step 9 T7c): structural foundation slabs from a foundation slab type (ensure_floor_type foundation: true).
+            dispatcher.Register(new CreateFoundationSlabHandler());
         }
     }
 }
