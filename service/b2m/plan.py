@@ -259,21 +259,173 @@ class OpeningTypeOp(_TypeOp):
     hint: str | None = None
 
 
+# ------------------------------------------------------------------------------------------------ fit-out (Step 10, F5)
+
+TemplateTypeKind = Literal["family_type", "pipe_type", "pipe_system_type", "duct_type", "duct_system_type",
+                           "conduit_type", "cable_tray_type", "distribution_system", "voltage_type"]
+Point3 = tuple[float, float, float]
+
+
+class TemplateType(BaseModel):
+    """One type to bring in from a template or project file: a family type (with its family) or an MEP type, named as
+    the file lists it (``list_types_in_file``)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    kind: TemplateTypeKind
+    name: str = Field(min_length=1)
+    family: str | None = None  # family types: the family it belongs to
+    category: str | None = None  # family types: built-in category, e.g. OST_Furniture
+    source_id: int | None = None  # the file's own id, when the name alone is ambiguous
+
+    @model_validator(mode="after")
+    def _family(self) -> "TemplateType":
+        if self.kind == "family_type" and not self.family:
+            raise ValueError(f"{self.name}: a family type needs its family")
+        if self.kind != "family_type" and (self.family or self.category):
+            raise ValueError(f"{self.name}: an MEP type has no family or category")
+        return self
+
+
+class TypesFromFileOp(_Op):
+    """Types the fit-out uses, copied in from an installed template (or another file) as NEW types before anything is
+    placed. A type the project already has is used as it is and never touched; only what the copy added belongs to
+    the run (and is removed with it)."""
+
+    op: Literal["types_from_file"]
+    path: str = Field(min_length=1)
+    items: list[TemplateType] = Field(min_length=1, max_length=100)
+
+
+class FamilyTypeCopyOp(_Op):
+    """A family type at another size: a copy of ``base_type`` named ``name`` with its size parameters set (duplicate
+    before edit: the base type is never changed). Only planned when the family has those parameters."""
+
+    op: Literal["family_type_copy"]
+    category: str = Field(min_length=1)  # built-in, e.g. OST_Furniture
+    family: str = Field(min_length=1)
+    base_type: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    values_mm: dict[str, float] = Field(min_length=1)  # type parameter name -> length in mm, e.g. {"Width": 1800}
+
+
+class FamilyOp(_Op):
+    """A placed family instance (furniture, fixture, device, equipment) at ``point`` on ``level``.
+
+    Level-based families stand at the point, turned by ``rotation_deg`` (anticlockwise, about the point) and raised by
+    ``offset_mm``. With ``host_key`` (a wall or floor of this plan or of ``BuildPlan.existing``), a wall-hosted or
+    face-based family sits on that host: on a wall at the height ``offset_mm``, on the side given by ``wall_side`` or
+    ``toward`` (a plan point on that side, e.g. inside the room). ``face_down`` puts a work-plane-based family (a light
+    or fan with no ceiling) on a plane facing down at ``offset_mm``."""
+
+    op: Literal["family"]
+    category: str = Field(min_length=1)  # built-in, e.g. OST_Furniture, OST_LightingFixtures
+    family: str | None = None
+    type: str = Field(min_length=1)
+    level: str
+    point: Point
+    rotation_deg: float = 0
+    offset_mm: float = 0
+    host_key: str | None = None
+    wall_side: Literal["exterior", "interior"] | None = None
+    toward: Point | None = None
+    face_down: bool = False
+    flip_hand: bool = False
+    room_key: str | None = None
+    source: str | None = None
+
+    @model_validator(mode="after")
+    def _placement(self) -> "FamilyOp":
+        if (self.wall_side or self.toward) and not self.host_key:
+            raise ValueError(f"{self.key}: a wall side needs host_key")
+        if self.wall_side and self.toward:
+            raise ValueError(f"{self.key}: give wall_side or toward, not both")
+        if self.face_down and self.host_key:
+            raise ValueError(f"{self.key}: face_down places a family without a host")
+        if self.host_key and self.rotation_deg:
+            raise ValueError(f"{self.key}: a hosted family follows its host; no rotation")
+        return self
+
+
+class MepRunOp(_Op):
+    """A pipe, duct, conduit or cable tray run through ``points`` (x, y, z in mm; z absolute, as the add-in takes it),
+    with an elbow at every bend; each end may be joined to a placed family or another run (``start_key``/``end_key``:
+    a family op of this plan, a run op listed before it, or a key of ``BuildPlan.existing``)."""
+
+    op: Literal["mep_run"]
+    kind: Literal["pipe", "duct", "conduit", "cable_tray"]
+    level: str
+    type: str = Field(min_length=1)
+    system_type: str | None = None  # pipes and ducts: the piping / duct system type
+    points: list[Point3] = Field(min_length=2)
+    diameter_mm: float | None = Field(default=None, gt=0)
+    width_mm: float | None = Field(default=None, gt=0)
+    height_mm: float | None = Field(default=None, gt=0)
+    start_key: str | None = None
+    end_key: str | None = None
+    require_connections: bool = True  # a join Revit refuses undoes the run and stops the build: no silent disconnects
+    source: str | None = None
+
+    @model_validator(mode="after")
+    def _shape(self) -> "MepRunOp":
+        piped = self.kind in ("pipe", "duct")
+        if piped and not self.system_type:
+            raise ValueError(f"{self.key}: a {self.kind} run needs a system_type")
+        if not piped and self.system_type:
+            raise ValueError(f"{self.key}: a {self.kind} run has no system_type")
+        if self.diameter_mm is not None and (self.width_mm is not None or self.height_mm is not None):
+            raise ValueError(f"{self.key}: give diameter_mm or width_mm/height_mm, not both")
+        if self.kind in ("pipe", "conduit") and (self.width_mm is not None or self.height_mm is not None):
+            raise ValueError(f"{self.key}: a {self.kind} takes diameter_mm")
+        if self.kind == "cable_tray" and self.diameter_mm is not None:
+            raise ValueError(f"{self.key}: a cable tray takes width_mm and height_mm")
+        return self
+
+
+class CircuitOp(_Op):
+    """One electrical circuit: the placed devices ``device_keys`` on it, assigned to the panel ``panel_key``."""
+
+    op: Literal["circuit"]
+    device_keys: list[str] = Field(min_length=1, max_length=200)
+    panel_key: str | None = None
+    system_type: str = "PowerCircuit"
+    source: str | None = None
+
+
 Op = Annotated[Union[LevelOp, GridOp, ColumnOp, WallOp, FloorOp, ShaftOp, BeamOp, StairOp, RailingOp, DoorOp, WindowOp,
-                     RoomOp, RoomSeparatorOp, FoundationSlabOp, WallTypeOp, FloorTypeOp, OpeningTypeOp],
+                     RoomOp, RoomSeparatorOp, FoundationSlabOp, WallTypeOp, FloorTypeOp, OpeningTypeOp,
+                     TypesFromFileOp, FamilyTypeCopyOp, FamilyOp, MepRunOp, CircuitOp],
                Field(discriminator="op")]
 
 # Ops that make sure of a type rather than create a model element: never counted in the read-back.
-TYPE_OPS = frozenset({"wall_type", "floor_type", "opening_type"})
+TYPE_OPS = frozenset({"wall_type", "floor_type", "opening_type", "types_from_file", "family_type_copy"})
 
-# Build order (PRD): types (before anything uses them), levels, grids, columns, walls (which then join the columns),
-# floors and foundation slabs, shaft openings (which cut the floors), beams (onto columns, under the slabs), stairs
-# (inside the cut shafts), railings (on their stairs), doors and windows (into their walls), room separation lines,
-# rooms (once every bounding element exists).
-PHASES: tuple[tuple[str, ...], ...] = (("wall_type", "floor_type", "opening_type"), ("level",), ("grid",), ("column",),
+# Build order (PRD): types (before anything uses them; a type copied to another size after the type it copies),
+# levels, grids, columns, walls (which then join the columns), floors and foundation slabs, shaft openings (which cut
+# the floors), beams (onto columns, under the slabs), stairs (inside the cut shafts), railings (on their stairs), doors
+# and windows (into their walls), room separation lines, rooms (once every bounding element exists); then the fit-out:
+# placed families, MEP runs (joined to the families), circuits (of the placed devices).
+PHASES: tuple[tuple[str, ...], ...] = (("wall_type", "floor_type", "opening_type", "types_from_file"),
+                                       ("family_type_copy",), ("level",), ("grid",), ("column",),
                                        ("wall",), ("floor", "foundation_slab"), ("shaft",), ("beam",), ("stair",),
-                                       ("railing",), ("door", "window"), ("room_separator",), ("room",))
+                                       ("railing",), ("door", "window"), ("room_separator",), ("room",),
+                                       ("family",), ("mep_run",), ("circuit",))
 PHASE_OF = {name: i for i, names in enumerate(PHASES) for name in names}
+
+
+def references(op: _Op) -> list[str]:
+    """Keys of the elements an op is built on or joined to (its host, stair, run ends, circuit devices and panel)."""
+    match op:
+        case _HostedOp():
+            return [op.host_key]
+        case RailingOp():
+            return [op.stair_key] if op.stair_key else []
+        case FamilyOp():
+            return [op.host_key] if op.host_key else []
+        case MepRunOp():
+            return [k for k in (op.start_key, op.end_key) if k]
+        case CircuitOp():
+            return [*op.device_keys, *([op.panel_key] if op.panel_key else [])]
+    return []
 
 
 class BuildPlan(BaseModel):
@@ -281,6 +433,11 @@ class BuildPlan(BaseModel):
     plan_version: Literal["1.0"] = PLAN_VERSION
     spec_hash: str | None = None
     ops: list[Op] = Field(min_length=1)
+    # A plan built on top of an earlier run (a fit-out on a built building): the levels it uses that are already in
+    # the model (name -> elevation) and the elements it hosts on or joins to (their key in that run -> element id).
+    # This plan's run never creates nor removes them. Left out of dumps when empty.
+    existing_levels: dict[str, float] = Field(default_factory=dict, exclude_if=lambda v: not v)
+    existing: dict[str, int] = Field(default_factory=dict, exclude_if=lambda v: not v)
 
     @model_validator(mode="after")
     def _references(self) -> "BuildPlan":
@@ -290,10 +447,13 @@ class BuildPlan(BaseModel):
                 raise ValueError(f"{op.key}: keys may not contain {KEY_SEPARATOR!r}")
             if op.key in keys:
                 raise ValueError(f"duplicate key {op.key!r}")
+            if op.key in self.existing:
+                raise ValueError(f"{op.key}: the key of an existing element")
             keys[op.key] = op
-        levels = {op.name for op in self.ops if isinstance(op, LevelOp)}
-        elevation = {op.name: op.elevation_mm for op in self.ops if isinstance(op, LevelOp)}
-        if len(levels) != sum(isinstance(op, LevelOp) for op in self.ops):
+        self._fitout_references(keys)
+        levels = {op.name for op in self.ops if isinstance(op, LevelOp)} | set(self.existing_levels)
+        elevation = {**self.existing_levels, **{op.name: op.elevation_mm for op in self.ops if isinstance(op, LevelOp)}}
+        if len(levels) != sum(isinstance(op, LevelOp) for op in self.ops) + len(self.existing_levels):
             raise ValueError("level names must be unique")
         type_names = [(op.op, op.name) for op in self.ops if isinstance(op, _TypeOp)]
         if len(set(type_names)) != len(type_names):
@@ -321,6 +481,40 @@ class BuildPlan(BaseModel):
                     raise ValueError(f"{op.key}: top_level {op.top_level!r} is not above {base!r}")
         return self
 
+    def _fitout_references(self, keys: dict[str, _Op]) -> None:
+        """Fit-out ops point at elements of this plan (runs at runs listed before them) or of ``existing``."""
+        seen: set[str] = set()
+        for op in self.ops:
+            def check(ref: str, what: str, kinds: tuple[type, ...]) -> None:
+                if ref in self.existing:
+                    return
+                target = keys.get(ref)
+                if not isinstance(target, kinds):
+                    names = " or ".join(k.__name__.removesuffix("Op").lower() for k in kinds)
+                    raise ValueError(f"{op.key}: {what} {ref!r} is not a {names} in this plan nor an existing element")
+                if isinstance(target, MepRunOp) and ref not in seen:
+                    raise ValueError(f"{op.key}: {what} {ref!r} is a run listed after it; list the run it joins first")
+            if isinstance(op, FamilyOp) and op.host_key:
+                check(op.host_key, "host_key", (WallOp, FloorOp))
+            if isinstance(op, MepRunOp):
+                for ref in (op.start_key, op.end_key):
+                    if ref:
+                        check(ref, "run end", (FamilyOp, MepRunOp))
+            if isinstance(op, CircuitOp):
+                for ref in op.device_keys:
+                    check(ref, "device", (FamilyOp,))
+                if op.panel_key:
+                    check(op.panel_key, "panel_key", (FamilyOp,))
+                    panel = keys.get(op.panel_key)
+                    if isinstance(panel, FamilyOp) and panel.category != "OST_ElectricalEquipment":
+                        raise ValueError(f"{op.key}: panel {op.panel_key!r} is not electrical equipment")
+            if isinstance(op, FamilyTypeCopyOp) and op.name == op.base_type:
+                raise ValueError(f"{op.key}: a type copy needs a new name")
+            seen.add(op.key)
+        copies = [(op.family, op.name) for op in self.ops if isinstance(op, FamilyTypeCopyOp)]
+        if len(set(copies)) != len(copies):
+            raise ValueError("a family type may be copied to a name only once per plan")
+
     def ordered(self) -> list[Op]:
         """Ops in build order; stable within a phase, so the same plan always builds the same way."""
         return sorted(self.ops, key=lambda op: PHASE_OF[op.op])
@@ -333,8 +527,8 @@ def translate(plan: BuildPlan, dx: float, dy: float) -> BuildPlan:
     """The same plan moved by (dx, dy) mm, e.g. to build a test clear of an existing model."""
 
     def move(value):
-        if isinstance(value, tuple) and len(value) == 2 and all(isinstance(v, (int, float)) for v in value):
-            return (value[0] + dx, value[1] + dy)
+        if isinstance(value, tuple) and len(value) in (2, 3) and all(isinstance(v, (int, float)) for v in value):
+            return (value[0] + dx, value[1] + dy, *value[2:])
         if isinstance(value, list):
             return [move(v) for v in value]
         return value
@@ -342,10 +536,11 @@ def translate(plan: BuildPlan, dx: float, dy: float) -> BuildPlan:
     ops = []
     for op in plan.ops:
         data = op.model_dump()
-        for name in ("start", "end", "point", "points", "path"):
+        for name in ("start", "end", "point", "points", "path", "toward"):
             if data.get(name) is not None:
                 data[name] = move(data[name])
         for run in data.get("runs") or []:
             run["start"], run["end"] = move(run["start"]), move(run["end"])
         ops.append(data)
-    return BuildPlan.model_validate({"plan_version": plan.plan_version, "spec_hash": plan.spec_hash, "ops": ops})
+    return BuildPlan.model_validate({"plan_version": plan.plan_version, "spec_hash": plan.spec_hash, "ops": ops,
+                                     "existing_levels": dict(plan.existing_levels), "existing": dict(plan.existing)})

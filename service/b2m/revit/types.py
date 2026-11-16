@@ -44,6 +44,15 @@ class TypeMap:
     beams: dict[str, FamilyType] = field(default_factory=dict)
     stairs: dict[str, str] = field(default_factory=dict)
     railings: dict[str, str] = field(default_factory=dict)
+    # Fit-out types a build brought in from a template under another name than the plan's (Revit renamed the copy):
+    # (kind, family or None, name) -> the project's type. Filled during a build only, never from standards.json.
+    fitout: dict[tuple[str, str | None, str], FamilyType] = field(default_factory=dict)
+
+    def fitout_type(self, kind: str, name: str, family: str | None = None) -> FamilyType:
+        return self.fitout.get((kind, family, name), FamilyType(name, family))
+
+    def with_fitout(self, kind: str, name: str, family: str | None, project: FamilyType) -> "TypeMap":
+        return replace(self, fitout={**self.fitout, (kind, family, name): project})
 
     def wall(self, name: str) -> str:
         return self.walls.get(name, name)

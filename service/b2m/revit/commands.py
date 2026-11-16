@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from b2m.plan import (KEY_SEPARATOR, BeamOp, ColumnOp, DoorOp, FloorOp, FloorTypeOp, FoundationSlabOp, GridOp, LevelOp,
-                      Op, OpeningTypeOp, RailingOp, RoomOp, RoomSeparatorOp, ShaftOp, StairOp, WallOp, WallTypeOp,
-                      WindowOp)
+from b2m.plan import (KEY_SEPARATOR, BeamOp, CircuitOp, ColumnOp, DoorOp, FamilyOp, FamilyTypeCopyOp, FloorOp,
+                      FloorTypeOp, FoundationSlabOp, GridOp, LevelOp, MepRunOp, Op, OpeningTypeOp, RailingOp, RoomOp,
+                      RoomSeparatorOp, ShaftOp, StairOp, TypesFromFileOp, WallOp, WallTypeOp, WindowOp)
 from b2m.revit.types import TypeMap
 
 NO_MAPPING = TypeMap()
@@ -36,12 +36,28 @@ FITOUT_COMMANDS = [
     "list_template_files", "list_types_in_file", "copy_types_from_file", "load_family_from_path",
     "create_lighting_fixture", "create_air_terminal", "create_mep_run", "create_electrical_circuit",
     "get_mep_element_connectors", "find_mep_disconnects", "list_mep_systems",
+    "get_available_family_types", "get_type_parameters", "duplicate_family_type",
 ]
 
 # Ops the runner calls directly, one call (and one Revit undo step) per op, never inside batch_execute:
 # the add-in refuses create_stair in a batch, and a railing needs its stair's id and railings first; type pre-steps
 # may open, save or duplicate types, which a batch rollback cannot undo, and their results rename what later ops use.
-DIRECT_OPS = frozenset({"stair", "railing", "wall_type", "floor_type", "opening_type"})
+# Copying types from a template opens another file, which the add-in refuses inside a batch.
+DIRECT_OPS = frozenset({"stair", "railing", "wall_type", "floor_type", "opening_type", "types_from_file",
+                        "family_type_copy"})
+
+# Placed families of these categories go through the MEP placement commands (snake_case parameters); the rest through
+# create_point_based_element. All three place the same way (the add-in's FamilyPlacer).
+FAMILY_COMMANDS = {"OST_LightingFixtures": "create_lighting_fixture", "OST_DuctTerminal": "create_air_terminal"}
+# Reference planes: what a face-down placement adds beside the instance.
+REFERENCE_PLANES = "OST_CLines"
+MEP_CURVE = {"pipe": "OST_PipeCurves", "duct": "OST_DuctCurves", "conduit": "OST_Conduit", "cable_tray": "OST_CableTray"}
+MEP_FITTING = {"pipe": "OST_PipeFitting", "duct": "OST_DuctFitting", "conduit": "OST_ConduitFitting",
+               "cable_tray": "OST_CableTrayFitting"}
+CIRCUITS = "OST_ElectricalCircuit"
+# Run-store entry suffixes of an MEP run's elements: key, key#2... its segments; key#f1... its fittings (elbows, tees,
+# transitions); key#p1... other pieces (the far part of a main broken for a tee).
+FITTING_MARK, PIECE_MARK = "f", "p"
 
 # Revit's built-in category for railings (shown as "Railings"); a stair's own railings are counted under it too.
 RAILINGS = "OST_StairsRailing"
@@ -188,7 +204,67 @@ def to_command(op: Op, plan: dict[str, Op], ids: dict[str, int], types: TypeMap 
             if op.hint:
                 params["hint"] = op.hint
             return {"command": "ensure_family_type", "params": params}
+        case TypesFromFileOp():
+            return {"command": "copy_types_from_file", "params": {
+                "path": op.path, "items": [item.model_dump(exclude_none=True) for item in op.items]}}
+        case FamilyTypeCopyOp():
+            # The source type's id is only known in the project (a copy from a template gets a new one): the runner
+            # finds it and calls duplicate_family_type with source_type_id itself (see Runner._copy_type).
+            return {"command": "duplicate_family_type", "params": {
+                "new_type_name": op.name, "type_parameter_overrides": dict(op.values_mm)}}
+        case FamilyOp():
+            return _family_command(op, ids, types)
+        case MepRunOp():
+            mapped = types.fitout_type(f"{op.kind}_type", op.type)
+            params = {"kind": op.kind, "level": op.level, "points": [list(pt) for pt in op.points],
+                      "type_name": mapped.type, "require_connections": op.require_connections}
+            if op.system_type:
+                params["system_type_name"] = types.fitout_type(f"{op.kind}_system_type", op.system_type).type
+            for name, value in (("diameter", op.diameter_mm), ("width", op.width_mm), ("height", op.height_mm)):
+                if value is not None:
+                    params[name] = value
+            for end, key in (("start_connect", op.start_key), ("end_connect", op.end_key)):
+                if key:
+                    params[end] = {"element_id": ids[key]}
+            return {"command": "create_mep_run", "params": params}
+        case CircuitOp():
+            params = {"element_ids": [ids[k] for k in op.device_keys], "system_type": op.system_type}
+            if op.panel_key:
+                params["panel_id"] = ids[op.panel_key]
+            return {"command": "create_electrical_circuit", "params": params}
     raise ValueError(f"unknown op {op!r}")
+
+
+def _family_command(op: FamilyOp, ids: dict[str, int], types: TypeMap) -> dict[str, Any]:
+    """create_point_based_element (camelCase) or, for lights and air terminals, the MEP placing commands (snake_case);
+    options are only sent when set, so the add-in's placement rules see exactly what the plan asks for."""
+    mapped = types.fitout_type("family_type", op.type, op.family)
+    command = FAMILY_COMMANDS.get(op.category, "create_point_based_element")
+    snake = command != "create_point_based_element"
+
+    def name(camel: str, snake_name: str) -> str:
+        return snake_name if snake else camel
+
+    params: dict[str, Any] = {"level": op.level, "x": op.point[0], "y": op.point[1], name("typeName", "type_name"): mapped.type}
+    if mapped.family:
+        params[name("familyName", "family_name")] = mapped.family
+    if not snake:
+        params["builtInCategory"] = op.category
+    if op.offset_mm:
+        params["offset"] = op.offset_mm
+    if op.rotation_deg:
+        params["rotation"] = op.rotation_deg
+    if op.host_key:
+        params["host_id"] = ids[op.host_key]
+    if op.wall_side:
+        params[name("wallSide", "wall_side")] = op.wall_side
+    if op.toward:
+        params[name("towardX", "toward_x")], params[name("towardY", "toward_y")] = op.toward
+    if op.face_down:
+        params[name("faceDown", "face_down")] = True
+    if op.flip_hand:
+        params[name("flipHand", "flip_hand")] = True
+    return {"command": command, "params": params}
 
 
 def resolved_type(op: WallTypeOp | FloorTypeOp | OpeningTypeOp, data: dict[str, Any], types: TypeMap) -> TypeMap:
@@ -230,13 +306,48 @@ def created_ids(op: Op, data: dict[str, Any]) -> list[int]:
             return list(data["separator_ids"])
         case WallTypeOp() | FloorTypeOp() | OpeningTypeOp():
             return created_type_ids(data)
+        case TypesFromFileOp():
+            # Everything the copy added (families, their types, materials and fitting families brought along): the
+            # run removes exactly that. Types the project already had are not in it.
+            return list(data.get("created_ids") or [])
+        case FamilyTypeCopyOp():
+            return [data["new_type_id"]] if data.get("new_type_id") is not None else []
+        case FamilyOp():
+            # The instance first, then a reference plane a face-down placement made.
+            return list(data.get("created_ids") or [data.get("elementId", data.get("instance_id"))])
+        case MepRunOp():
+            return list(data["created_ids"])
+        case CircuitOp():
+            return [data["circuit_id"]]
     return [data["elementId"]]
 
 
+def created_entries(op: Op, data: dict[str, Any]) -> dict[str, int]:
+    """Run-store entries for what a command made for an op. An MEP run's entries say which are segments, fittings and
+    other pieces (key, key#2... / key#f1... / key#p1...), so the read-back can count each in its category."""
+    if not isinstance(op, MepRunOp):
+        return created_keys(op, created_ids(op, data))
+    segments = list(data.get("segment_ids") or [])
+    fittings = [i for i in data.get("fitting_ids") or [] if i not in segments]
+    others = [i for i in created_ids(op, data) if i not in segments and i not in fittings]
+    entries = created_keys(op, segments)
+    entries.update({f"{op.key}{KEY_SEPARATOR}{FITTING_MARK}{n}": i for n, i in enumerate(fittings, 1)})
+    entries.update({f"{op.key}{KEY_SEPARATOR}{PIECE_MARK}{n}": i for n, i in enumerate(others, 1)})
+    return entries
+
+
 def category_of(key: str, op: Op) -> str:
-    """Read-back category of one run-store entry: a stair's extra entries are its railings."""
+    """Read-back category of one run-store entry: a stair's extra entries are its railings, a placed family's its
+    reference plane, an MEP run's its segments, fittings and pieces."""
     if isinstance(op, StairOp) and key != op.key:
         return RAILINGS
+    if isinstance(op, FamilyOp):
+        return op.category if key == op.key else REFERENCE_PLANES
+    if isinstance(op, MepRunOp):
+        suffix = key.split(KEY_SEPARATOR, 1)[1] if KEY_SEPARATOR in key else ""
+        return MEP_FITTING[op.kind] if suffix.startswith(FITTING_MARK) else MEP_CURVE[op.kind]
+    if isinstance(op, CircuitOp):
+        return CIRCUITS
     return CATEGORY[op.op]
 
 
@@ -253,7 +364,8 @@ def op_key(created_key: str) -> str:
 def expected_level(op: Op, plan: dict[str, Op]) -> str | None:
     """The level Revit reports for the element an op creates, or None where it has none we check. Columns,
     beams, stairs and railings are counted per category only: whether Revit files them under a base, reference
-    or host level is not something the read-back should depend on."""
+    or host level is not something the read-back should depend on. Neither are placed families (a face-based one has
+    no level of its own), MEP runs and circuits."""
     match op:
         case WallOp() | FloorOp() | RoomOp():
             return op.level

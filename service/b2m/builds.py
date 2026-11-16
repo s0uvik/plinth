@@ -19,6 +19,9 @@ from b2m.runs import Run, RunStore
 
 log = logging.getLogger(__name__)
 
+# A fit-out's type steps that stop for the user (see Runner): another family type is chosen when re-planning.
+FITOUT_TYPE_QUESTIONS = frozenset({"TYPE_NOT_IN_FILE", "PARAMETER_NOT_FOUND", "SET_FAILED"})
+
 
 def product_version() -> str:
     try:
@@ -88,7 +91,13 @@ class BuildService:
                     error=result.error, error_code=result.error_code, failed_key=result.failed_key, hint=hint(result.error),
                     error_data=result.error_data, failures=result.failures,
                 )
-                if result.status == "needs_input":
+                if result.status == "needs_input" and result.error_code in FITOUT_TYPE_QUESTIONS:
+                    data = result.error_data if isinstance(result.error_data, dict) else {}
+                    run.update(question={
+                        "text": "A fit-out type could not be brought in or sized as planned. Choose another family type "
+                                "for it (or leave the item out) and plan the fit-out again.",
+                        "missing": result.error, "items": data.get("items"), "path": data.get("path")})
+                elif result.status == "needs_input":
                     data = result.error_data if isinstance(result.error_data, dict) else {}
                     run.update(question={
                         "text": "B2M could not find a family it needs, nor a similar one to adapt. May it create one from "
