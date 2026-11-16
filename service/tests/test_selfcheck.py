@@ -6,8 +6,9 @@ import json
 
 import pytest
 
-from b2m.cad.building import (Column, Evidence, Grid, Level, Opening, PlanRecognition, RecognisedBuilding, Registration,
-                              Room, SectionRecognition, Stair, Wall, Column as Section, FoundationRecognition)
+from b2m.cad.building import (Column, Evidence, Finding, FoundationRecognition, Grid, Level, Opening, PlanRecognition,
+                              RecognisedBuilding, Registration, Room, SectionRecognition, Stair, Wall)
+from b2m.cad.building import Column as Section
 from b2m.imported import selfcheck, to_plan
 from b2m.imported.selfcheck import Explanation, Tolerances, compare
 from tests.selfcheck_readback import perfect_readback
@@ -346,6 +347,27 @@ def test_html_groups_by_kind_with_evidence(built):
     assert "1 unexplained difference." in page
     assert "<h2>wall <small>1 unexplained, 0 explained</small></h2>" in page
     assert '<a href="/import#imp-1">P.dxf · wall-1 · storey 0</a>' in page and "handles W1" in page
+
+
+def test_room_separation_lines_segment_by_segment():
+    building = make_building()
+    plan = building.plans[0]
+    plan.findings.append(Finding(id="share-1", topic="rooms_share_space", text="one space", evidence=ev("R1", "R2")))
+    answers = {**ANSWERS, f"rooms:{P}:share-1": {"mode": "separate", "lines": [[[4000, 0], [4000, 3000], [4000, 6000]]]}}
+    result = to_plan(building, answers)
+    key = f"{P}-share-1.1-0"
+    assert result.plan.by_key()[key].op == "room_separator"
+    created, readback = perfect_readback(result, building)
+    assert f"{key}#2" in created
+    assert compare(result, building, created, readback, answers=answers).ok
+    rb = copy.deepcopy(readback)
+    rb[created[f"{key}#2"]]["curve"]["end"]["y"] += 2  # building y is drawing x after the turn: still 2 mm
+    c = dict(created)
+    report = compare(result, building, c, rb, answers=answers)
+    assert unexplained(report) == [("room_separator", "plan_to_model", f"{key}#2", "segment 2 end")]
+    del rb[c.pop(f"{key}#2")]
+    report = compare(result, building, c, rb, answers=answers)
+    assert unexplained(report) == [("room_separator", "plan_to_model", f"{key}#2", "segment 2")]
 
 
 @pytest.mark.xfail(strict=True, reason="b2m.imported.to_plan.column_op turns a column by its drawn rotation (+90 when "

@@ -56,10 +56,10 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Callable, Iterable, Literal, Mapping
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
-from b2m.cad.building import Evidence, PlanRecognition, RecognisedBuilding, Registration
-from b2m.imported.to_plan import ImportPlan, Source
+from b2m.cad.building import Evidence, RecognisedBuilding, Registration
+from b2m.imported.to_plan import ImportPlan
 from b2m.plan import KEY_SEPARATOR, TYPE_OPS, BuildPlan
 from b2m.revit.commands import CATEGORY, RAILINGS, op_key
 
@@ -839,8 +839,9 @@ class _Comparer:
             element_id, rec = self.record(key)
             kw = {"key": key, "element_id": element_id}
             if element_id is None:
-                self.count("room_separator")
-                self.add("room_separator", "plan_to_model", f"segment {i + 1}", "built", "not built", **kw)
+                if i > 0:  # the first segment is the op's own key: presence reports it
+                    self.count("room_separator")
+                    self.add("room_separator", "plan_to_model", f"segment {i + 1}", "built", "not built", **kw)
                 continue
             if rec is None:
                 continue  # reported by presence (first segment) or below
