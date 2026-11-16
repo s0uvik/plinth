@@ -275,3 +275,35 @@ def test_an_older_add_in_without_ensure_family_type_still_builds():
         return plain(command, params, **kw)
     revit.call = call
     assert Runner(revit, types=FRAME_TYPES).build(_frame_plan()).status == "built"
+
+
+def test_a_family_that_cannot_be_found_asks_the_user_instead_of_failing():
+    revit = FakeRevit()
+    plain = revit.call
+
+    def call(command, params=None, **kw):
+        if command == "ensure_family_type":
+            raise RevitError({"success": False, "error": "FAMILY_NOT_FOUND: no structural_framing family found",
+                              "data": {"candidates": [], "can_create": True}})
+        return plain(command, params, **kw)
+    revit.call = call
+    result = Runner(revit, types=FRAME_TYPES).build(_frame_plan())
+    assert result.status == "needs_input" and result.batches_succeeded == 0 and revit.calls == []
+
+
+def test_the_users_answer_is_passed_on_create_or_search_their_folder():
+    revit = FakeRevit()
+    plain = revit.call
+    revit.call = lambda command, params=None, **kw: (
+        revit.calls.append((command, params)) or {"action": "created"} if command == "ensure_family_type"
+        else plain(command, params, **kw))
+    Runner(revit, types=FRAME_TYPES, allow_family_create=True, family_folders=[r"D:\Office\Families"]).build(_frame_plan())
+    ensured = [p for c, p in revit.calls if c == "ensure_family_type"]
+    assert all(p["allow_create"] is True and p["search_folders"] == [r"D:\Office\Families"] for p in ensured)
+    revit2 = FakeRevit()
+    plain2 = revit2.call
+    revit2.call = lambda command, params=None, **kw: (
+        revit2.calls.append((command, params)) or {"action": "existing"} if command == "ensure_family_type"
+        else plain2(command, params, **kw))
+    Runner(revit2, types=FRAME_TYPES).build(_frame_plan())
+    assert all("allow_create" not in p and "search_folders" not in p for c, p in revit2.calls if c == "ensure_family_type")

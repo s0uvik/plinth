@@ -40,7 +40,7 @@ class Revit(Protocol):
 
 @dataclass
 class BuildResult:
-    status: str  # "built", "failed" or "unknown" (a batch timed out and may still finish)
+    status: str  # "built", "failed", "unknown" (a batch timed out and may still finish) or "needs_input"
     batches_total: int
     batches_succeeded: int
     created: dict[str, int] = field(default_factory=dict)
@@ -65,10 +65,14 @@ def plan_batches(plan: BuildPlan) -> list[list[Op]]:
 
 
 class Runner:
-    def __init__(self, revit: Revit, progress: Callable[[int, int], None] | None = None, types: TypeMap | None = None):
+    def __init__(self, revit: Revit, progress: Callable[[int, int], None] | None = None, types: TypeMap | None = None,
+                 allow_family_create: bool = False, family_folders: list[str] | None = None):
         self.revit = revit
         self.progress = progress or (lambda done, total: None)
         self.types = types or TypeMap()
+        # A family B2M cannot find or adapt is only created from Revit's template when the user said yes.
+        self.allow_family_create = allow_family_create
+        self.family_folders = list(family_folders or [])
 
     def build(self, plan: BuildPlan) -> BuildResult:
         by_key = plan.by_key()
@@ -117,6 +121,10 @@ class Runner:
         for (kind, family, type_name), (op, (b, h)) in wanted.items():
             params = {"category": ENSURE_CATEGORY[kind], "family_name": family, "type_name": type_name,
                       "dimensions": {"b_mm": b, "h_mm": h}}
+            if self.family_folders:
+                params["search_folders"] = self.family_folders
+            if self.allow_family_create:
+                params["allow_create"] = True
             try:
                 data = self.revit.call("ensure_family_type", params, timeout_seconds=ENSURE_TIMEOUT_SECONDS)
             except RevitTimeout as e:
@@ -125,7 +133,8 @@ class Runner:
                 if e.code == "UNKNOWN_COMMAND":
                     log.warning("add-in has no ensure_family_type; building with the types already in the project")
                     return None
-                return self._stop(result, "failed", e, op.key)
+                # Not found and nothing to adapt: nothing was built; the user decides (create it, or name a family file).
+                return self._stop(result, "needs_input" if e.code == "FAMILY_NOT_FOUND" else "failed", e, op.key)
             log.info("%s %s: %s (%s)", family, type_name, data.get("action"), data.get("source"))
         return None
 

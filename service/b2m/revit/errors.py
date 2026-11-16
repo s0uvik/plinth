@@ -15,6 +15,11 @@ HINTS = {
     "BATCH_ROLLED_BACK": "One step failed, so Revit undid that whole batch. Nothing from it was kept; earlier batches remain.",
     "LEVEL_NOT_FOUND": "A level the plan expects is missing from the model.",
     "TYPE_NOT_FOUND": "A wall, floor, door or window type is missing. Load it, or map it in standards.json.",
+    "FAMILY_NOT_FOUND": "B2M could not find this family in the project or the family libraries on this PC, nor a "
+                        "similar one to adapt. Say whether B2M may create it from Revit's family template, or give "
+                        "the folder that holds your family file.",
+    "TYPE_DIMENSION_MISMATCH": "A type with this name exists but has a different size. B2M never edits existing types; "
+                               "rename the type in standards.json or fix it in Revit.",
     "TYPE_AMBIGUOUS": "Several families have a type with this name. Give the family name in standards.json.",
     "NOT_COMMITTED": "Revit refused the change because it raised a warning or error; see the failures listed.",
     "NAME_IN_USE": "Something with this name already exists in the model, perhaps from an earlier run. Remove that run first.",

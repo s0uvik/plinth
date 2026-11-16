@@ -91,11 +91,17 @@ def build_server(api: Api | None = None, config: dict[str, Any] | None = None) -
         return api.call("POST", "/check", {"spec": spec})
 
     @server.tool()
-    def b2m_build(spec: dict[str, Any], document_title: str, brief_id: str = "", override: bool = False) -> dict[str, Any]:
+    def b2m_build(spec: dict[str, Any], document_title: str, brief_id: str = "", override: bool = False,
+                  allow_family_create: bool = False, family_folders: list[str] | None = None) -> dict[str, Any]:
         """Build the spec in the open Revit document with this title. Hard compliance failures block the build unless
-        the user explicitly chooses override. Returns a run_id; follow it with b2m_run_status."""
+        the user explicitly chooses override. Returns a run_id; follow it with b2m_run_status. If the run ends with
+        status needs_input, a column or beam family was not found: show the user its question and candidates, then
+        build again with allow_family_create=true only if the user agrees, or with family_folders naming where their
+        family files are. Never set allow_family_create without asking."""
         return api.call("POST", "/builds/from-spec", {"spec": spec, "document_title": document_title,
-                                                       "brief_id": brief_id or None, "override": override})
+                                                       "brief_id": brief_id or None, "override": override,
+                                                       "allow_family_create": allow_family_create,
+                                                       "family_folders": family_folders or []})
 
     @server.tool()
     def b2m_run_status(run_id: str) -> dict[str, Any]:

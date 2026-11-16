@@ -230,15 +230,18 @@ $("update").onclick = () => busy($("update"), null, async () => {
   showLayout(data.layout);
 });
 
-$("build").onclick = () => busy($("build"), null, async () => {
+// families: {allow_family_create, family_folders} once the user has answered a "family not found" question.
+async function startBuild(families = {}) {
   if (!$("title").value.trim()) throw new Error("Enter the title of the Revit document to build in.");
   const data = await call("/builds/from-spec", {spec: JSON.parse($("spec").value), document_title: $("title").value.trim(),
-                                                brief_id: briefId, override: $("override").checked});
+                                                brief_id: briefId, override: $("override").checked, ...families});
   runId = data.run_id;
   clearInterval(poll);
   poll = setInterval(refreshRun, 1000);
   refreshRun();
-});
+}
+
+$("build").onclick = () => busy($("build"), null, () => startBuild());
 
 async function refreshRun() {
   let run;
@@ -251,7 +254,7 @@ async function refreshRun() {
                el("div", {class: "bar"}, Object.assign(el("div"), {style: `width:${b.total ? 100 * b.succeeded / b.total : 0}%`})));
   }
   const status = {queued: "Waiting for Revit", building: "Building", built: "Built", built_with_issues: "Built, with issues",
-                  failed: "Failed", unknown: "A batch is still running in Revit", removing: "Removing", removed: "Removed"}[run.status] || run.status;
+                  failed: "Failed", needs_input: "Needs your answer", unknown: "A batch is still running in Revit", removing: "Removing", removed: "Removed"}[run.status] || run.status;
   parts.push(el("h3", {}, status));
   if (run.readback) {
     const r = run.readback;
@@ -260,6 +263,28 @@ async function refreshRun() {
   }
   if (run.error) parts.push(el("div", {class: "note error small"}, run.hint ? el("strong", {}, run.hint) : "",
     el("div", {}, run.error + (run.failed_key ? ` (at ${run.failed_key})` : ""))));
+  if (run.status === "needs_input" && run.question) {
+    const q = run.question;
+    const box = el("div", {class: "note warn small"}, el("strong", {}, q.text));
+    if (q.candidates && q.candidates.length)
+      box.append(el("div", {}, "Closest families found: " + q.candidates.map(c => c.family_name || c.file_name || c).join(", ")));
+    if (q.searched && q.searched.length) box.append(el("div", {class: "muted"}, "Searched: " + q.searched.join("; ")));
+    const folder = Object.assign(el("input", {type: "text", placeholder: "Folder with your .rfa families, e.g. D:\\Office\\Families"}),
+                                 {style: "width:100%; margin-top: var(--s2)"});
+    const useFolder = el("button", {}, "Search this folder and build");
+    useFolder.onclick = () => busy(useFolder, null, () => {
+      if (!folder.value.trim()) throw new Error("Enter the folder that holds your family files.");
+      return startBuild({family_folders: [folder.value.trim()]});
+    });
+    const actions = el("div", {class: "actions"}, useFolder);
+    if (q.can_create !== false) {
+      const create = el("button", {class: "primary"}, "Yes, create it and build");
+      create.onclick = () => busy(create, null, () => startBuild({allow_family_create: true}));
+      actions.prepend(create);
+    }
+    box.append(folder, actions);
+    parts.push(box);
+  }
   if (run.checks && !run.checks.error) parts.push(el("div", {class: `note ${run.checks.hard_fail ? "error" : "ok"} small`},
     `After build: ${run.checks.hard_fail} hard and ${run.checks.soft_fail} soft compliance failures.`));
   if (["built", "built_with_issues"].includes(run.status) && !(run.drawings && run.drawings.sheets)) {

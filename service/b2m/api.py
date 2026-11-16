@@ -47,6 +47,8 @@ class SpecRequest(BaseModel):
     document_title: str | None = None
     brief_id: str | None = None
     override: bool = False  # build despite hard compliance failures (F5.1)
+    allow_family_create: bool = False  # the user agreed B2M may create a frame family it could not find
+    family_folders: list[str] = []  # extra folders to search for .rfa families
 
 
 class TargetRequest(BaseModel):
@@ -195,7 +197,8 @@ def create_app(service: BuildService | None = None, brief_client: Callable[[], M
             attachments["brief"] = {"id": request.brief_id, "text": session.brief if session else None}
         try:
             run_id = service.start(result.plan, request.document_title, attachments,
-                                   after_build=after_build_checks(spec, result.report, result.plan))
+                                   after_build=after_build_checks(spec, result.report, result.plan),
+                                   families={"allow_create": request.allow_family_create, "folders": request.family_folders})
         except Busy as e:
             raise HTTPException(409, str(e)) from e
         write_pdf(before, service.store.root / run_id / "report_before.pdf", "Compliance report (before build)")

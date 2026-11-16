@@ -80,7 +80,8 @@ def test_b2m_and_gateway_tools_forward_to_the_local_service():
     assert api.calls == [
         ("POST", "/briefs", {"brief": "G+3 on 15 x 25 m"}),
         ("POST", "/briefs/b1/answers", {"answers": {"plot_depth_mm": "25 m"}}),
-        ("POST", "/builds/from-spec", {"spec": {"x": 1}, "document_title": "Scratch", "brief_id": None, "override": False}),
+        ("POST", "/builds/from-spec", {"spec": {"x": 1}, "document_title": "Scratch", "brief_id": None, "override": False,
+                                       "allow_family_create": False, "family_folders": []}),
         ("GET", "/runs/r1", None),
         ("POST", "/runs/r1/remove", {}),
         ("POST", "/revit/target", {"target": "2026", "verify": True}),

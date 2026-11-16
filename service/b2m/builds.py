@@ -43,7 +43,8 @@ class BuildService:
         self._lock = threading.Lock()
 
     def start(self, plan: BuildPlan, document_title: str | None = None, attachments: dict[str, Any] | None = None,
-              after_build: Callable[[RevitClient, Run, dict[str, int]], dict[str, Any]] | None = None) -> str:
+              after_build: Callable[[RevitClient, Run, dict[str, int]], dict[str, Any]] | None = None,
+              families: dict[str, Any] | None = None) -> str:
         """Start a build in the background and return its run id. Attachments (spec, layout report, brief)
         are saved in the run beside the plan."""
         if not self._lock.acquire(blocking=False):
@@ -57,24 +58,28 @@ class BuildService:
         except Exception:
             self._lock.release()
             raise
-        threading.Thread(target=self._build, args=(run, plan, document_title, after_build), name=f"build-{run.id}",
+        threading.Thread(target=self._build, args=(run, plan, document_title, after_build, families or {}), name=f"build-{run.id}",
                          daemon=True).start()
         return run.id
 
-    def build_now(self, plan: BuildPlan, document_title: str | None = None) -> dict[str, Any]:
-        """Run a build in this thread and return the final run record."""
-        run_id = self.start(plan, document_title)
+    def build_now(self, plan: BuildPlan, document_title: str | None = None, families: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Run a build in this thread and return the final run record. ``families``: {"allow_create": bool,
+        "folders": [paths]} for frame families the project lacks (see Runner)."""
+        run_id = self.start(plan, document_title, families=families)
         with self._lock:  # Waits for the background build to finish.
             pass
         return self.store.get(run_id).load("run")
 
-    def _build(self, run: Run, plan: BuildPlan, document_title: str | None, after_build=None) -> None:
+    def _build(self, run: Run, plan: BuildPlan, document_title: str | None, after_build=None,
+               families: dict[str, Any] | None = None) -> None:
+        families = families or {}
         try:
             with self._open(run) as revit:
                 title = revit.confirm_document(document_title)
                 run.update(status="building", document_title=title, versions=self._versions(revit, plan))
                 runner = Runner(revit, progress=lambda done, total: run.update(batches={"total": total, "succeeded": done}),
-                                types=self.types)
+                                types=self.types, allow_family_create=bool(families.get("allow_create")),
+                                family_folders=families.get("folders"))
                 result = runner.build(plan)
                 run.update(
                     status=result.status,
@@ -83,6 +88,13 @@ class BuildService:
                     error=result.error, error_code=result.error_code, failed_key=result.failed_key, hint=hint(result.error),
                     error_data=result.error_data, failures=result.failures,
                 )
+                if result.status == "needs_input":
+                    data = result.error_data if isinstance(result.error_data, dict) else {}
+                    run.update(question={
+                        "text": "B2M could not find a family it needs, nor a similar one to adapt. May it create one from "
+                                "Revit's family template, or do you have a family file to use?",
+                        "missing": result.error, "candidates": data.get("candidates"),
+                        "searched": data.get("searched_roots"), "can_create": data.get("can_create")})
                 if result.status == "built":
                     readback = runner.verify(plan, result.created)
                     run.update(readback=readback, status="built" if readback["ok"] else "built_with_issues")
