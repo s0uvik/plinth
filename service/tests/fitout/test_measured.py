@@ -7,7 +7,6 @@ offset. Items the user skips, or a chosen family includes, are not placed."""
 import math
 
 import pytest
-from shapely.geometry import Polygon
 
 from b2m.fitout import families, furniture, rooms, to_plan
 from b2m.fitout.families import Measurement
@@ -254,14 +253,25 @@ def test_the_measurement_cache_is_per_document_and_type():
     assert sum(c == "measure_family_types" for c, _ in doc.calls) == 2
 
 
-def test_a_bed_set_too_big_for_the_room_is_reported_not_forced(wb_rules):
+def test_a_bed_set_with_its_side_tables_keeps_no_side_clearance_and_one_too_big_is_reported(wb_rules):
     plan = building()
     model = rooms.build(plan, wb_rules)
     built = {op.key: 70000 + i for i, op in enumerate(plan.ops)}
-    doc = revit()
-    big = [Measurement(family="Bed Set", type="Queen set", min=(-1750, -918, 0), max=(1750, 1680, 1432))]
-    found = to_plan.plan_furniture(doc, plan, built, model, wb_rules, answers=ANSWERS, measurements=big, templates=[])
+    # the user's bed set (3500 x 2598, nightstands included) in a 3600 x 4000 bedroom: it fits only because the
+    # set holds its side tables, so the bed's 600 mm side clearance is not kept beside the set
+    user_set = [Measurement(family="Bed Set", type="Queen set", min=(-1750, -918, 0), max=(1750, 1680, 1432))]
+    found = to_plan.plan_furniture(revit(), plan, built, model, wb_rules, answers=ANSWERS, measurements=user_set,
+                                   templates=[])
+    bed = next(p for p in found.layout.placed if p.item == "bed")
+    assert (bed.width_mm, bed.depth_mm) == (3500, 2598)
+    note = next(a for a in found.assumptions if a.id == "fitout:no-side-clearance:bed")
+    assert "600 mm side clearance is not kept" in note.text and "side table" in note.text
+    # without "includes" the side clearance stays, and the set fits nowhere: reported, not forced
+    answers = {**ANSWERS, "fitout:family:bed": {"family": "Bed Set", "type": "Queen set"},
+               "fitout:family:side_table": "skip"}
+    found = to_plan.plan_furniture(revit(), plan, built, model, wb_rules, answers=answers, measurements=user_set,
+                                   templates=[])
     assert "bed" not in {p.item for p in found.layout.in_room("BED")}
     why = next(u for u in found.layout.unplaced if u.item == "bed")
     assert why.status == "no_fit" and "3500 x 2598" in why.reason
-    assert Polygon  # noqa: B018 (shapely is what the solver uses for the footprints above)
+    assert not any(a.id.startswith("fitout:no-side-clearance") for a in found.assumptions)

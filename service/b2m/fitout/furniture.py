@@ -49,7 +49,7 @@ from __future__ import annotations
 import json
 import math
 from collections import Counter
-from typing import Literal
+from typing import Iterable, Literal
 
 from pydantic import BaseModel, ConfigDict
 from shapely import prepared
@@ -174,11 +174,19 @@ class _Item:
 
 # ------------------------------------------------------------------------------------------------ the solver
 
-def with_sizes(rules: FitoutRules, sizes: dict[str, list[Size]]) -> FitoutRules:
+def with_sizes(rules: FitoutRules, sizes: dict[str, list[Size]], no_sides: Iterable[str] = ()) -> FitoutRules:
     """The rule set with these items' sizes replaced, preferred first (the footprints of the family types chosen for
-    them); placement, clearances and preferences stay the rule's."""
-    items = {k: (v.model_copy(update={"sizes": list(sizes[k])}) if sizes.get(k) else v)
-             for k, v in rules.furniture.items.items()}
+    them); placement, clearances and preferences stay the rule's, except for the items in ``no_sides``, which keep no
+    side clearance (a bed set whose family holds the side tables that stand in that space)."""
+    no_sides = set(no_sides)
+    items = {}
+    for k, v in rules.furniture.items.items():
+        update: dict = {}
+        if sizes.get(k):
+            update["sizes"] = list(sizes[k])
+        if k in no_sides and v.clearance.sides_mm:
+            update["clearance"] = v.clearance.model_copy(update={"sides_mm": 0, "sides_required": 0})
+        items[k] = v.model_copy(update=update) if update else v
     return rules.model_copy(update={"furniture": rules.furniture.model_copy(update={"items": items})})
 
 

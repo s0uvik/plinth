@@ -780,6 +780,7 @@ class ItemFamilies(_Model):
     left_out: dict[str, str] = {}  # item -> why it is not placed at all (the user's skip, or included in another)
     questions: list[Question] = []
     asked: dict[str, str] = {}  # item -> its question's id
+    no_sides: list[str] = []  # items keeping no side clearance: their family holds what stands beside them
     assumptions: list[Assumption] = []
     searched: list[str] = []
 
@@ -838,12 +839,14 @@ def resolve_items(model: Any, rules: Any, revit: Revit, answers: dict[str, Any] 
     chosen family's real footprint. An answer may be {"family", "type"} (the family's smaller types are tried when it
     does not fit), {"family", "types": [preferred first]}, either with "front" ("-y" the Revit way, "+y", "-x", "+x":
     which way the family's front faces in its own coordinates) and "includes" (items the family already has, as a
-    bed set its side tables: not placed apart), or "skip". Types are used as they are, never edited."""
+    bed set its side tables: not placed apart, and the side clearance they stand in is not kept beside the set), or
+    "skip". Types are used as they are, never edited."""
     answers = answers or {}
     search = search or _Search(revit, year, language, templates)
     needs = item_needs(model, rules)
     found = resolve(needs, revit, answers, search=search)
     left_out: dict[str, str] = {}
+    no_sides: set[str] = set()
     by_item = {n.item: n for n in needs}
     for nid in found.skipped:
         need = next(n for n in needs if n.id == nid)
@@ -855,8 +858,10 @@ def resolve_items(model: Any, rules: Any, revit: Revit, answers: dict[str, Any] 
             for inc in answer.get("includes") or []:
                 if inc not in rules.furniture.items:
                     raise ValueError(f"fitout:family:{need.item}: includes an unknown item {inc!r}")
-                left_out.setdefault(inc, f"included in the {need.label.lower()} family ({choice.family}: {choice.type})")
-    asked = {n.item: question_id(n) for n in needs
+                left_out[inc] = f"included in the {need.label.lower()} family ({choice.family}: {choice.type})"
+                if rules.furniture.items[inc].anchor == need.item and rules.furniture.items[inc].placement == "beside":
+                    no_sides.add(need.item)
+    asked ={n.item: question_id(n) for n in needs
              if n.item not in left_out and any(q.id == question_id(n) for q in found.questions)}
     questions = [q for q in found.questions if q.id in asked.values()]
 
@@ -914,8 +919,16 @@ def resolve_items(model: Any, rules: Any, revit: Revit, answers: dict[str, Any] 
         notes.append(Assumption(id=f"fitout:left-out:{_slug(item_id)}", text=f"{rules.furniture.items[item_id].label}: "
                                 f"not placed ({why})", value=why, source="user's answer",
                                 instances=sorted(by_item[item_id].keys) if item_id in by_item else []))
+    for item_id in sorted(no_sides):
+        item = rules.furniture.items[item_id]
+        held = sorted(rules.furniture.items[i].label.lower() for i, why in left_out.items()
+                      if rules.furniture.items[i].anchor == item_id)
+        notes.append(Assumption(id=f"fitout:no-side-clearance:{_slug(item_id)}", text=f"{item.label}: its "
+                                f"{item.clearance.sides_mm:g} mm side clearance is not kept: its family holds the "
+                                f"{', '.join(held)} that stand in that space, and it is reached from its front",
+                                value=0, source="user's answer", instances=by_item[item_id].keys))
     return ItemFamilies(items=items, left_out=left_out, questions=questions, asked=asked, assumptions=notes,
-                        searched=search.searched)
+                        no_sides=sorted(no_sides), searched=search.searched)
 
 
 def _area(m: Measurement, front: str) -> float:

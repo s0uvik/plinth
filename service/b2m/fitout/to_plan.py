@@ -130,7 +130,8 @@ def plan_furniture(revit: families.Revit, building: BuildPlan, built: dict[str, 
     search = families._Search(revit, year, None, templates)
     items = families.resolve_items(model, rules, revit, answers, measurements=measurements, document=document,
                                    level=measure_level, cache=cache, search=search)
-    layout = furniture_solver.solve(model, furniture_solver.with_sizes(rules, items.sizes()), leave_out=items.left_out)
+    layout = furniture_solver.solve(model, furniture_solver.with_sizes(rules, items.sizes(), items.no_sides),
+                                    leave_out=items.left_out)
     records = {p.key: p for p in layout.placed}
     devices = list(layout.placed) + _mep_part(mep, "devices")
     needs = families.needs_from(devices) + families.run_needs(_mep_part(mep, "runs"))
