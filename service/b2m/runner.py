@@ -14,7 +14,9 @@ and compared with the plan.
 A fit-out plan (Step 10) builds on an earlier run: its hosts and run ends may be that run's elements
 (``BuildPlan.existing``, looked up but never recorded nor removed). Its type pre-steps copy types in from an
 installed template (``types_from_file``: only what the copy added is recorded, a type already there is used as it is)
-and copy a type to another size (``family_type_copy``: duplicate before edit). Placed families, MEP runs (segments,
+and copy a type to another size (``family_type_copy``: duplicate before edit); a box family the user agreed to is
+created and loaded as a new family (``family_create``: recorded and removed with the run; a family of that name already
+in the project is used as it is and not recorded). Placed families, MEP runs (segments,
 fittings, pieces as key, key#2 / key#f1 / key#p1) and circuits follow in batches.
 """
 
@@ -26,8 +28,8 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
-from b2m.plan import (KEY_SEPARATOR, PHASE_OF, TYPE_OPS, BeamOp, BuildPlan, ColumnOp, FamilyTypeCopyOp, Op, RailingOp,
-                      TypesFromFileOp, references)
+from b2m.plan import (KEY_SEPARATOR, PHASE_OF, TYPE_OPS, BeamOp, BuildPlan, ColumnOp, FamilyCreateOp, FamilyTypeCopyOp,
+                      Op, RailingOp, TypesFromFileOp, references)
 from b2m.revit import commands
 from b2m.revit.client import RevitError, RevitTimeout
 from b2m.revit.types import FamilyType, TypeMap
@@ -208,6 +210,9 @@ class Runner:
         if isinstance(op, TypesFromFileOp):
             result.created.update(commands.created_entries(op, data))
             return self._copied(op, data, result)
+        if isinstance(op, FamilyCreateOp):
+            result.created.update(commands.created_entries(op, data))
+            return self._box_family(op, data, result)
         if type_op and not isinstance(op, FamilyTypeCopyOp):
             self._active = commands.resolved_type(op, data, self._active)
             log.info("%s %s: %s %r", op.op, op.name, data.get("action"), data.get("type_name"))
@@ -247,6 +252,26 @@ class Runner:
             return self._stop(result, "failed", RevitError({
                 "error": "COPY_FAILED: Revit could not copy " + "; ".join(f"{r.get('name')}: {r.get('reason')}" for r in failed),
                 "data": {"path": op.path, "items": failed}}), op.key)
+        return None
+
+    def _box_family(self, op: FamilyCreateOp, data: dict[str, Any], result: BuildResult) -> BuildResult | None:
+        """Takes in what create_box_family did: the family made (recorded, so removing the run removes it) or a family
+        of that name already in the project (used as it is, never overwritten nor recorded); later ops place the type it
+        returned, which for a family already there may carry another name."""
+        family, type_name = data.get("family_name") or op.family, data.get("type_name")
+        if not type_name:
+            return self._stop(result, "failed", RevitError({
+                "error": f"BOX_FAMILY_HAS_NO_TYPE: family {family!r} is in the project but has no type to place.",
+                "data": data}), op.key)
+        if data.get("type_id") is not None:
+            self._type_ids[("family_type", op.family, op.type)] = data["type_id"]
+        if (type_name, family) != (op.type, op.family):
+            self._active = self._active.with_fitout("family_type", op.type, op.family, FamilyType(type_name, family))
+        if data.get("action") == "already_there":
+            log.warning("%s: family %r is already in the project; its type %r is used as it is (%s)", op.key, family,
+                        type_name, "; ".join(data.get("notes") or []) or "not this run's to remove")
+        else:
+            log.info("%s: box family %r created (%s), type %r", op.key, family, data.get("template"), type_name)
         return None
 
     def _source_type_id(self, op: FamilyTypeCopyOp) -> int | None:

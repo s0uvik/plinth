@@ -24,7 +24,9 @@ on the wall behind it.
 
 The plan's ops, in build order:
 - ``types_from_file`` per installed template the chosen types come from (copied in as new types; types the project
-  has stay as they are and are never removed with the run), then ``family_type_copy`` per type copied to a size;
+  has stay as they are and are never removed with the run), ``family_create`` per box family B2M creates because the
+  user answered so (``{"create": "box"}``: loaded as a new family, removed with the run; placed like a measured family,
+  its box known from its own geometry), then ``family_type_copy`` per type copied to a size;
 - ``family`` per placed record (key = the layout's key, so it is stable for the same plan and rules), placed as its
   family's placement type allows: level-based at the record's insertion point (the middle of its back edge), turned
   by its rotation (the family's front drawn towards -Y), raised by its elevation; wall-hosted or face-based on the
@@ -57,7 +59,7 @@ from b2m.fitout.furniture import FurnitureLayout
 from b2m.fitout.rooms import Assumption, Question, RoomModel
 from b2m.plan import BuildPlan, LevelOp, WallOp
 
-TYPES_KEY, TYPE_COPY_KEY = "FIT-TYPES-", "FIT-TYPE-"
+TYPES_KEY, TYPE_COPY_KEY, FAMILY_KEY = "FIT-TYPES-", "FIT-TYPE-", "FIT-FAMILY-"
 LEVEL_BASED = (None, "OneLevelBased")
 MAX_COPY_ITEMS = 100
 
@@ -337,8 +339,9 @@ def _family_op(record: Any, choice: Choice, walls: set[str], built: dict[str, in
         if _rotation(rotation):
             op["rotation_deg"] = _rotation(rotation)
         w, d, _ = m.size(choice.front)
+        how = "the box family B2M creates" if choice.source == "create" else "its measured box"
         op["source"] = (f"{op['source']}; " if op.get("source") else "") + \
-            (f"placed by its measured box ({w:g} x {d:g} mm, front {choice.front.upper()}; {m.describe()}): its back's "
+            (f"placed by {how} ({w:g} x {d:g} mm, front {choice.front.upper()}; {m.describe()}): its back's "
              f"middle on the layout's point {tuple(round(v, 1) for v in point)}")
         return op, None
     if placement == "WorkPlaneBased" and on_counter and not face_down:  # not measured: on the level's plane
@@ -374,7 +377,17 @@ def _type_ops(choices: Iterable[Choice]) -> list[dict[str, Any]]:
     family_type_copy per size copy."""
     by_file: dict[str, dict[tuple, dict[str, Any]]] = {}
     copies: dict[tuple, dict[str, Any]] = {}
+    boxes: dict[str, dict[str, Any]] = {}
     for c in choices:
+        if c.source == "create" and c.box is not None and c.family:
+            box = {"op": "family_create", "key": FAMILY_KEY + _slug(c.family), "kind": c.box.kind, "category": c.category,
+                   "family": c.family, "type": c.type, "width_mm": c.box.width_mm, "depth_mm": c.box.depth_mm,
+                   "height_mm": c.box.height_mm}
+            if c.box.material:
+                box["material"] = c.box.material
+            if boxes.setdefault(c.family.casefold(), box) != box:
+                raise ValueError(f"box family {c.family!r} is asked at two sizes; name each size's family apart")
+            continue
         if c.source == "template" and c.path:
             name = c.base_type or c.type
             item: dict[str, Any] = {"kind": c.kind, "name": name}
@@ -392,4 +405,4 @@ def _type_ops(choices: Iterable[Choice]) -> list[dict[str, Any]]:
         for n, start in enumerate(range(0, len(items), MAX_COPY_ITEMS), 1):  # the add-in copies 100 items a call
             ops.append({"op": "types_from_file", "key": TYPES_KEY + _slug(stem) + (f"-{n}" if n > 1 else ""),
                         "path": path, "items": items[start:start + MAX_COPY_ITEMS]})
-    return ops + [copies[k] for k in sorted(copies)]
+    return ops + [boxes[k] for k in sorted(boxes)] + [copies[k] for k in sorted(copies)]
