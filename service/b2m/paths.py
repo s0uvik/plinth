@@ -1,4 +1,5 @@
-"""Folders shared with the add-in: %LOCALAPPDATA%\\B2M\\{discovery,logs,runs}. B2M_HOME overrides the root (tests)."""
+"""Folders shared with the add-in: %LOCALAPPDATA%\\B2M\\{discovery,logs,runs,imports,cache,tools}. B2M_HOME overrides
+the root (tests)."""
 
 from __future__ import annotations
 
@@ -23,3 +24,18 @@ def logs() -> Path:
 
 def runs() -> Path:
     return root() / "runs"
+
+
+def imports() -> Path:
+    """Drawing-import projects (PRD Step 9), one folder each."""
+    return root() / "imports"
+
+
+def dxf_cache() -> Path:
+    """DXF files converted from DWG, named by the DWG's content hash."""
+    return root() / "cache" / "dxf"
+
+
+def tools() -> Path:
+    """Portable helper programs, e.g. tools\\oda\\ODAFileConverter.exe."""
+    return root() / "tools"

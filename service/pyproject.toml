@@ -12,6 +12,7 @@ dependencies = [
     "mcp>=2.3",
     "reportlab>=4",
     "pypdf>=5",
+    "ezdxf>=1.4",
 ]
 
 [project.optional-dependencies]
