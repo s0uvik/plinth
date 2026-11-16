@@ -10,6 +10,12 @@ an op that creates several elements (a stair and the railings Revit gives it) re
 key#2, key#3... The first failed batch stops the run; what was
 built so far is reported and can be removed. After a build, element counts and warnings are read back
 and compared with the plan.
+
+A fit-out plan (Step 10) builds on an earlier run: its hosts and run ends may be that run's elements
+(``BuildPlan.existing``, looked up but never recorded nor removed). Its type pre-steps copy types in from an
+installed template (``types_from_file``: only what the copy added is recorded, a type already there is used as it is)
+and copy a type to another size (``family_type_copy``: duplicate before edit). Placed families, MEP runs (segments,
+fittings, pieces as key, key#2 / key#f1 / key#p1) and circuits follow in batches.
 """
 
 from __future__ import annotations
@@ -20,10 +26,11 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
-from b2m.plan import KEY_SEPARATOR, PHASE_OF, TYPE_OPS, BeamOp, BuildPlan, ColumnOp, Op, RailingOp
+from b2m.plan import (KEY_SEPARATOR, PHASE_OF, TYPE_OPS, BeamOp, BuildPlan, ColumnOp, FamilyTypeCopyOp, Op, RailingOp,
+                      TypesFromFileOp, references)
 from b2m.revit import commands
 from b2m.revit.client import RevitError, RevitTimeout
-from b2m.revit.types import TypeMap
+from b2m.revit.types import FamilyType, TypeMap
 
 MAX_BATCH = 20
 BATCH_TIMEOUT_SECONDS = 300
@@ -38,7 +45,13 @@ ENSURE_CATEGORY = {"column": "structural_column", "beam": "structural_framing"}
 TYPE_QUESTIONS = frozenset({
     "FAMILY_NOT_FOUND", "FAMILY_CHOICE_NEEDED", "TYPE_MARK_IN_USE", "TYPE_MARK_MISMATCH",
     "BASE_TYPE_NOT_FOUND", "TYPE_CHOICE_NEEDED", "TYPE_DIMENSION_MISMATCH", "MATERIAL_NOT_FOUND",
+    # Fit-out types (Step 10): a template type that is not (or not uniquely) in the file any more, a size copy whose
+    # parameters the family does not have or will not take.
+    "TYPE_NOT_IN_FILE", "PARAMETER_NOT_FOUND", "SET_FAILED",
 })
+# What copy_types_from_file reports per item when the type is not (uniquely) in the file, and when Revit refused it.
+COPY_MISSING = frozenset({"not_found", "ambiguous"})
+COPY_FAILED = "failed"
 
 log = logging.getLogger(__name__)
 
@@ -61,15 +74,21 @@ class BuildResult:
 
 
 def plan_batches(plan: BuildPlan) -> list[list[Op]]:
-    """Ops in build order, cut at every phase change and every 20 ops. Ops called directly stand alone."""
+    """Ops in build order, cut at every phase change and every 20 ops, and before an op that joins one of the same
+    batch (a branch run teed into a main: the main's id is only known once its batch returns). Ops called directly
+    stand alone."""
     batches: list[list[Op]] = []
+    in_batch: set[str] = set()
     for op in plan.ordered():
         last = batches[-1] if batches else None
         if (last is None or len(last) >= MAX_BATCH or PHASE_OF[last[-1].op] != PHASE_OF[op.op]
-                or op.op in commands.DIRECT_OPS):
+                or op.op in commands.DIRECT_OPS or last[-1].op in commands.DIRECT_OPS
+                or in_batch.intersection(references(op))):
             batches.append([op])
+            in_batch = {op.key}
         else:
             last.append(op)
+            in_batch.add(op.key)
     return batches
 
 
@@ -84,11 +103,17 @@ class Runner:
         self.family_folders = list(family_folders or [])
         # The type mapping in use during a build: the loaded one plus what the plan's type pre-steps resolved.
         self._active = self.types
+        # Project ids of the fit-out types a build's types_from_file steps found or copied: (kind, family, name) -> id.
+        self._type_ids: dict[tuple[str, str | None, str], int] = {}
+        # Elements of an earlier run the plan builds on (BuildPlan.existing): looked up, never recorded nor removed.
+        self._existing: dict[str, int] = {}
 
     def build(self, plan: BuildPlan) -> BuildResult:
         by_key = plan.by_key()
         batches = plan_batches(plan)
         self._active = self.types
+        self._type_ids = {}
+        self._existing = dict(plan.existing)
         result = BuildResult(status="built", batches_total=len(batches), batches_succeeded=0)
         stopped = self._ensure_frame_types(plan, result)
         if stopped is not None:
@@ -102,7 +127,7 @@ class Runner:
                 result.batches_succeeded += 1
                 self.progress(index + 1, len(batches))
                 continue
-            subcommands = [commands.to_command(op, by_key, result.created, self._active) for op in batch]
+            subcommands = [commands.to_command(op, by_key, self._ids(result), self._active) for op in batch]
             log.info("batch %d of %d: %d ops (%s)", index + 1, len(batches), len(batch), batch[0].op)
             try:
                 data = self.revit.call("batch_execute", {"commands": subcommands}, timeout_seconds=BATCH_TIMEOUT_SECONDS)
@@ -112,7 +137,7 @@ class Runner:
                 failed = _failed_index(e.data)
                 return self._stop(result, "failed", e, batch[failed].key if failed is not None and 0 <= failed < len(batch) else None)
             for op, entry in zip(batch, data["results"]):
-                result.created.update(commands.created_keys(op, commands.created_ids(op, entry["data"])))
+                result.created.update(commands.created_entries(op, entry["data"]))
             result.batches_succeeded += 1
             self.progress(index + 1, len(batches))
         return result
@@ -156,21 +181,85 @@ class Runner:
             # Revit already gave the stair its railings (the add-in refuses a second set): they stand for this op.
             log.info("%s: stair %s came with its own railings; not adding more", op.key, op.stair_key)
             return None
-        command = commands.to_command(op, by_key, result.created, self._active)
-        log.info("direct call: %s (%s)", command["command"], op.key)
+        command = commands.to_command(op, by_key, self._ids(result), self._active)
         type_op = op.op in TYPE_OPS
+        if isinstance(op, FamilyTypeCopyOp):
+            source_id = self._source_type_id(op)
+            if source_id is None:
+                return self._stop(result, "needs_input", RevitError({
+                    "error": f"BASE_TYPE_NOT_FOUND: the project has no type {op.base_type!r} of family {op.family!r} "
+                             f"to copy to {op.name!r}.",
+                    "data": {"family": op.family, "type": op.base_type, "category": op.category}}), op.key)
+            command["params"]["source_type_id"] = source_id
+        log.info("direct call: %s (%s)", command["command"], op.key)
         try:
             data = self.revit.call(command["command"], command["params"],
                                    timeout_seconds=ENSURE_TIMEOUT_SECONDS if type_op else BATCH_TIMEOUT_SECONDS)
         except RevitTimeout as e:
             return self._stop(result, "unknown", e, op.key)
         except RevitError as e:
+            if isinstance(op, FamilyTypeCopyOp) and e.code == "NAME_IN_USE":
+                # A type of that name is already there (an earlier fit-out made it): used as it is, never changed, and
+                # not this run's to remove.
+                log.info("%s: type %r is already in the project; using it", op.key, op.name)
+                return None
             # A type that cannot be found, copied or chosen without the user is a question, not a failure.
             return self._stop(result, "needs_input" if type_op and e.code in TYPE_QUESTIONS else "failed", e, op.key)
-        if type_op:
+        if isinstance(op, TypesFromFileOp):
+            result.created.update(commands.created_entries(op, data))
+            return self._copied(op, data, result)
+        if type_op and not isinstance(op, FamilyTypeCopyOp):
             self._active = commands.resolved_type(op, data, self._active)
             log.info("%s %s: %s %r", op.op, op.name, data.get("action"), data.get("type_name"))
-        result.created.update(commands.created_keys(op, commands.created_ids(op, data)))
+        result.created.update(commands.created_entries(op, data))
+        return None
+
+    def _ids(self, result: BuildResult) -> dict[str, int]:
+        """Element ids by key: the earlier run's the plan builds on, then this build's."""
+        return {**self._existing, **result.created} if self._existing else result.created
+
+    def _copied(self, op: TypesFromFileOp, data: dict[str, Any], result: BuildResult) -> BuildResult | None:
+        """Takes in what copy_types_from_file did per item: the project id of every type (copied or already there),
+        the project name when Revit named the copy otherwise; a type the file lacks is a question, a type Revit would
+        not copy a failure. What was copied before that stays recorded, so removing the run removes it."""
+        missing, failed = [], []
+        for item, row in zip(op.items, data.get("items") or []):
+            status = row.get("status")
+            key = (item.kind, item.family, item.name)
+            if status == "copied":
+                self._type_ids[key] = row["new_id"]
+                name, family = row.get("new_name") or item.name, row.get("new_family_name") or item.family
+                if (name, family) != (item.name, item.family):
+                    self._active = self._active.with_fitout(item.kind, item.name, item.family, FamilyType(name, family))
+            elif status == "already_there":
+                self._type_ids[key] = row["existing_id"]
+            elif status in COPY_MISSING:
+                missing.append({**item.model_dump(exclude_none=True), **row})
+            elif status == COPY_FAILED:
+                failed.append({**item.model_dump(exclude_none=True), **row})
+        log.info("%s: %s copied, %s already there", op.key, data.get("copied"), data.get("already_there"))
+        if missing:
+            names = ", ".join(f"{r['family'] + ': ' if r.get('family') else ''}{r['name']}" for r in missing)
+            return self._stop(result, "needs_input", RevitError({
+                "error": f"TYPE_NOT_IN_FILE: {data.get('file_name') or op.path} has no (single) {names}.",
+                "data": {"path": op.path, "items": missing}}), op.key)
+        if failed:
+            return self._stop(result, "failed", RevitError({
+                "error": "COPY_FAILED: Revit could not copy " + "; ".join(f"{r.get('name')}: {r.get('reason')}" for r in failed),
+                "data": {"path": op.path, "items": failed}}), op.key)
+        return None
+
+    def _source_type_id(self, op: FamilyTypeCopyOp) -> int | None:
+        """The project id of the type a size copy starts from: brought in by this build, else found in the project."""
+        known = self._type_ids.get(("family_type", op.family, op.base_type))
+        if known is not None:
+            return known
+        listing = self.revit.call("get_available_family_types", {"builtInCategory": op.category})
+        for group in listing.get("categories") or []:
+            for row in group.get("types") or []:
+                if (row.get("familyName", "").casefold(), row.get("typeName", "").casefold()) == (
+                        op.family.casefold(), op.base_type.casefold()):
+                    return row["typeId"]
         return None
 
     def _stop(self, result: BuildResult, status: str, error: RevitError, failed_key: str | None) -> BuildResult:
