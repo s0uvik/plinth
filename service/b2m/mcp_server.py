@@ -197,12 +197,15 @@ def add_import_tools(server: MCPServer, api: Api) -> None:
                 "checks": record.get("checks"), "report": f"/runs/{run_id}/selfcheck.html"}
 
     @server.tool()
-    def b2m_import_drawings(import_id: str, run_id: str) -> dict[str, Any]:
+    def b2m_import_drawings(import_id: str, run_id: str, remake: bool = False) -> dict[str, Any]:
         """Reproduce the source sheet set in Revit for a run built from this import: sheets in source order, views on
         the source cut lines, dimensions and tags from the source, one PDF and a comparison with the source. If it
         needs answers (e.g. which way the elevation looks, which title block) it fails with 409 and the questions,
-        which are import questions now: ask the user, answer with b2m_import_answer, then call this again."""
-        return api.call("POST", f"/imports/{import_id}/drawings", {"run_id": run_id})
+        which are import questions now: ask the user, answer with b2m_import_answer, then call this again. The title
+        block fields (project name, drawn by ...) are asked too but never stop the set. A run that already has a set
+        answers 409; remake=true (only when the user asks to redo it) deletes that set's own sheets and views and
+        makes it again."""
+        return api.call("POST", f"/imports/{import_id}/drawings", {"run_id": run_id, "remake": remake})
 
     @server.tool()
     def b2m_import_estimate(import_id: str, run_id: str = "", reference_xlsx: str = "", rules: str = "") -> dict[str, Any]:
