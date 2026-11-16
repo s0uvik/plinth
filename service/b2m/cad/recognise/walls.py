@@ -75,6 +75,11 @@ class WallLine:
     gaps: list[Gap] = field(default_factory=list)  # openings across the wall (bridged gaps, infill spans)
     kind: str = "unknown"
     labelled: str | None = None  # a text inside the strip: a labelled linear feature, not a wall
+    ext0: float = 0.0  # at a junction the wall's body reaches on past its centreline end by the other wall's half
+    ext1: float = 0.0  # thickness (so an L corner is solid); 0 at a free end
+
+    def solid_body(self) -> Polygon:
+        return self.body(self.t0 - self.ext0, self.t1 + self.ext1)
 
     @property
     def start(self) -> Point:
@@ -465,12 +470,14 @@ def _clean_junctions(ctx: Ctx, walls: list[WallLine]) -> None:
                 if not (o.t0 - slack <= s_on_o <= o.t1 + slack):
                     continue
                 if best is None or abs(ahead) < abs(best[0]):
-                    best = (ahead, t_hit)
+                    best = (ahead, t_hit, o.thickness / 2 / sin)
             if best is not None:
                 if end == 0:
                     w.t0 = min(best[1], w.t1 - tol)
+                    w.ext0 = best[2]
                 else:
                     w.t1 = max(best[1], w.t0 + tol)
+                    w.ext1 = best[2]
 
 
 def _axis_hit(w: WallLine, o: WallLine) -> tuple[float, float] | None:

@@ -27,7 +27,7 @@ class Solid:
 
 
 def solid(walls: list[WallLine], columns: list[Polygon], drafts: list[OpeningDraft], tol: float) -> Solid:
-    parts = [w.body().buffer(tol / 2, join_style=2) for w in walls if w.kind != "boundary"]
+    parts = [w.solid_body().buffer(tol / 2, join_style=2) for w in walls if w.kind != "boundary"]
     parts += [c.buffer(tol / 2, join_style=2) for c in columns]
     thin = min((w.thickness for w in walls), default=50.0)
     for d in drafts:
@@ -47,7 +47,7 @@ def solid(walls: list[WallLine], columns: list[Polygon], drafts: list[OpeningDra
     return Solid(u, polys, [h for h in holes if h.area > 0])
 
 
-def outline(sol: Solid, ctx: Ctx, tol: float) -> Polygon | None:
+def outline(sol: Solid, ctx: Ctx, tol: float, walls: list[WallLine] | None = None) -> Polygon | None:
     """The largest wall-solid's outer ring, when it clearly dominates (others are free-standing pieces)."""
     if not sol.polygons:
         return None
@@ -57,7 +57,9 @@ def outline(sol: Solid, ctx: Ctx, tol: float) -> Polygon | None:
     big = [p for p in others if p.area > 0.25 * main.area]
     if big:
         ctx.finding("outline_ambiguous", f"The walls form {1 + len(big)} separate blocks of similar size; the plan has "
-                    "no single building outline. Is this one building or several?", [], severity="info")
+                    "no single building outline. Is this one building or several?",
+                    [h for p in [main] + big for w in (walls or []) if p.buffer(tol).contains(w.body().centroid)
+                     for h in w.handles[:1]][:12], severity="info")
         return None
     return main.simplify(tol)
 

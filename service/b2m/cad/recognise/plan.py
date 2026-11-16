@@ -73,7 +73,7 @@ def recognise_plan_detailed(sheet: Sheet, classification: Classification,
     if role == "floor_plan":  # a roof plan's parapets enclose its roof rooms; they are no boundary wall
         _boundary(ctx, walls, column_shapes)
     sol = sp_mod.solid(walls, [c.polygon for c in column_shapes], drafts, tol)
-    out_poly = sp_mod.outline(sol, ctx, tol) if any(w.kind != "boundary" for w in walls) else None
+    out_poly = sp_mod.outline(sol, ctx, tol, walls) if any(w.kind != "boundary" for w in walls) else None
     exterior_side = _classify_walls(ctx, walls, sol, role)
     stairs, stair_polys = _stairs(ctx, stair_drafts, sol.union)
 
@@ -88,6 +88,7 @@ def recognise_plan_detailed(sheet: Sheet, classification: Classification,
     report.marks = op_mod.mark_report(ctx, openings, mark_texts)
 
     falls = _falls(ctx)  # slope arrows take their words before rooms are named
+    _labelled_lines(ctx)
     labels = sp_mod.room_labels(ctx, [t for t in ctx.texts if not ctx.claimed(t.handle)])
     sp_mod.word_order_check(ctx, labels)
     room_list = sp_mod.rooms(ctx, labels, sol, set())
@@ -126,12 +127,44 @@ def _ccw(ring: list[Point]) -> list[Point]:
 # ------------------------------------------------------------------ walls
 
 
+def _labelled_lines(ctx: Ctx) -> None:
+    """A word written along two long parallel lines (not walls: e.g. dashed) names them: a drain, a road, a
+    channel. They stay unclaimed, listed as one item with the word, and the word is not taken for a room."""
+    free = [s for s in ctx.segs if not ctx.claimed(s.handles[0]) and s.linetype != "center"]
+    for t in [t for t in ctx.texts if not ctx.claimed(t.handle) and is_name(t.flat)]:
+        ang = t.rotation % 180
+        u, n = frame(ang)
+        near = []
+        for s in free:
+            if angle_diff(s.angle, ang) > 5 or s.length < 4 * t.width:
+                continue
+            ta, tb = sorted((dot(s.a, u), dot(s.b, u)))
+            if not (ta <= dot(t.center, u) <= tb):
+                continue
+            off = (dot(s.a, n) + dot(s.b, n)) / 2 - dot(t.center, n)
+            if abs(off) <= 3 * t.height:
+                near.append((abs(off), off, s))
+        near.sort(key=lambda x: x[0])
+        if len(near) < 2:
+            continue
+        a, b = near[0], next((x for x in near[1:] if abs(x[1] - near[0][1]) > ctx.params.tol_mm), None)
+        if b is None or not (a[1] * b[1] < 0 or a[0] <= 1.5 * t.height):  # between them, or right beside them
+            continue
+        handles = list(dict.fromkeys(a[2].handles + b[2].handles + [t.handle]))
+        ctx.claim([t.handle], "label")
+        ctx.groups.append((handles, f"line pair labelled \"{t.flat}\" ({abs(a[1] - b[1]):.0f} apart)"))
+        free = [s for s in free if s is not a[2] and s is not b[2]]
+
+
 def _drop_labelled(ctx: Ctx, walls: list[walls_mod.WallLine]) -> list[walls_mod.WallLine]:
     """A line pair with a word written inside it is a named linear feature (drain, road, ...), not a wall."""
     keep = []
     for w in walls:
         body = w.body()
-        inside = [t for t in ctx.texts if not ctx.claimed(t.handle) and is_name(t.flat) and body.contains(SPoint(t.center))]
+        # a word written in the strip, or along it overlapping it, names it
+        inside = [t for t in ctx.texts if not ctx.claimed(t.handle) and is_name(t.flat) and (
+            body.contains(SPoint(t.center)) or (angle_diff(t.rotation % 180, w.angle) < 5
+                                                and Polygon(t.box).intersection(body).area > 0.1 * Polygon(t.box).area))]
         if inside:
             note = f"line pair labelled \"{inside[0].flat}\" ({w.thickness:.0f} apart)"
             for h in w.handles + [t.handle for t in inside]:
@@ -321,7 +354,7 @@ def _flights(ctx: Ctx) -> list[_StairDraft]:
 
 def _stairs(ctx: Ctx, drafts: list[_StairDraft], solid_geom) -> tuple[list[Stair], list[Polygon]]:
     """Each stair's outline runs on from its flights to the walls around it (landings included, up to one flight
-    width away); linework inside it (well, landing edges, walking line) and its up arrow are the stair's."""
+    width and a half away); linework inside it (well, landing edges, walking line) and its up arrow are the stair's."""
     tol = ctx.params.tol_mm
     stairs, outlines = [], []
     for d in drafts:
@@ -330,8 +363,8 @@ def _stairs(ctx: Ctx, drafts: list[_StairDraft], solid_geom) -> tuple[list[Stair
         tread = max(f.spacing for f in fl)
         t0, t1, o0, o1 = d.box
         if solid_geom is not None and not solid_geom.is_empty:
-            o0 -= _reach(solid_geom, d, "o", -1, width, tol)
-            o1 += _reach(solid_geom, d, "o", 1, width, tol)
+            o0 -= _reach(solid_geom, d, "o", -1, 1.5 * width, tol)
+            o1 += _reach(solid_geom, d, "o", 1, 1.5 * width, tol)
             d.box = (t0, t1, o0, o1)
             t0 -= _reach(solid_geom, d, "t", -1, 2 * tread, tol)
             t1 += _reach(solid_geom, d, "t", 1, 2 * tread, tol)
@@ -339,7 +372,7 @@ def _stairs(ctx: Ctx, drafts: list[_StairDraft], solid_geom) -> tuple[list[Stair
         rect = d.rect()
         zone = rect.buffer(tol)
         inner = [s for s in ctx.segs if not ctx.claimed(s.handles[0]) and s.linetype == "continuous"
-                 and zone.contains(LineString([s.a, s.b]))]
+                 and zone.intersection(LineString([s.a, s.b])).length >= 0.75 * s.length]  # mostly inside
         fills = [f for f in ctx.fills if not ctx.claimed(f.handle) and zone.contains(SPoint(f.polygon[0]))]
         arrow_list = sym.arrows(ctx, [s for s in ctx.segs if not ctx.claimed(s.handles[0])], fills)
         up = None
@@ -474,10 +507,14 @@ def _unclaimed(ctx: Ctx, report: Report) -> list[Evidence]:
     out: list[Evidence] = []
     counts: Counter = Counter()
     loose: list[tuple[CadEntity, object]] = []
+    grouped = {h for handles, _ in ctx.groups for h in handles}
+    for handles, note in ctx.groups:
+        out.append(ctx.ev(handles, note))
+        counts[_note_key(note)] += 1
     for e in ctx.entities:
         if e.invisible or e.kind == "dimension":
             continue
-        if ctx.claimed(e.handle) or any(ctx.claimed(c.handle) for c in e.walk()):
+        if e.handle in grouped or ctx.claimed(e.handle) or any(ctx.claimed(c.handle) for c in e.walk()):
             continue
         note = ctx.notes.get(e.handle)
         geom = None if note else _geom(e)

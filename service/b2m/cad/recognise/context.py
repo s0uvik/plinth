@@ -116,6 +116,7 @@ class Ctx:
     claims: dict[str, str] = field(default_factory=dict)  # handle -> what claimed it
     findings: list[Finding] = field(default_factory=list)
     notes: dict[str, str] = field(default_factory=dict)  # handle -> classification for unclaimed evidence
+    groups: list[tuple[list[str], str]] = field(default_factory=list)  # unclaimed items listed together, with a note
     _ids: dict[str, int] = field(default_factory=dict)
 
     def new_id(self, prefix: str) -> str:
