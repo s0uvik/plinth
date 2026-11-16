@@ -27,6 +27,7 @@ from b2m.cad.building import PlanRecognition, RecognisedBuilding
 from b2m.cad.project import ImportProject, ImportStore, LocationRequired, analyse, collect
 from b2m.cad.assumptions import ProfileRequired
 from b2m.imports_api import NotWired
+from b2m.imported import stage_questions
 from b2m.brief.agent import BriefFailed, BriefSession, MessagesClient, Questions, SpecReady, anthropic_client
 from b2m.builds import BuildService, Busy, product_version
 from b2m.compliance import evaluate, facts_after_build, facts_before_build, hard_failures
@@ -226,6 +227,8 @@ def create_app(service: BuildService | None = None, brief_client: Callable[[], M
         if run is None:
             raise HTTPException(404, "No such run.")
         record = run.load("run")
+        if run.load("import_plan") is not None:  # built from drawings: reproduce the source sheet set
+            return app.state.import_drawings((run.load("import") or {}).get("id"), run_id)
         if record.get("status") not in ("built", "built_with_issues"):
             raise HTTPException(409, "Build the model before making its drawing set.")
         if (record.get("drawings") or {}).get("sheets"):
@@ -351,7 +354,7 @@ def create_app(service: BuildService | None = None, brief_client: Callable[[], M
     @app.get("/runs/{run_id}/{name}.pdf")
     def run_pdf(run_id: str, name: str) -> FileResponse:
         run = service.store.get(run_id)
-        if run is None or name not in ("report", "report_before", "set"):
+        if run is None or name not in ("report", "report_before", "set", "drawings"):
             raise HTTPException(404, "No such file.")
         path = run.dir / f"{name}.pdf"
         if not path.exists():
@@ -421,6 +424,25 @@ class ApproveRequest(BaseModel):
 
 class ImportBuildRequest(BaseModel):
     document_title: str
+
+
+class ImportDrawingsRequest(BaseModel):
+    run_id: str
+
+
+class ImportEstimateRequest(BaseModel):
+    run_id: str | None = None  # the build to measure; none: the recognised building and the answers
+    rules: str | None = None  # a rules file path or a packaged name; default the project's, else office-default
+    reference_xlsx: str | None = None  # the office's own estimate workbook to compare with
+
+
+RUN_FILES = {  # files a run (or an import, for its estimate) serves, by name
+    "selfcheck.html": "text/html", "selfcheck.json": "application/json",
+    "drawings-comparison.html": "text/html", "drawings-comparison.json": "application/json",
+    "estimate.xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "estimate.json": "application/json", "estimate-crosscheck.html": "text/html",
+    "estimate-comparison.html": "text/html",
+}
 
 
 def _utc() -> str:
@@ -522,6 +544,14 @@ def _approved(project: ImportProject) -> bool:
         if approval.what in ("review", "review_withdrawn"):
             return approval.what == "review"
     return False
+
+
+def _refresh(project: ImportProject, building: RecognisedBuilding | None) -> None:
+    """Re-derive the questions after an answer (answers kept), so what the answer raises is asked now, not at build."""
+    try:
+        imports_api.refresh(project, building)
+    except NotWired:
+        pass
 
 
 def _withdraw_approval(project: ImportProject, why: str) -> None:
@@ -686,6 +716,24 @@ def _evidence_layer(sheet: cad_sheet.Sheet, project: ImportProject, file: str) -
     return "\n".join(parts) if len(parts) > 2 else ""
 
 
+def import_selfcheck(import_plan, building: RecognisedBuilding, answers: dict[str, Any], review_url: str | None):
+    """The after-build hook of an import build: the self-check (T9) reads the model back, writes selfcheck.json /
+    selfcheck.html in the run folder, and its summary goes in the run record."""
+    from b2m.imported import selfcheck
+
+    hook = selfcheck.after_build_selfcheck(import_plan, building, answers, review_url=review_url)
+
+    def check(revit, run, created: dict[str, int]) -> dict[str, Any]:
+        out = hook(revit, run, created)
+        summary = out["selfcheck"]
+        run.update(selfcheck={"ok": summary["ok"], "unexplained": summary["unexplained"],
+                              "explained": summary["explained"], "accounting": summary["accounting"],
+                              "elements_read": summary["elements_read"], "report": f"/runs/{run.id}/selfcheck.html"})
+        return out
+
+    return check
+
+
 def add_import_routes(app: FastAPI, service: BuildService, imports: Imports) -> None:
     app.state.imports = imports
 
@@ -792,7 +840,12 @@ def add_import_routes(app: FastAPI, service: BuildService, imports: Imports) -> 
                 raise HTTPException(404, str(e)) from e
             except ValueError as e:
                 raise HTTPException(422, str(e)) from e
-            _withdraw_approval(project, f"answer to {request.question_id} changed after approval")
+            q = project.question(request.question_id)
+            if q.key.get("stage"):  # a drawing-set / estimate input: the model is unchanged
+                stage_questions.record(project, q)
+            else:
+                _refresh(project, imports.building(import_id))
+                _withdraw_approval(project, f"answer to {request.question_id} changed after approval")
             imports.store.save(project)
             return _review(project, imports.building(import_id))
 
@@ -834,6 +887,7 @@ def add_import_routes(app: FastAPI, service: BuildService, imports: Imports) -> 
                 raise HTTPException(409, str(e)) from e
             except KeyError as e:
                 raise HTTPException(404, str(e)) from e
+            _refresh(project, imports.building(import_id))
             _withdraw_approval(project, "assumptions made after approval")
             imports.store.save(project)
             return {**_review(project, imports.building(import_id)), "assumed": jsonable_encoder(made)}
@@ -871,10 +925,11 @@ def add_import_routes(app: FastAPI, service: BuildService, imports: Imports) -> 
                 raise HTTPException(409, {"errors": ["Not ready to build:"] + [_item_text(i) for i in readiness["blocking"]],
                                           "readiness": readiness})
             result = engine(imports_api.to_plan, project, building)
-            if not isinstance(result, BuildPlan):
+            if isinstance(result, list):
                 missing = jsonable_encoder(result)
                 raise HTTPException(409, {"errors": ["B2M needs these inputs before it can build:"]
                                                     + [_item_text(m) for m in missing], "missing": missing})
+            plan = imports_api.plan_of(result)
             approval = next(a for a in reversed(project.approvals) if a.what == "review")
             attachments = {
                 "import": {"id": project.id, "sources": [s.model_dump(mode="json") for s in project.sources],
@@ -885,12 +940,170 @@ def add_import_routes(app: FastAPI, service: BuildService, imports: Imports) -> 
                 "assumptions": [a.model_dump(mode="json") for a in project.assumptions],
                 "approval": approval.model_dump(mode="json"),
             }
+            after_build = None
+            if not isinstance(result, BuildPlan):  # the full ImportPlan: keep it, and self-check every build
+                applied, plan_answers = engine(imports_api.plan_context, project, building)
+                attachments |= {"import_plan": result.model_dump(mode="json"), "plan_answers": jsonable_encoder(plan_answers),
+                                "plan_building": applied.model_dump(mode="json")}
+                after_build = import_selfcheck(result, applied, plan_answers, f"/import#{project.id}")
             try:
-                run_id = service.start(result, title, attachments)
+                run_id = service.start(plan, title, attachments, after_build=after_build)
             except Busy as e:
                 raise HTTPException(409, str(e)) from e
             imports.update(import_id, runs=(record.get("runs") or []) + [run_id])
             return {"run_id": run_id}
+
+    def import_run(import_id: str | None, run_id: str):
+        run = service.store.get(run_id)
+        if run is None:
+            raise HTTPException(404, "No such run.")
+        made_from = (run.load("import") or {}).get("id")
+        if import_id is not None and made_from != import_id:
+            raise HTTPException(409, f"Run {run_id} was not built from import {import_id}.")
+        if run.load("import_plan") is None:
+            raise HTTPException(409, "This run was built before B2M kept the import's plan with its runs; build it "
+                                     "again from the import.")
+        return run, made_from
+
+    def stage_conflict(project: ImportProject, stage: str, asked: list[dict[str, Any]], what: str) -> HTTPException:
+        """Turn a stage's questions into import questions (ids = the answer keys) and say what to answer."""
+        qs = stage_questions.merge(project, stage, asked)
+        imports.store.save(project)
+        return HTTPException(409, {"errors": [f"B2M needs answers before it can make the {what}:"]
+                                             + [f"{q.id}: {q.text}" for q in qs if q.open],
+                                   "questions": [q.model_dump(mode="json") for q in qs if q.open]})
+
+    def make_drawings(import_id: str | None, run_id: str) -> dict[str, Any]:
+        """The source sheet set reproduced in Revit for a run built from an import (T10)."""
+        from b2m.imported.drawings import load_sheets, make_import_drawing_set
+        from b2m.imported.to_plan import ImportPlan
+
+        run, made_from = import_run(import_id, run_id)
+        import_id = import_id or made_from
+        record = run.load("run")
+        if record.get("status") not in ("built", "built_with_issues"):
+            raise HTTPException(409, "Build the model before making its drawing set.")
+        if (record.get("drawings") or {}).get("sheets"):
+            raise HTTPException(409, "This run already has a drawing set; remove the run and build again to redo it.")
+        project = imports.project(import_id)
+        building = RecognisedBuilding.model_validate(run.load("recognised_building"))
+        result = ImportPlan.model_validate(run.load("import_plan"))
+        sheets = load_sheets(project)
+
+        def make(revit, run) -> dict[str, Any]:
+            def remember(key: str, element_id: int) -> None:
+                current = run.load("run").get("created") or {}
+                run.update(created={**current, key: element_id})
+            created = run.load("run").get("created") or {}
+            return make_import_drawing_set(revit, project, building, result, created, run.dir, record=remember,
+                                           sheets=sheets)
+
+        try:
+            out = service.run_on(run_id, make, "drawings").get("drawings") or {}
+        except Busy as e:
+            raise HTTPException(409, str(e)) from e
+        if out.get("status") == "questions":
+            with imports.edit:
+                raise stage_conflict(imports.project(import_id), "drawings", out.get("questions") or [],
+                                     "drawing set")
+        if out.get("error") and not out.get("sheets"):
+            raise HTTPException(502, {"errors": [f"The drawing set failed: {out['error']}"], "drawings": out})
+        with imports.edit:  # whatever it asked before is settled
+            project = imports.project(import_id)
+            stage_questions.merge(project, "drawings", [])
+            imports.store.save(project)
+        comparison = out.get("comparison") or {}
+        return {**{k: v for k, v in out.items() if k not in ("log", "comparison")},
+                "comparison_summary": {"sheets_with_differences": comparison.get("sheets_with_differences"),
+                                       "order": comparison.get("order")},
+                "pdf_url": f"/runs/{run_id}/drawings.pdf" if out.get("pdf") else None,
+                "comparison_url": f"/runs/{run_id}/drawings-comparison.html"}
+
+    app.state.import_drawings = make_drawings
+
+    @app.post("/imports/{import_id}/drawings")
+    def import_drawings(import_id: str, request: ImportDrawingsRequest) -> dict[str, Any]:
+        finished(import_id)
+        return make_drawings(import_id, request.run_id)
+
+    @app.post("/imports/{import_id}/estimate")
+    def import_estimate(import_id: str, request: ImportEstimateRequest | None = None) -> dict[str, Any]:
+        """The door/window estimate (T11) from the built model (or the recognised building and the answers when no
+        run is given), with the office's rules, its cross-check against the drawings and, given the office's own
+        workbook, the cell-by-cell comparison with it."""
+        from b2m.imported import estimate as import_estimate_mod
+
+        request = request or ImportEstimateRequest()
+        finished(import_id)
+        run = None
+        if request.run_id:
+            run, _ = import_run(import_id, request.run_id)
+            if (run.load("run") or {}).get("status") not in ("built", "built_with_issues"):
+                raise HTTPException(409, "That run has no built model to measure.")
+        if request.reference_xlsx and not Path(request.reference_xlsx.strip().strip('"')).is_file():
+            raise HTTPException(404, f"No such workbook: {request.reference_xlsx}")
+        with imports.edit:
+            project = imports.project(import_id)
+            building = imports.building(import_id)
+            if building is None:
+                raise HTTPException(409, "The drawings have not been recognised yet.")
+            if request.rules:
+                project.set_value(import_estimate_mod.RULES_KEY, request.rules.strip().strip('"'))
+            try:
+                if run is not None:
+                    def measure(revit, run_) -> dict[str, Any]:
+                        return import_estimate_mod.model_quantities_record(revit, run_)
+
+                    measured = service.run_on(run.id, measure, "estimate_readback").get("estimate_readback") or {}
+                    if measured.get("error"):
+                        raise HTTPException(502, {"errors": [f"Reading the model back failed: {measured['error']}"]})
+                    out_dir = run.dir
+                else:
+                    measured, out_dir = None, imports.dir(import_id)
+                result = import_estimate_mod.make_estimate(
+                    project, building, out_dir, run=run, measured=measured,
+                    reference=request.reference_xlsx.strip().strip('"') if request.reference_xlsx else None)
+            except Busy as e:
+                raise HTTPException(409, str(e)) from e
+            except FileNotFoundError as e:
+                raise HTTPException(404, str(e)) from e
+            qs = stage_questions.merge(project, "estimate", result.pop("questions"))
+            imports.store.save(project)
+        base = f"/runs/{run.id}/files/" if run is not None else f"/imports/{import_id}/files/"
+        return {**result, "questions": [q.model_dump(mode="json") for q in qs if q.open],
+                "answered": [q.id for q in qs if not q.open],
+                "urls": {name: base + name for name in ("estimate.xlsx", "estimate-crosscheck.html",
+                                                        "estimate-comparison.html")
+                         if (out_dir / name).is_file()}}
+
+    @app.get("/runs/{run_id}/files/{name}")
+    def run_file(run_id: str, name: str) -> FileResponse:
+        run = service.store.get(run_id)
+        path = run.dir / name if run is not None and name in RUN_FILES else None
+        if path is None or not path.is_file():
+            raise HTTPException(404, "No such file (yet).")
+        return FileResponse(path, media_type=RUN_FILES[name], filename=f"{run_id}-{name}")
+
+    @app.get("/runs/{run_id}/selfcheck.html")
+    def run_selfcheck(run_id: str) -> FileResponse:
+        return run_file(run_id, "selfcheck.html")
+
+    @app.get("/runs/{run_id}/drawings-comparison.html")
+    def run_drawings_comparison(run_id: str) -> FileResponse:
+        return run_file(run_id, "drawings-comparison.html")
+
+    @app.get("/runs/{run_id}/estimate.xlsx")
+    def run_estimate(run_id: str) -> FileResponse:
+        return run_file(run_id, "estimate.xlsx")
+
+    @app.get("/imports/{import_id}/files/{name}")
+    def import_file(import_id: str, name: str) -> FileResponse:
+        if imports.record(import_id) is None or name not in RUN_FILES:
+            raise HTTPException(404, "No such file.")
+        path = imports.dir(import_id) / name
+        if not path.is_file():
+            raise HTTPException(404, "Not produced yet.")
+        return FileResponse(path, media_type=RUN_FILES[name], filename=f"{import_id}-{name}")
 
 
 def main() -> None:

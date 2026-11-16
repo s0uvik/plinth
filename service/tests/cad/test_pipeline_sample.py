@@ -12,6 +12,8 @@ from tests.cad.conftest import SAMPLE_DXF
 
 TYPICAL, GROUND, ROOF = "2.PLAN 1st to 4th.dxf", "1.GROUND FLOOR PLAN.dxf", "3.ROOF PLAN.dxf"
 
+ROOMS_NOT_ENCLOSED = plan_bridge._group_id("room_not_enclosed", [f"room:{GROUND}:room-{n}" for n in range(2, 6)])
+STAIR_AXES = plan_bridge._group_id("stair_axis", [f"stair_axis:{GROUND}:stair-1", f"stair_axis:{TYPICAL}:stair-1"])
 # The sample's questions: (id, severity, places) for the questions with ids of their own (T5's, then those the
 # build-plan converter T6 still needs, under T6's ids) ...
 EXPECTED = [
@@ -35,13 +37,9 @@ EXPECTED = [
     ("level:roof_structure", "blocking", 16),
     ("projection:2.PLAN 1st to 4th.dxf:projection-22", "blocking", 0),
     ("projection_thickness:chajja", "blocking", 20),
-    ("room:1.GROUND FLOOR PLAN.dxf:room-2", "blocking", 0),
-    ("room:1.GROUND FLOOR PLAN.dxf:room-3", "blocking", 0),
-    ("room:1.GROUND FLOOR PLAN.dxf:room-4", "blocking", 0),
-    ("room:1.GROUND FLOOR PLAN.dxf:room-5", "blocking", 0),
+    (ROOMS_NOT_ENCLOSED, "blocking", 4),  # T6's four room questions, asked once (one fact, four places)
     ("slab_outline:storey-0", "blocking", 0),
-    ("stair_axis:1.GROUND FLOOR PLAN.dxf:stair-1", "blocking", 0),
-    ("stair_axis:2.PLAN 1st to 4th.dxf:stair-1", "blocking", 0),
+    (STAIR_AXES, "blocking", 2),  # and its two stair-axis questions
     ("rule-set", "check", 0),
     ("beam-depth", "check", 0),
     ("roof-structure", "check", 0),
@@ -191,6 +189,8 @@ def test_answers_make_the_build_plan(tmp_path):
                 value = OWN[q.id]
             elif q.id in t6:
                 value = t6[q.id]
+            elif q.key.get("members"):  # T6 questions asked once for several places: the fixture's per place
+                value = {m: t6[m] for m in q.key["members"]}
             elif q.answer_type == "door_height":
                 value = 2100
             elif q.answer_type == "window_size":

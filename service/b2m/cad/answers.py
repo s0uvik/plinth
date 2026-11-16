@@ -230,6 +230,13 @@ def normalise(q: Question, value: Any) -> Any:
             raise AnswerError(f"{q.id}: answer \"skip\" or {{'mode': 'new_wall', 'thickness_mm': ..., "
                               "'function': 'interior'}")
         if t == "plan_input":
+            members = q.key.get("members") or []
+            if isinstance(value, dict) and value and members and set(value) <= set(members):
+                missing = [m for m in members if m not in value]
+                if missing:
+                    raise AnswerError(f"{q.id}: answer every place, or once for all: {missing} not answered")
+                one = q.model_copy(update={"key": {k: v for k, v in q.key.items() if k != "members"}})
+                return {m: normalise(one, v) for m, v in value.items()}
             raw = q.key.get("options_raw") or []
             if isinstance(value, str):
                 for text, o in zip(q.options, raw):
@@ -256,13 +263,20 @@ def normalise(q: Question, value: Any) -> Any:
             if not isinstance(value, str) or not value.strip():
                 raise AnswerError(f"{q.id}: say it in words")
             return value.strip()
+        if t == "stage_value":  # a drawing-set or estimate input: one of the options, or the value itself
+            opt = _option(q, value)
+            if opt is not None:
+                return opt
+            if value is None or (isinstance(value, str) and not value.strip()) or value in ([], {}):
+                raise AnswerError(f"{q.id}: give a value" + (f", or one of {q.options}" if q.options else ""))
+            return value.strip() if isinstance(value, str) else value
     except ValidationError as exc:
         raise AnswerError(f"{q.id}: {exc.errors()[0]['msg']}") from exc
     raise AnswerError(f"{q.id}: unknown answer type {t}")
 
 
 ANSWER_TYPES = ["location", "rule_set", "choice", "choice_or_text", "mark_width", "rooms", "door_height",
-                "window_size", "length", "opening_mark", "opening_host", "plan_input", "text"]
+                "window_size", "length", "opening_mark", "opening_host", "plan_input", "text", "stage_value"]
 
 
 def answer(project: ImportProject, question_id: str, value: Any, by: str = "user", basis: str | None = None,

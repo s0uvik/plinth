@@ -258,7 +258,9 @@ async function call(path, body) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const d = data.detail;
-    throw new Error(Array.isArray(d?.errors) ? d.errors.join("\n") : typeof d === "string" ? d : `Request failed (${res.status})`);
+    const error = new Error(Array.isArray(d?.errors) ? d.errors.join("\n") : typeof d === "string" ? d : `Request failed (${res.status})`);
+    error.detail = d;
+    throw error;
   }
   return data;
 }
@@ -323,6 +325,10 @@ async function refreshStatus() {
     $("review").classList.remove("hidden");
     showSheets(s);
     if (first) await refreshReview();
+    if (first && runId === null && (s.runs || []).length) {  // an earlier import: show its latest build
+      runId = s.runs[s.runs.length - 1];
+      refreshRun();
+    }
     if (sheetN === null) selectSheet(s.sheets[0].n);
     else if (first) selectSheet(sheetN, null, true);  // recognition finished: redraw with what B2M understood
   }
@@ -543,6 +549,7 @@ function showReview(data) {
     : [el("li", {class: "empty"}, "None. B2M assumes only when you ask it to.")]));
   showReadiness(data);
   updateButtons();
+  renderStageQuestions();
 }
 
 function questionView(q) {
@@ -674,11 +681,7 @@ async function refreshRun() {
     if (q.searched && q.searched.length) box.append(el("div", {class: "muted"}, "Searched: " + q.searched.join("; ")));
     parts.push(box);
   }
-  if (["built", "built_with_issues"].includes(run.status)) {
-    parts.push(el("div", {class: "actions"},
-      el("span", {class: "muted small", title: "The self-check compares the Revit model with the drawings (coming in a later step)."},
-         "Self-check against the drawings: not available yet")));
-  }
+  if (["built", "built_with_issues"].includes(run.status)) parts.push(...afterBuild(run));
   if (run.created && Object.keys(run.created).length && !["removed", "removing", "building", "queued"].includes(run.status)) {
     const remove = el("button", {class: "secondary small"}, "Remove generated model");
     remove.onclick = () => busy(remove, async () => { await call(`/runs/${runId}/remove`, {}); refreshRun(); });
@@ -686,6 +689,82 @@ async function refreshRun() {
   }
   $("result-body").replaceChildren(...parts);
   if (!["queued", "building", "removing"].includes(run.status)) clearInterval(runPoll);
+}
+
+// ---- after the build: self-check, drawing set, estimate (each stage's questions are import questions too)
+
+function link(href, text) { return el("a", {href, target: "_blank", rel: "noopener"}, text); }
+
+function afterBuild(run) {
+  const out = [];
+  const sc = run.selfcheck;
+  if (sc) {
+    const a = sc.accounting || {};
+    out.push(el("h3", {}, "Self-check against the drawings"),
+      el("div", {class: `note ${sc.unexplained ? "warn" : "ok"} small`},
+        el("strong", {}, sc.unexplained ? `${sc.unexplained} difference${sc.unexplained === 1 ? "" : "s"} not explained` : "No unexplained difference"),
+        el("div", {}, `${sc.explained} explained by your answers or documented rules; ${sc.elements_read} elements read back.`),
+        el("div", {}, `Recognised ${a.recognised ?? "?"}: built ${a.planned ?? "?"}, listed as not modelled ${a.not_modelled ?? "?"}, ` +
+                      `accounted for by a rule ${a.explained ?? "?"}, unaccounted ${a.unaccounted ?? "?"}.`),
+        el("div", {}, link(sc.report, "Open the self-check report"))));
+  } else if (run.checks?.error) {
+    out.push(el("div", {class: "note error small"}, `The self-check failed: ${run.checks.error}`));
+  }
+
+  out.push(el("h3", {}, "Drawing set"));
+  const d = run.drawings;
+  const drawBox = el("div", {id: "drawings-body"});
+  if (d?.sheets?.length) {
+    drawBox.append(el("div", {class: `note ${d.status === "done" ? "ok" : "warn"} small`},
+      `Sheets ${d.sheets.join(", ")}` + (d.failed?.length ? `; ${d.failed.length} steps failed` : ""),
+      el("div", {}, d.pdf ? link(`/runs/${run.run_id}/drawings.pdf`, "PDF") : "", " · ",
+         link(`/runs/${run.run_id}/drawings-comparison.html`, "Comparison with the source sheets"))));
+  } else {
+    const make = el("button", {class: "secondary small"}, "Make drawing set");
+    make.onclick = () => busy(make, async () => {
+      try { await call(`/imports/${importId}/drawings`, {run_id: run.run_id}); }
+      catch (e) { if (e.detail?.questions) await refreshReview(); throw e; }
+      refreshRun();
+    }, $("drawings-notice"));
+    drawBox.append(el("div", {class: "actions"}, make));
+  }
+  out.push(drawBox, el("div", {id: "drawings-notice"}), el("div", {id: "drawings-questions"}));
+
+  out.push(el("h3", {}, "Estimate"));
+  const ref = el("input", {type: "text", id: "reference-xlsx", placeholder: "Optional: the office's own estimate workbook (.xlsx) to compare with"});
+  const make = el("button", {class: "secondary small"}, "Make estimate");
+  make.onclick = () => busy(make, async () => {
+    const data = await call(`/imports/${importId}/estimate`, {run_id: run.run_id, reference_xlsx: ref.value.trim() || null});
+    await refreshReview();
+    showEstimate(data);
+  }, $("estimate-notice"));
+  out.push(el("div", {class: "field"}, ref), el("div", {class: "actions"}, make),
+           el("div", {id: "estimate-notice"}), el("div", {id: "estimate-body"}), el("div", {id: "estimate-questions"}));
+  setTimeout(renderStageQuestions);
+  return out;
+}
+
+function showEstimate(data) {
+  const c = data.comparison;
+  const links = Object.entries(data.urls || {}).map(([name, href]) =>
+    link(href, {"estimate.xlsx": "Estimate (Excel)", "estimate-crosscheck.html": "Cross-check with the drawings",
+                "estimate-comparison.html": "Comparison with your workbook"}[name] || name));
+  const open = (data.questions || []).length;
+  $("estimate-body").replaceChildren(el("div", {class: `note ${open ? "warn" : "ok"} small`},
+    `Measured from the ${data.source === "model" ? "built model" : "drawings as answered"} with the ${data.rules} rules: ${data.rows} rows.`,
+    c ? el("div", {}, c.exact ? "Matches your workbook cell by cell." :
+        `${c.differences.length} cell${c.differences.length === 1 ? "" : "s"} differ from your workbook (${Object.entries(c.counts).map(([k, v]) => `${k} ${v}`).join(", ")}).`) : "",
+    open ? el("div", {}, `${open} question${open === 1 ? "" : "s"} below; answer and make it again.`) : "",
+    el("div", {}, ...links.flatMap((l, i) => i ? [" · ", l] : [l]))));
+}
+
+function renderStageQuestions() {
+  for (const stage of ["drawings", "estimate"]) {
+    const box = $(`${stage}-questions`);
+    if (!box) continue;
+    const qs = allQuestions().filter(q => q.key?.stage === stage && !q.answered_by);
+    box.replaceChildren(...(qs.length ? [el("p", {class: "small muted"}, `To answer before the ${stage === "drawings" ? "drawing set" : "estimate"} is complete:`), ...qs.map(questionView)] : []));
+  }
 }
 
 loadEarlier();

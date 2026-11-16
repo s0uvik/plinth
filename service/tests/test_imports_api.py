@@ -74,6 +74,7 @@ def engine(monkeypatch):
     fake = FakeEngine()
     for name in ("run_import", "question_groups", "apply_answer", "assume", "ready_to_build", "to_plan"):
         monkeypatch.setattr(imports_api, name, getattr(fake, name))
+    monkeypatch.setattr(imports_api, "refresh", lambda project, building: None)  # the fake's questions stand
     return fake
 
 

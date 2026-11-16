@@ -152,9 +152,11 @@ def add_import_tools(server: MCPServer, api: Api) -> None:
         return api.call("GET", f"/imports/{import_id}/questions")
 
     @server.tool()
-    def b2m_import_answer(import_id: str, question_id: str, answer: str) -> dict[str, Any]:
-        """Record the user's own answer to one question (the value they gave, e.g. "3000" or one of the options).
-        Only pass what the user said; an answer after approval withdraws the approval."""
+    def b2m_import_answer(import_id: str, question_id: str,
+                          answer: str | int | float | dict[str, Any] | list[Any]) -> dict[str, Any]:
+        """Record the user's own answer to one question (the value they gave, e.g. "3000", one of the options, or the
+        structured value the question asks for, such as {"wood": 12, "pvc": 8}). Only pass what the user said. An
+        answer after approval withdraws the approval, except answers to drawing-set and estimate questions."""
         return api.call("POST", f"/imports/{import_id}/answers", {"question_id": question_id, "answer": answer})
 
     @server.tool()
@@ -184,6 +186,33 @@ def add_import_tools(server: MCPServer, api: Api) -> None:
         """Build the approved import in the open Revit document with this title (confirm the title with the user).
         If inputs are still missing it fails and lists them: ask the user. Returns a run_id for b2m_run_status."""
         return api.call("POST", f"/imports/{import_id}/build", {"document_title": document_title})
+
+    @server.tool()
+    def b2m_import_selfcheck(run_id: str) -> dict[str, Any]:
+        """The self-check of a build from drawings: the model read back and compared with the plan and the drawings.
+        Returns the run with its selfcheck summary (unexplained and explained differences, accounting of every
+        recognised element) and the report's address (selfcheck.html). "Done" means zero unexplained."""
+        record = api.call("GET", f"/runs/{run_id}")
+        return {"run_id": run_id, "status": record.get("status"), "selfcheck": record.get("selfcheck"),
+                "checks": record.get("checks"), "report": f"/runs/{run_id}/selfcheck.html"}
+
+    @server.tool()
+    def b2m_import_drawings(import_id: str, run_id: str) -> dict[str, Any]:
+        """Reproduce the source sheet set in Revit for a run built from this import: sheets in source order, views on
+        the source cut lines, dimensions and tags from the source, one PDF and a comparison with the source. If it
+        needs answers (e.g. which way the elevation looks, which title block) it fails with 409 and the questions,
+        which are import questions now: ask the user, answer with b2m_import_answer, then call this again."""
+        return api.call("POST", f"/imports/{import_id}/drawings", {"run_id": run_id})
+
+    @server.tool()
+    def b2m_import_estimate(import_id: str, run_id: str = "", reference_xlsx: str = "", rules: str = "") -> dict[str, Any]:
+        """The door/window estimate in the office's Excel layout (live formulas), measured from the built model of
+        run_id (or, without one, from the drawings as answered), with the office's rules (rules: a rules file path;
+        default the project's, else office-default). It is cross-checked against the drawings and, given the
+        office's own estimate workbook (reference_xlsx), compared with it cell by cell. Materials and railing
+        lengths are on no drawing: they come back as questions (import questions); ask the user, answer, run again."""
+        body = {"run_id": run_id or None, "reference_xlsx": reference_xlsx or None, "rules": rules or None}
+        return api.call("POST", f"/imports/{import_id}/estimate", body)
 
 
 def add_gateway_tools(server: MCPServer, api: Api, read_only: bool) -> None:

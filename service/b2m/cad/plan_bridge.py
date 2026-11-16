@@ -94,7 +94,13 @@ def t6_ids(q: Question, b: RecognisedBuilding) -> dict[str, Any]:
         for sheet in k.get("sheets", []):
             out[f"beam_depth:{sheet}"] = a["value_mm"] if isinstance(a, dict) else None
     elif q.answer_type == "plan_input":
-        out[q.id] = a
+        members = q.key.get("members")
+        if not members:
+            out[q.id] = a
+        else:  # one question for several alike: one answer for all, or {member id: answer}
+            per_place = isinstance(a, dict) and bool(a) and set(a) <= set(members)
+            for mid in members:
+                out[mid] = a.get(mid) if per_place else a
     return out
 
 
@@ -134,8 +140,43 @@ def _handles(b: RecognisedBuilding, refs: list[str]) -> set[str]:
     return out
 
 
+_READABLE = {"skip": "skip (leave it out of the model)", "none": "none", "x": "x (east-west)",
+             "y": "y (north-south)", "storey_above": "the outline of the storey above"}
+
+
 def _option_text(o: Any) -> str:
-    return o if isinstance(o, str) else f"{o:g} mm" if isinstance(o, (int, float)) else json.dumps(o)
+    """An option as an architect reads it; the machine value stays behind it (``key.options_raw``)."""
+    if isinstance(o, str):
+        return _READABLE.get(o, o)
+    if isinstance(o, bool):
+        return "yes" if o else "no"
+    if isinstance(o, (int, float)):
+        return f"{o:g} mm"
+    if isinstance(o, dict):
+        mode = o.get("mode")
+        if mode == "one_room":
+            return f"one room named {o['name']}" if o.get("name") else "one room (give its name)"
+        if mode == "separate":
+            return "separate rooms (give the separation lines)"
+        if mode == "new_wall":
+            size = f"{o['thickness_mm']:g} mm " if o.get("thickness_mm") else ""
+            what = f"{o['function']} " if o.get("function") else ""
+            return f"a new {size}{what}wall across the gap" + ("" if size else " (give its thickness)")
+    return json.dumps(o)
+
+
+def _group_id(topic: str, members: list[str]) -> str:
+    """A stable id for one question asked for several alike (the same members give the same id)."""
+    import hashlib
+
+    digest = hashlib.sha1("\n".join(sorted(members)).encode("utf-8")).hexdigest()[:6]
+    return f"{topic}:{len(members)}-alike-{digest}"
+
+
+def _place(m) -> str:
+    """The place a T6 question is about, from its id ("room:<sheet>:room-2" -> "<sheet> room-2")."""
+    parts = m.id.split(":")
+    return " ".join(parts[1:]) if len(parts) > 1 else m.id
 
 
 def merge(project: ImportProject, raw: RecognisedBuilding, old: dict[str, Question] | None = None) -> list[Question]:
@@ -154,8 +195,10 @@ def merge(project: ImportProject, raw: RecognisedBuilding, old: dict[str, Questi
             for e in _elements(q, b):
                 covered.setdefault(f"element:{e}", q)
     added = []
-    project.questions = [q for q in project.questions if not (q.id.count(":") and q.open)]  # re-derived below
+    project.questions = [q for q in project.questions  # T6's open questions are re-derived below
+                         if not (q.id.count(":") and q.open and not q.key.get("stage"))]
     have = {q.id for q in project.questions}
+    asked: list[Any] = []
     for m in result.missing:
         if m.id in have:
             continue
@@ -164,27 +207,48 @@ def merge(project: ImportProject, raw: RecognisedBuilding, old: dict[str, Questi
         if by is not None:
             by.key = {**by.key, "plan_ids": sorted(set(by.key.get("plan_ids", [])) | {m.id})}
             continue
-        hs = _handles(b, m.elements)
-        replaced = [q for q in project.questions if q.open and REPLACES.get(m.topic) == q.topic
+        asked.append(m)
+    # one question per fact: T6's per-place questions ("<topic>:<sheet>:<element>") on the same topic with the same
+    # choices are asked once, listing each place; per-type ones ("projection_thickness:chajja") stay apart
+    groups: dict[tuple, list[Any]] = {}
+    for m in asked:
+        per_place = m.id.count(":") >= 2
+        groups.setdefault((m.topic, json.dumps(m.options, sort_keys=True, default=str), m.unit) if per_place
+                          else (m.id,), []).append(m)
+    for ms in groups.values():
+        elements = list(dict.fromkeys(e for m in ms for e in m.elements))
+        hs = _handles(b, elements)
+        replaced = [q for q in project.questions if q.open and REPLACES.get(ms[0].topic) == q.topic
                     and hs & {h for e in q.evidence for h in e.handles}]
         findings = sorted({f for q in replaced for f in q.findings})
-        sheets = sorted({e.split("#")[0] for e in m.elements})
-        nq = Question(
-            id=m.id, topic=m.topic, text=m.text, severity="blocking",
-            evidence=[Evidence(sheet=s, handles=sorted(_handles(b, [e for e in m.elements if e.startswith(s + "#")])),
-                               note="needed to build") for s in sheets],
-            options=[_option_text(o) for o in m.options], where=", ".join(m.elements[:6])
-            + (f" and {len(m.elements) - 6} more" if len(m.elements) > 6 else ""),
-            instances=list(m.elements) if len(m.elements) > 1 else [], findings=findings,
-            answer_type="plan_input", key={"unit": m.unit, "options_raw": m.options, "elements": m.elements})
-        prev = old.get(m.id)
+        sheets = sorted({e.split("#")[0] for e in elements})
+        evidence = [Evidence(sheet=s, handles=sorted(_handles(b, [e for e in elements if e.startswith(s + "#")])),
+                             note="needed to build") for s in sheets]
+        options = [_option_text(o) for o in ms[0].options]
+        key = {"unit": ms[0].unit, "options_raw": ms[0].options, "elements": elements}
+        if len(ms) == 1:
+            m = ms[0]
+            nq = Question(id=m.id, topic=m.topic, text=m.text, severity="blocking", evidence=evidence, options=options,
+                          where=", ".join(elements[:6]) + (f" and {len(elements) - 6} more" if len(elements) > 6 else ""),
+                          instances=list(elements) if len(elements) > 1 else [], findings=findings,
+                          answer_type="plan_input", key=key)
+        else:
+            members = [m.id for m in ms]
+            nq = Question(
+                id=_group_id(ms[0].topic, members), topic=ms[0].topic, severity="blocking", evidence=evidence,
+                text=(f"Asked for {len(ms)} places alike (listed), for example: {ms[0].text} Answer once for all of "
+                      "them, or per place as {place id: answer}."),
+                options=options, where=f"{len(ms)} places on {', '.join(sheets)}", findings=findings,
+                instances=[f"{m.id}: {m.text}" for m in ms], answer_type="plan_input",
+                key={**key, "members": members})
+        prev = old.get(nq.id)
         if prev is not None and not prev.open:
             nq.answer, nq.answered_by, nq.at = prev.answer, prev.answered_by, prev.at
         for q in replaced:
             if q in project.questions:
                 project.questions.remove(q)
         project.questions.append(nq)
-        have.add(m.id)
+        have.add(nq.id)
         added.append(nq)
     return added
 

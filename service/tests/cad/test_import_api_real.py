@@ -25,7 +25,10 @@ def test_review_api_on_the_sample(tmp_path):
     review = api.get(f"/imports/{import_id}/questions").json()
     assert [g["severity"] for g in review["groups"]] == ["blocking", "check", "info"]
     blocking = {q["id"] for q in review["groups"][0]["questions"]}
-    assert {"location", "mark-width-d1", "door-height-d1", "stair_axis:2.PLAN 1st to 4th.dxf:stair-1"} <= blocking
+    assert {"location", "mark-width-d1", "door-height-d1"} <= blocking
+    stairs = next(q for q in review["groups"][0]["questions"] if q["topic"] == "stair_axis")  # both stairs, once
+    assert stairs["key"]["members"] == ["stair_axis:1.GROUND FLOOR PLAN.dxf:stair-1", "stair_axis:2.PLAN 1st to 4th.dxf:stair-1"]
+    assert stairs["options"] == ["x (east-west)", "y (north-south)"]
     assert review["readiness"]["ready"] is False
 
     refused = api.post(f"/imports/{import_id}/assume", json={"question_ids": "all"})

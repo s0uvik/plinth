@@ -23,28 +23,33 @@ Per source role:
   on the sheet, because the add-in cannot make a segmented section.
 - elevation: an elevation looking at the face the title names (NORTH ELEVATION shows the north face, so it looks
   south); "FRONT" and other names do not say which face, so the user is asked.
-- foundation / beam layout: a floor plan at the level the foundation / beams were built on, showing only the model
-  categories the source sheet holds (footings, columns, beams, grids).
-- site plan: the source DWG on a drafting view, once create_view can make drafting views (``DRAFTING_VIEWS``);
-  until then the sheet is reported as not reproduced.
+- foundation / beam layout: a structural plan at the level the foundation / beams were built on, its view range
+  cutting the columns and looking down past the deepest footing / beam bottom, showing only the model categories the
+  source sheet holds (footings, columns, beams, grids).
+- site plan: the source DWG imported on a drafting view at the source scale (not modelled, so not compared value by
+  value).
 
 Annotation from what the source sheet shows:
 - plan dimensions: each source DIMENSION is classified: both ends on grid lines -> the same dimension between those
   grids (create_dimensions, grid references, at the source's dimension line); both ends on wall centrelines -> the
   same between the walls; ends on the outermost wall faces outside the building -> auto_dimension_plan "overall" on
-  that side; ends on exterior wall faces / opening edges outside -> "exterior_openings" on that side; drawn at another
-  scale -> a detail (not modelled); anything else -> not reproduced (listed with its value).
+  that side; ends on exterior wall faces / opening edges outside -> "exterior_openings" on that side; otherwise each
+  end is matched to a model reference on the measured line (wall face, column / slab / footing / beam face, door or
+  window Left/Right reference; structural sheets only structural ones) and drawn with create_dimensions; drawn at
+  another scale -> a detail (not modelled); anything else -> not reproduced (listed with its value).
 - room labels: rooms the source labels with a size get the tag plus the size note as written ("3500 X 4000") by
   label_rooms; the other rooms get a room tag.
 - door/window marks: a tag per door / window when the source plan writes marks on that kind.
-- sections: auto_dimension_section with "levels" / "slabs" chains when the source dimensions run level to level /
-  over slab faces, on the side the source puts them, through the levels the source dimensions stop at; spot_level for
-  every source level mark (PL, GL) on the Revit level at its height.
+- sections: auto_dimension_section with the chains the source dimensions need ("levels", "slabs", "openings" for
+  sills and heads, "beams" for modelled beam faces, "foundation" below ground level), on the side the source puts
+  them, through the levels the source dimensions stop at; spot_level for every source level mark (PL, GL) on the
+  Revit level at its height. Horizontal section dimensions are not drawn.
 
 The title block: the paper is the smallest ISO A sheet that holds the source border (a 277 x 190 mm border is A4
-landscape, 10 mm margins). A title block reported with a size (once list_titleblocks gives sizes) must match the paper
-or the border; else the candidates are the title blocks named with the paper ("A4"): exactly one is used and checked
-on the first sheet made (its frame must match), several or none are a question listing them. The user's answer wins.
+landscape, 10 mm margins). A title block reported with a size (list_titleblocks sheet_width_mm/sheet_height_mm) must
+match the paper or the border, and is used without a trial sheet; when no size is known the candidates are the title
+blocks named with the paper ("A4"): exactly one is used and checked on the first sheet made (its frame must match),
+several or none are a question listing them. The user's answer wins.
 An existing title block is never edited.
 
 Every view, sheet, viewport, dimension, tag, note and spot created is recorded (``record(key, id)``, keys DWG-...),
@@ -84,8 +89,11 @@ REF_TOL_MM = 2.0  # a dimension end lies on a grid / wall line within this (mode
 SECTION_BEYOND_MM = 1000.0  # far clip of sections / depth of elevations a little past the building
 SCALE_TOL = 0.01  # a dimension whose written value / drawn length differs from 1 by more is drawn at a detail scale
 VALUE_STEP = 0.5  # dimension values are compared rounded to this (mm); sources write 2687.5
-DRAFTING_VIEWS = False  # create_view has no "drafting" view type yet (add-in gap): site plans are not reproduced
-NOT_DIMENSIONABLE = "no add-in command dimensions this (create_dimensions takes walls, grids or stable references)"
+DRAFTING_VIEWS = True  # create_view makes drafting views: the site plan is the source DWG on one
+STRUCTURAL_SKIP = {1, 2, 4}  # wall centre lines, wall faces, door/window references (priorities in _Model3D.faces)
+REACH_MM = 1500.0  # a dimension end may lie this far beyond the element whose face it measures to (planes extend)
+NOT_DIMENSIONABLE = ("no model element has a face, centre line or reference there (create_dimensions measures to "
+                     "grids, walls, wall faces, levels, door/window references and slab, column, footing or beam faces)")
 
 # Model categories B2M builds; views of structural sheets hide those the source sheet does not show.
 MODEL_CATEGORIES = ["OST_Walls", "OST_Doors", "OST_Windows", "OST_Rooms", "OST_Floors", "OST_Stairs", "OST_StairsRailing",
@@ -144,14 +152,15 @@ class SourceDimension(_Model):
     value: float | None  # None when the text is not a number
     text: str
     axis: str
-    kind: Literal["grids", "walls", "overall", "exterior_openings", "levels", "slabs", "detail", "text", "local"]
+    kind: Literal["grids", "walls", "references", "overall", "exterior_openings", "levels", "slabs", "openings", "beams",
+                  "foundation", "detail", "text", "local"]
     side: str | None = None
     note: str | None = None
 
 
 class PlannedView(_Model):
     key: str  # record key suffix
-    kind: Literal["floor_plan", "section", "elevation", "drafting"]
+    kind: Literal["floor_plan", "structural_plan", "section", "elevation", "drafting"]
     name: str
     create: dict[str, Any]  # create_view (or drafting) params
     after_create: list[Step] = []  # crop, visibility, CAD import
@@ -287,6 +296,114 @@ class _Model3D:
                 pts.append(op.point)
         box = _bbox(pts) or (0.0, 0.0, 0.0, 0.0)
         self.extent = (box[0] + offset[0], box[1] + offset[1], box[2] + offset[0], box[3] + offset[1])
+        self.by_key = plan.by_key()
+        self.wall_thickness = {op.name: op.thickness_mm for op in plan.ops if op.op == "wall_type"}
+        self.floor_thickness = {op.name: op.thickness_mm for op in plan.ops if op.op == "floor_type"}
+        self.opening_types = {(op.category, op.name): op for op in plan.ops if op.op == "opening_type"}
+        self.frames = {f.name: (f.b_mm, f.h_mm) for f in result.standards.columns + result.standards.beams}
+        self._faces: dict[str, list[tuple[str, float, tuple[float, float], int, dict[str, Any]]]] = {}
+
+    def _p(self, p: Point) -> Point:
+        return p[0] + self.offset[0], p[1] + self.offset[1]
+
+    def faces(self, level: str) -> list[tuple[str, float, tuple[float, float], int, dict[str, Any]]]:
+        """Every planar reference a plan dimension on ``level`` can measure to: (axis, coordinate, extent along the
+        other axis, priority, create_dimensions reference). Axis "h" is a plane of constant x (a horizontal
+        dimension ends on it). Lower priority wins between references at the same place."""
+        if level in self._faces:
+            return self._faces[level]
+        out: list[tuple[str, float, tuple[float, float], int, dict[str, Any]]] = []
+
+        def add(axis, coord, lo, hi, prio, ref):
+            out.append((axis, coord, (min(lo, hi), max(lo, hi)), prio, ref))
+
+        def box_faces(key, xs, ys, prio, extra=None):
+            for axis, values, other in (("h", xs, ys), ("v", ys, xs)):
+                d = "x" if axis == "h" else "y"
+                add(axis, min(values), min(other), max(other), prio,
+                    {"mode": "element_face", "element_key": key, "direction": d, "end": "negative", **(extra or {})})
+                add(axis, max(values), min(other), max(other), prio,
+                    {"mode": "element_face", "element_key": key, "direction": d, "end": "positive", **(extra or {})})
+
+        for g in self.grids:
+            (ax, ay), (bx, by) = self._p(g.start), self._p(g.end)
+            if abs(ax - bx) < 1e-3:
+                add("h", ax, ay, by, 0, {"mode": "grid_curve", "element_key": g.key})
+            elif abs(ay - by) < 1e-3:
+                add("v", ay, ax, bx, 0, {"mode": "grid_curve", "element_key": g.key})
+        for op in self.ops:
+            lv = getattr(op, "level", None)
+            if op.op == "wall" and lv == level:
+                (ax, ay), (bx, by) = self._p(op.start), self._p(op.end)
+                t = self.wall_thickness.get(op.type, 0.0) / 2
+                ux, uy = _unit((ax, ay), (bx, by))
+                left = (-uy, ux)  # left of start -> end
+                if abs(ax - bx) < 1e-3:
+                    axis, c, lo, hi, n = "h", ax, ay, by, (1.0, 0.0)
+                elif abs(ay - by) < 1e-3:
+                    axis, c, lo, hi, n = "v", ay, ax, bx, (0.0, 1.0)
+                else:
+                    continue
+                add(axis, c, lo, hi, 1, {"mode": "wall_centerline", "element_key": op.key})
+                if t:
+                    plus = "left" if _dot(left, n) > 0 else "right"
+                    minus = "right" if plus == "left" else "left"
+                    add(axis, c + t, lo, hi, 2, {"mode": "wall_face", "element_key": op.key, "face": plus})
+                    add(axis, c - t, lo, hi, 2, {"mode": "wall_face", "element_key": op.key, "face": minus})
+            elif op.op == "column" and lv == level and op.type in self.frames:
+                b, h = self.frames[op.type]
+                w, d = (b, h) if round(op.rotation_deg) % 180 == 0 else (h, b)
+                x, y = self._p(op.point)
+                box_faces(op.key, [x - w / 2, x + w / 2], [y - d / 2, y + d / 2], 3)
+            elif op.op in ("floor", "foundation_slab") and lv == level:
+                pts = [self._p(p) for p in op.points]
+                box_faces(op.key, [p[0] for p in pts], [p[1] for p in pts], 5)
+            elif op.op == "beam" and lv == level and op.type in self.frames:
+                (ax, ay), (bx, by) = self._p(op.start), self._p(op.end)
+                half = self.frames[op.type][0] / 2
+                if abs(ax - bx) < 1e-3:
+                    box_faces(op.key, [ax - half, ax + half], [ay, by], 6)
+                elif abs(ay - by) < 1e-3:
+                    box_faces(op.key, [ax, bx], [ay - half, ay + half], 6)
+            elif op.op in ("door", "window"):
+                host = self.by_key.get(op.host_key)
+                t = self.opening_types.get((op.op, op.type))
+                if host is None or t is None or getattr(host, "level", None) != level:
+                    continue
+                a, b = self._p(host.start), self._p(host.end)
+                u = _unit(a, b)
+                c = (a[0] + u[0] * op.offset_mm, a[1] + u[1] * op.offset_mm)
+                # The family's Right reference lies on its hand side: along the host wall, reversed when the
+                # instance is hand-flipped (to confirm against Revit's HandOrientation on the live run).
+                hand = (-u[0], -u[1]) if op.flip_hand else u
+                for sign, name in ((1, "Right"), (-1, "Left")):
+                    e = (c[0] + sign * hand[0] * t.width_mm / 2, c[1] + sign * hand[1] * t.width_mm / 2)
+                    ref = {"mode": "family_instance", "element_key": op.key, "reference": name}
+                    if abs(u[1]) < 1e-6:
+                        add("h", e[0], c[1] - 300, c[1] + 300, 4, ref)
+                    elif abs(u[0]) < 1e-6:
+                        add("v", e[1], c[0] - 300, c[0] + 300, 4, ref)
+        self._faces[level] = out
+        return out
+
+    def reference_at(self, p: Point, axis: str, level: str, tol: float,
+                     structural: bool = False) -> dict[str, Any] | None:
+        """The model reference a dimension end at ``p`` measures to (see ``faces``): on the measured line within
+        ``tol``, preferring references whose element reaches past ``p``, then by priority. A reference plane
+        extends past its element, so an element up to ``REACH_MM`` away still gives the right value.
+        ``structural``: only grids, columns, slabs, footings and beams (what a structural plan shows)."""
+        i, j = (0, 1) if axis == "h" else (1, 0)
+        best = None
+        for ax, coord, (lo, hi), prio, ref in self.faces(level):
+            if ax != axis or abs(coord - p[i]) > tol or (structural and prio in STRUCTURAL_SKIP):
+                continue
+            outside = max(lo - p[j], p[j] - hi, 0.0)
+            if outside > REACH_MM:
+                continue
+            rank = (outside > tol, prio, outside, abs(coord - p[i]))
+            if best is None or rank < best[0]:
+                best = (rank, ref)
+        return dict(best[1]) if best else None
 
     def level_of(self, sheet: str, storey: str) -> str | None:
         """The level the sheet's elements of that storey were built on (most of them)."""
@@ -584,6 +701,19 @@ def _plan_dimensions(planned, rec, sheet, plan, reg, model, level, xf, out) -> l
                 if _near(lo, stops, tol) and _near(hi, stops, tol):
                     kind = "exterior_openings"
         if kind == "local":
+            r1 = model.reference_at(a, m.axis, level, tol, structural=plan is None)
+            r2 = model.reference_at(b, m.axis, level, tol, structural=plan is None)
+            if r1 and r2 and r1 != r2:
+                if m.axis == "h":
+                    start, end = (a[0], line[1]), (b[0], line[1])
+                else:
+                    start, end = (line[0], a[1]), (line[0], b[1])
+                steps.append(Step(command="create_dimensions", purpose=f"source dimension {m.text} (references)",
+                                  params={"view_id": "$view", "references": [r1, r2],
+                                          "line": {"start": {"x": _r(start[0]), "y": _r(start[1]), "z": elevation},
+                                                   "end": {"x": _r(end[0]), "y": _r(end[1]), "z": elevation}}}))
+                planned.source_dimensions.append(_source_dim(m, "references", side))
+                continue
             planned.source_dimensions.append(_source_dim(m, "local", side, NOT_DIMENSIONABLE))
             missing.append(m.text)
             continue
@@ -597,8 +727,8 @@ def _plan_dimensions(planned, rec, sheet, plan, reg, model, level, xf, out) -> l
                           params={"view_id": "$view", "modes": sorted(entry["modes"]), "sides": [side],
                                   "offset_mm": _r(entry["offset"])}))
     if missing:
-        _skip(out, planned, "dimensions", "the source dimensions measure between points the model has no reference "
-                                          f"for, or are details; {NOT_DIMENSIONABLE}", missing)
+        _skip(out, planned, "dimensions", "these source dimensions are details drawn at another scale, text in "
+                                          f"place of a value, or end where {NOT_DIMENSIONABLE}", missing)
     return steps
 
 
@@ -779,27 +909,27 @@ def _section_annotation(planned, rec, sheet, sec, vreg, model: _Model3D, out) ->
     ms = _measures(sheet)
     box = _drawing_bbox(sheet)
     include, names, sides, missing = set(), set(), Counter(), []
-    floors = sorted(e for e in model.levels.values())
-    slab = sec.slab_thickness_mm
+    ground_mark = next((lv for lv in sec.levels if annot.flat(lv.name) == "GL"), None)
+    ground = model.level_at(ground_mark.elevation_mm) if ground_mark else None
+    stops = _section_stops(model, sec, model.levels.get(ground, 0.0) if ground else 0.0)
     for m in ms:
         if m.axis != "v" or m.scale is None or abs(m.scale - 1) > SCALE_TOL or vreg is None or vreg.frame != "vertical":
             planned.source_dimensions.append(_source_dim(m, "detail" if m.axis == "v" else "local", note=(
-                "not a vertical dimension" if m.axis != "v" else "drawn at a detail scale or not registered")))
+                "not a vertical dimension (no command dimensions horizontally in a section)" if m.axis != "v"
+                else "drawn at a detail scale or not registered")))
             missing.append(m.text)
             continue
         lo, hi = m.lo + vreg.translation[1], m.hi + vreg.translation[1]
         l1, l2 = model.level_at(lo, REF_TOL_MM), model.level_at(hi, REF_TOL_MM)
         side = "left" if box and m.line[0] < (box[0] + box[2]) / 2 else "right"
-        if l1 and l2:
-            kind = "levels"
-            names |= {l1, l2}
-        elif slab and (l1 or l2) and any(abs(x - (e - slab)) <= REF_TOL_MM for x in (lo, hi) for e in floors):
-            kind = "slabs"
-            names |= {n for n in (l1, l2) if n}
-        else:
-            planned.source_dimensions.append(_source_dim(m, "local", side, "does not run between levels or slab faces"))
+        kind = next((k for k, at in stops.items() if _near(lo, at, REF_TOL_MM) and _near(hi, at, REF_TOL_MM)), None)
+        if kind is None:
+            planned.source_dimensions.append(_source_dim(m, "local", side, (
+                "does not run between levels, slab faces, opening sills/heads, modelled beam faces or foundation "
+                "faces")))
             missing.append(m.text)
             continue
+        names |= {n for n in (l1, l2) if n}
         include.add(kind)
         sides[side] += 1
         planned.source_dimensions.append(_source_dim(m, kind, side))
@@ -807,9 +937,11 @@ def _section_annotation(planned, rec, sheet, sec, vreg, model: _Model3D, out) ->
     if include:
         side = sides.most_common(1)[0][0]
         ordered = sorted(names, key=lambda n: model.levels[n])
+        params = {"view_id": "$view", "include": sorted(include), "side": side, "level_names": ordered}
+        if "foundation" in include and ground:
+            params["ground_level"] = ground
         target.steps.append(Step(command="auto_dimension_section", purpose=f"{', '.join(sorted(include))} chain, {side}",
-                                 params={"view_id": "$view", "include": sorted(include), "side": side,
-                                         "level_names": ordered}))
+                                 params=params))
     marks = []
     for lv in sec.levels:
         if annot.level_kind(lv.name):
@@ -824,9 +956,41 @@ def _section_annotation(planned, rec, sheet, sec, vreg, model: _Model3D, out) ->
                                  params={"view_id": "$view", "targets": marks, "side": sides.most_common(1)[0][0]
                                          if sides else "left"}))
     if missing:
-        _skip(out, planned, "dimensions", "the source dimensions do not run between levels or slab faces (beams, "
-                                          "foundation layers, openings), which auto_dimension_section does not draw",
-              missing)
+        _skip(out, planned, "dimensions", "these source dimensions run horizontally, or between points the model has "
+                                          "no level, slab, opening, beam or foundation face at (members the plan does "
+                                          "not model, such as upper-floor beams and lintels), which "
+                                          "auto_dimension_section cannot draw", missing)
+
+
+def _section_stops(model: _Model3D, sec: SectionRecognition, ground: float) -> dict[str, set[float]]:
+    """The heights each auto_dimension_section chain stops at, from the model (chains in the order they are tried)."""
+    levels = set(model.levels.values())
+    slab = sec.slab_thickness_mm
+    out: dict[str, set[float]] = {"levels": levels}
+    out["slabs"] = levels | ({e - slab for e in levels} if slab else set())
+    openings: set[float] = set()
+    beams: set[float] = set()
+    foundation: set[float] = set()
+    for op in model.ops:
+        if op.op in ("door", "window"):
+            host = model.by_key.get(op.host_key)
+            t = model.opening_types.get((op.op, op.type))
+            if host is None or t is None or host.level not in model.levels:
+                continue
+            sill = model.levels[host.level] + (getattr(op, "sill_mm", None) or 0.0)
+            openings |= {sill, sill + t.height_mm} if op.op == "window" else {sill + t.height_mm}
+        elif op.op == "beam" and op.level in model.levels and op.type in model.frames:
+            e = model.levels[op.level]
+            beams |= {e, e - model.frames[op.type][1]}
+        elif op.op in ("foundation_slab", "floor") and op.level in model.levels:
+            top = model.levels[op.level] + op.offset_mm
+            if top <= ground + REF_TOL_MM:
+                foundation |= {top, top - model.floor_thickness.get(op.type, 0.0)}
+    out["openings"] = levels | openings
+    out["beams"] = levels | beams
+    below = {e for e in levels if e <= ground + REF_TOL_MM}
+    out["foundation"] = below | foundation if foundation else set()
+    return out
 
 
 # ---- elevations
@@ -930,6 +1094,9 @@ def _structural_view(planned, rec, sheet, rec_struct: FoundationRecognition | Be
         _skip(out, planned, "the sheet", "the sheet is not recognised or not registered to the building frame")
         return
     view = _plan_view_for(planned, rec, sheet, reg, model, level, prefix)
+    view.kind = "structural_plan"
+    view.create["viewType"] = "structural_plan"
+    view.create["viewRange"] = _structural_range(model, rec.file, level)
     shown = {"OST_StructuralColumns"}
     if isinstance(rec_struct, FoundationRecognition) and rec_struct.footings:
         shown.add("OST_StructuralFoundation")
@@ -941,13 +1108,30 @@ def _structural_view(planned, rec, sheet, rec_struct: FoundationRecognition | Be
     xf = _xf(reg, model.offset)
     view.steps += _plan_dimensions(planned, rec, sheet, None, reg, model, level, xf, out)
     planned.views.append(view)
-    out.not_reproduced.append(NotReproduced(sheet=rec.file, what="structural plan view", reason=(
-        "create_view makes floor plans only (no structural plan view family); the view is a floor plan with the "
-        "other model categories hidden")))
     if isinstance(rec_struct, FoundationRecognition) and (rec_struct.column_sections or rec_struct.rebar):
         out.not_reproduced.append(NotReproduced(sheet=rec.file, what="details and notes", reason=(
             f"{len(rec_struct.column_sections)} column section details and {len(rec_struct.rebar)} reinforcement notes "
             "are drafting, not model; they are not drawn")))
+
+
+def _structural_range(model: _Model3D, sheet: str, level: str) -> dict[str, float]:
+    """A view range that cuts the columns above the level and looks down past the deepest member built from the
+    sheet (footing or beam bottom), so the plan shows what the source sheet draws."""
+    e = model.levels[level]
+    deepest = 0.0
+    for op in model.ops:
+        src = model.sources.get(op.key)
+        if src is None or src.sheet != sheet or getattr(op, "level", None) != level:
+            continue
+        if op.op in ("foundation_slab", "floor"):
+            deepest = max(deepest, model.floor_thickness.get(op.type, 0.0) - op.offset_mm)
+        elif op.op == "beam" and op.type in model.frames:
+            deepest = max(deepest, model.frames[op.type][1])
+    above = sorted(v for v in model.levels.values() if v > e + 1.0)
+    cut = min(1200.0, (above[0] - e) / 2) if above else 1200.0
+    below = -_r(deepest + 100.0)
+    return {"top_offset_mm": _r(2 * cut), "cut_offset_mm": _r(cut), "bottom_offset_mm": below,
+            "depth_offset_mm": below}
 
 
 # ---- site plan
@@ -957,6 +1141,9 @@ def _site_view(planned, rec, sheet, out, prefix) -> None:
         _skip(out, planned, "the sheet", "the site plan is not modelled; it would be the source DWG on a drafting "
                                          "view, but create_view cannot make drafting views yet")
         return
+    out.not_reproduced.append(NotReproduced(sheet=rec.file, what="site plan content", reason=(
+        "the site plan is not modelled: its view is the source DWG imported on a drafting view, so its dimensions "
+        "and texts are the source's own (not compared value by value)")))
     view = PlannedView(key="V1", kind="drafting", name=_view_name(prefix, rec),
                        create={"viewType": "drafting", "name": _view_name(prefix, rec), "scale": int(planned.scale)})
     view.after_create.append(Step(command="import_cad_to_view", purpose="the source site plan drawing",
@@ -1094,8 +1281,18 @@ def make_import_drawing_set(revit, project: ImportProject, building: RecognisedB
     # The first sheet of each paper checks its title block's size before anything else is made.
     made: dict[str, dict[str, Any]] = {}
     fit_mode: dict[str, str] = {}
+    sizes = {r.get("display_name"): (r.get("sheet_width_mm"), r.get("sheet_height_mm")) for r in rows}
     for paper in papers:
         first = next(s for s in todo if s.paper == paper)
+        w, h = sizes.get(chosen[paper]) or (None, None)
+        if w and h:  # the title block reports its size: no trial sheet needed
+            mode = _frame_mode({"width": w, "height": h}, first)
+            if mode is None and not _user_chose(answers, paper):
+                return {"status": "questions", "sheets": [],
+                        "not_reproduced": [n.model_dump() for n in plan.not_reproduced],
+                        "questions": [_size_question(chosen[paper], f"{w:g} x {h:g} mm", paper, first, rows)]}
+            fit_mode[paper] = mode or "paper"
+            continue
         data = ex.call("create_sheet", {"sheet_number": first.number, "sheet_name": first.title or first.file,
                                         "title_block_name": chosen[paper]}, first.file, "sheet")
         if data is None:
@@ -1106,11 +1303,7 @@ def make_import_drawing_set(revit, project: ImportProject, building: RecognisedB
             ex.call("delete_element", {"elementIds": [data["sheet_id"]]}, first.file, "remove the trial sheet")
             size = f"{frame.get('width', 0):g} x {frame.get('height', 0):g} mm" if frame else "unknown"
             return {"status": "questions", "sheets": [], "not_reproduced": [n.model_dump() for n in plan.not_reproduced],
-                    "questions": [DrawingQuestion(
-                        id=ANSWER_TITLE_BLOCK, topic="title_block", options=[r.get("display_name") for r in rows],
-                        text=(f"Title block {chosen[paper]} is {size}, not {paper} ({first.paper_mm[0]:g} x "
-                              f"{first.paper_mm[1]:g} mm) or the source border ({first.border_mm[0]:g} x "
-                              f"{first.border_mm[1]:g} mm). Which title block should the sheets use?")).model_dump()]}
+                    "questions": [_size_question(chosen[paper], size, paper, first, rows)]}
         fit_mode[paper] = mode or "paper"
         ex.keep(f"DWG-SHEET-{first.number}", data["sheet_id"])
         made[first.file] = data
@@ -1141,6 +1334,14 @@ def make_import_drawing_set(revit, project: ImportProject, building: RecognisedB
             "not_reproduced": [n.model_dump() for n in plan.not_reproduced],
             "comparison_json": str(out_dir / "drawings-comparison.json"),
             "comparison_html": str(out_dir / "drawings-comparison.html"), "log": ex.log}
+
+
+def _size_question(name: str, size: str, paper: str, first: PlannedSheet, rows: list[dict[str, Any]]) -> dict[str, Any]:
+    return DrawingQuestion(
+        id=ANSWER_TITLE_BLOCK, topic="title_block", options=[r.get("display_name") for r in rows],
+        text=(f"Title block {name} is {size}, not {paper} ({first.paper_mm[0]:g} x {first.paper_mm[1]:g} mm) or the "
+              f"source border ({first.border_mm[0]:g} x {first.border_mm[1]:g} mm). Which title block should the "
+              "sheets use?")).model_dump()
 
 
 def _user_chose(answers: dict[str, Any], paper: str) -> bool:
