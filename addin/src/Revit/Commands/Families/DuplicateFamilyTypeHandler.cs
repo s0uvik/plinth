@@ -48,22 +48,10 @@ namespace B2M.Revit.Commands.Families
                 try
                 {
                     var created = source.Duplicate(newName);
-                    var set = new JObject();
-                    foreach (var prop in overrides.Properties())
+                    if (!FamiliesHelpers.TrySetTypeParameters(doc, created, overrides, out var set, out var error, out var errorData))
                     {
-                        var parameter = ParametersHelpers.FindByName(created, prop.Name);
-                        if (parameter == null)
-                        {
-                            tx.RollBack();
-                            return CommandResult.Fail("PARAMETER_NOT_FOUND: the type has no parameter named '" + prop.Name + "'. Nothing was created.",
-                                new JObject { ["writable_parameters"] = ParametersHelpers.ParameterNames(created) });
-                        }
-                        if (!ParametersHelpers.TrySet(doc, parameter, prop.Value, "auto", out _, out var error))
-                        {
-                            tx.RollBack();
-                            return CommandResult.Fail("SET_FAILED: '" + prop.Name + "': " + error + ". Nothing was created.");
-                        }
-                        set[parameter.Definition.Name] = ParametersHelpers.Read(doc, parameter);
+                        tx.RollBack();
+                        return CommandResult.Fail(error + " Nothing was created.", errorData);
                     }
                     if (tx.Commit() != TransactionStatus.Committed)
                         return CommandResult.Fail("NOT_COMMITTED: Revit rolled the transaction back; see failures.");

@@ -47,7 +47,7 @@ namespace B2M.Revit.Commands.Families
             catch (Exception ex) { return CommandResult.Fail("INVALID_PATH: " + ex.Message); }
             if (!File.Exists(path)) return CommandResult.Fail("FILE_NOT_FOUND: " + path + " does not exist.");
 
-            var options = new LoadOptions(overwrite, overwriteValues);
+            var options = new FamilyLoadOptions(overwrite, overwriteValues);
             Family family = null;
             using (var tx = new Transaction(doc, "B2M: Load family"))
             {
@@ -99,35 +99,6 @@ namespace B2M.Revit.Commands.Families
                 }));
             }
             return CommandResult.Ok(result);
-        }
-
-        private sealed class LoadOptions : IFamilyLoadOptions
-        {
-            private readonly bool _overwrite;
-            private readonly bool _overwriteValues;
-
-            public LoadOptions(bool overwrite, bool overwriteValues)
-            {
-                _overwrite = overwrite;
-                _overwriteValues = overwriteValues;
-            }
-
-            public bool FamilyWasFound { get; private set; }
-
-            public bool OnFamilyFound(bool familyInUse, out bool overwriteParameterValues)
-            {
-                FamilyWasFound = true;
-                overwriteParameterValues = _overwriteValues;
-                return _overwrite;
-            }
-
-            public bool OnSharedFamilyFound(Family sharedFamily, bool familyInUse, out FamilySource source, out bool overwriteParameterValues)
-            {
-                FamilyWasFound = true;
-                source = FamilySource.Family;
-                overwriteParameterValues = _overwriteValues;
-                return _overwrite;
-            }
         }
     }
 }
