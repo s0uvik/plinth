@@ -478,10 +478,19 @@ namespace B2M.Revit.Commands.Families
         // ---- finding template elements ------------------------------------------------
 
         /// <summary>A level by name; with onlyLevelFallback, the template's single level when the name differs.</summary>
+        /// <summary>
+        /// Template names differ between Revit versions and languages in punctuation and case ("Upper Ref. Level" vs
+        /// "Upper Ref Level" in the Revit 2026 column template, found live), so names match on letters and digits only.
+        /// </summary>
+        internal static bool SameName(string a, string b) =>
+            a != null && b != null && string.Equals(Key(a), Key(b), StringComparison.OrdinalIgnoreCase);
+
+        private static string Key(string s) => new string(s.Where(char.IsLetterOrDigit).ToArray());
+
         public Level FindLevel(string name, bool onlyLevelFallback)
         {
             var levels = new FilteredElementCollector(Doc).OfClass(typeof(Level)).Cast<Level>().ToList();
-            var level = levels.FirstOrDefault(l => string.Equals(l.Name, name, StringComparison.OrdinalIgnoreCase))
+            var level = levels.FirstOrDefault(l => SameName(l.Name, name))
                 ?? (onlyLevelFallback && levels.Count == 1 ? levels[0] : null);
             if (level == null)
                 throw new InvalidOperationException("the template has no level named '" + name + "' (levels: " + Names(levels.Select(l => l.Name)) + ")");
@@ -492,7 +501,7 @@ namespace B2M.Revit.Commands.Families
         {
             var views = new FilteredElementCollector(Doc).OfClass(typeof(ViewPlan)).Cast<ViewPlan>()
                 .Where(v => !v.IsTemplate && v.ViewType != ViewType.CeilingPlan && v.GenLevel != null && v.GenLevel.Id == level.Id).ToList();
-            var view = views.FirstOrDefault(v => string.Equals(v.Name, level.Name, StringComparison.OrdinalIgnoreCase)) ?? views.FirstOrDefault();
+            var view = views.FirstOrDefault(v => SameName(v.Name, level.Name)) ?? views.FirstOrDefault();
             if (view == null) throw new InvalidOperationException("the template has no plan view of '" + level.Name + "'");
             return view;
         }
@@ -502,7 +511,7 @@ namespace B2M.Revit.Commands.Families
         {
             var views = new FilteredElementCollector(Doc).OfClass(typeof(ViewSection)).Cast<Autodesk.Revit.DB.View>()
                 .Where(v => !v.IsTemplate && v.ViewType == ViewType.Elevation).ToList();
-            var view = views.FirstOrDefault(v => string.Equals(v.Name, name, StringComparison.OrdinalIgnoreCase))
+            var view = views.FirstOrDefault(v => SameName(v.Name, name))
                 ?? views.FirstOrDefault(v => Parallel(v.ViewDirection, lookAxis));
             if (view == null)
                 throw new InvalidOperationException("the template has no '" + name + "' elevation (elevations: " + Names(views.Select(v => v.Name)) + ")");
@@ -514,7 +523,7 @@ namespace B2M.Revit.Commands.Families
         /// <summary>A reference plane by name; null when absent; an error when it faces the wrong way.</summary>
         public ReferencePlane FindPlane(string name, XYZ axis)
         {
-            var plane = Planes().FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase));
+            var plane = Planes().FirstOrDefault(p => SameName(p.Name, name));
             if (plane != null && !Parallel(plane.Normal, axis))
                 throw new InvalidOperationException("the template's reference plane '" + plane.Name + "' is not perpendicular to the expected axis");
             return plane;
