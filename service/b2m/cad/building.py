@@ -9,6 +9,11 @@ handles of the CAD entities it came from. Nothing is guessed: a value the drawin
 
 Coordinates are millimetres. Within a recognition they are in that sheet's own drawing coordinates; the sheet's
 ``Registration`` maps them into the building frame (rotation in degrees counter-clockwise, then translation).
+
+Optional fields added by T4 (all default to "not given", so older producers stay valid):
+SectionRecognition.cut_path / cut_sheet / view_direction / unexplained, Footing.kind, RebarSpec.legs,
+FoundationRecognition.plan_columns / unexplained, BeamLayoutRecognition.column_evidence / unexplained,
+Registration.frame.
 """
 
 from __future__ import annotations
@@ -166,11 +171,17 @@ class SectionRecognition(_Model):
     window_heads_mm: list[float] = []
     window_sills_mm: list[float] = []
     cut_line: tuple[Point, Point] | None = None  # in the plan's frame, from the section marks on plans
+    # A straight cut: cut_line is its two ends. A jogged cut: cut_line is None and cut_path holds every corner.
+    cut_path: list[Point] | None = None  # the cut from end to end, in cut_sheet's coordinates (tails to the arrows removed)
+    cut_sheet: str | None = None  # the sheet whose coordinates cut_line/cut_path are in (the building frame when registered)
+    view_direction: Point | None = None  # unit vector the section looks along (the marks' arrows), same coordinates
     findings: list[Finding] = []
+    unexplained: list[Evidence] = []  # dimensions this recogniser could not give a meaning (listed, never dropped)
 
 
 class Footing(_Model):
     id: str
+    kind: Literal["isolated", "combined", "raft", "strip", "unknown"] = "unknown"  # by how many columns it carries
     center: Point
     width_mm: float
     length_mm: float
@@ -186,6 +197,7 @@ class RebarSpec(_Model):
     bar_dia_mm: float | None = None
     spacing_mm: float | None = None
     count: int | None = None
+    legs: int | None = None  # stirrup legs ("2 legged")
     role: str | None = None  # "main", "distribution", "stirrup", ...
     cover_mm: float | None = None
     evidence: Evidence
@@ -196,7 +208,9 @@ class FoundationRecognition(_Model):
     footings: list[Footing] = []
     column_sections: list[Column] = []  # typical column sections drawn on the sheet
     rebar: list[RebarSpec] = []
+    plan_columns: list[Column] = []  # columns as drawn on the footing plan (positions; used to register the sheet)
     findings: list[Finding] = []
+    unexplained: list[Evidence] = []
 
 
 class Beam(_Model):
@@ -214,13 +228,18 @@ class BeamLayoutRecognition(_Model):
     beams: list[Beam] = []
     grids: list[Grid] = []
     column_points: list[Point] = []
+    column_evidence: list[Evidence] = []  # one per column point, same order
     findings: list[Finding] = []
+    unexplained: list[Evidence] = []
 
 
 class Registration(_Model):
     """Maps one sheet's drawing coordinates into the building frame."""
 
     sheet: str
+    # "plan": (x, y) -> building plan (x, y). "vertical" (sections): only y is mapped, y + translation[1] = elevation
+    # above the building datum; x is left as drawn (translation[0] = 0).
+    frame: Literal["plan", "vertical"] = "plan"
     rotation_deg: float = 0.0
     translation: Point = (0.0, 0.0)
     method: str  # how it was found, e.g. "grids", "columns", "outline"
