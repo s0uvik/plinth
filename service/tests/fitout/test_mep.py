@@ -45,11 +45,11 @@ def drains_to_stack(layout, key: str, system: str) -> str | None:
 def test_sample_counts_per_system(sample_mep):
     _, _, _, layout = sample_mep
     assert Counter(d.what for d in layout.devices) == {
-        "socket_6a": 370, "light": 253, "socket_16a": 145, "fan": 112, "switchboard": 103, "tv_outlet": 64,
+        "socket_6a": 370, "light": 253, "socket_16a": 145, "fan": 112, "switchboard": 119, "tv_outlet": 64,
         "exhaust_fan": 49, "geyser": 49, "ac_indoor": 48, "ac_outdoor": 48, "floor_trap": 33, "exit_sign": 9,
         "distribution_board": 17, "data_outlet": 16, "extinguisher": 15, "roof_outlet": 12, "overhead_tank": 2}
     assert Counter((r.kind, r.system) for r in layout.runs) == {
-        ("conduit", "power"): 639, ("conduit", "lighting"): 517, ("pipe", "cold_water"): 182, ("pipe", "waste"): 133,
+        ("conduit", "power"): 639, ("conduit", "lighting"): 533, ("pipe", "cold_water"): 182, ("pipe", "waste"): 133,
         ("pipe", "hot_water"): 113, ("pipe", "soil"): 51, ("pipe", "rainwater"): 12, ("pipe", "vent"): 2}
     assert Counter(c.kind for c in layout.circuits) == {"dedicated": 113, "lighting": 52, "sockets": 49, "power": 32}
     stacks = sorted(r.key.split("-")[-2] for r in layout.runs if r.key.split("-")[-2].endswith("_stack"))
@@ -127,7 +127,7 @@ def test_every_bedroom_has_an_ac_on_an_outside_wall(sample_mep):
         assert any(math.dist(s.insertion, u.insertion) < 1500 and s.elevation_mm == 2100 for s in sockets)
     assert sum(1 for d in layout.devices if d.what == "ac_indoor") == 48
     large = [u for u in layout.unplaced if u.what == "ac_indoor"]
-    assert len(large) == 16 and all(by_key[u.room_key].classes == ["living", "dining", "kitchen"] for u in large)
+    assert len(large) == 16 and all(by_key[u.room_key].classes == ["living", "dining"] for u in large)  # kitchen split off
 
 
 def test_switchboards_doors_and_ceiling_points(sample_mep):
@@ -165,7 +165,7 @@ def test_fire_band_at_13_5_m_gives_its_provisions(sample_mep, wb_rules):
 def test_sample_asks_what_the_plan_does_not_tell(sample_mep):
     _, _, _, layout = sample_mep
     assert [q.id for q in layout.questions] == [
-        "fitout:ac:living dining kitchen:46.8", "fitout:ac:living room dining kitchen open:47.0",
+        "fitout:ac:living dining:39.4", "fitout:ac:living dining:39.6",  # kitchens are their own rooms
         "fitout:extinguisher_room:Ground Floor", "fitout:meter_room", "fitout:underground_tank"]
     assert all(q.text for q in layout.questions)
     assumed = {a.id: a for a in layout.assumptions}
