@@ -62,16 +62,26 @@ def test_sheet_plan_follows_the_source(sample):
         ("36", "SITE PLAN", 3000, "36 I Page")]
     assert {(s.paper, s.paper_mm, s.border_mm, s.margins_mm) for s in plan.sheets} == {
         ("A4", (297.0, 210.0), (277.0, 190.0), (10.0, 10.0))}
-    # the site plan needs a drafting view the add-in cannot make yet: reported, not faked
-    assert [s.file for s in plan.sheets if not s.reproduced] == [SITE]
-    assert any(n.sheet == SITE and n.what == "the sheet" for n in plan.not_reproduced)
+    # every sheet is made; the site plan is the source DWG on a drafting view (not modelled, said so)
+    assert [s.file for s in plan.sheets if not s.reproduced] == []
+    site = _views(plan, SITE)[0]
+    assert (site.kind, site.create) == ("drafting", {"viewType": "drafting", "name": "SITE PLAN", "scale": 3000})
+    assert [(st.command, st.params["unit"]) for st in site.after_create] == [("import_cad_to_view", "millimeter")]
+    assert any(n.sheet == SITE and n.what == "site plan content" for n in plan.not_reproduced)
+    # foundation and tie beam sheets are structural plans looking down past the footing / beam bottoms
+    found, tie = _views(plan, FOUNDATION)[0], _views(plan, TIE)[0]
+    assert (found.kind, found.create["level"], tie.create["level"]) == ("structural_plan", "Foundation", "Ground Floor")
+    assert found.create["viewRange"] == {"top_offset_mm": 700.0, "cut_offset_mm": 350.0, "bottom_offset_mm": -600.0,
+                                         "depth_offset_mm": -600.0}  # raft 500 thick; GL 700 above
+    assert tie.create["viewRange"]["bottom_offset_mm"] == -550.0  # beams 450 deep
+    assert not any(n.what == "structural plan view" for n in plan.not_reproduced)
 
     kinds = {s.file: [(v.kind, v.create.get("level")) for v in s.views] for s in plan.sheets}
     assert kinds[GROUND] == [("floor_plan", "Ground Floor")]
     assert kinds[TYPICAL] == [("floor_plan", "Floor 1")]  # the first storey the typical plan covers
     assert kinds[ROOF] == [("floor_plan", "Roof")]
-    assert kinds[FOUNDATION] == [("floor_plan", "Foundation")]
-    assert kinds[TIE] == [("floor_plan", "Ground Floor")]  # tie beams at the plinth
+    assert kinds[FOUNDATION] == [("structural_plan", "Foundation")]
+    assert kinds[TIE] == [("structural_plan", "Ground Floor")]  # tie beams at the plinth
     assert kinds[ELEVATION] == [("elevation", "Ground Floor")]
     assert kinds[AA] == [("section", None)] and kinds[BB] == [("section", None), ("section", None)]
     for s in plan.sheets:
@@ -96,7 +106,14 @@ def test_sections_on_the_source_cut_lines(sample):
     assert any(n.sheet == BB and n.what == "segmented section" for n in plan.not_reproduced)
     steps = [(s.command, s.params) for s in _views(plan, AA)[0].steps]
     dims = next(p for c, p in steps if c == "auto_dimension_section")
-    assert dims["include"] == ["levels", "slabs"] and dims["level_names"][:3] == ["GL", "Ground Floor", "Floor 1"]
+    assert dims["include"] == ["foundation", "levels", "slabs"] and dims["ground_level"] == "GL"
+    assert dims["level_names"][:4] == ["Foundation", "GL", "Ground Floor", "Floor 1"]
+    aa = {d.text: d.kind for d in next(s for s in plan.sheets if s.file == AA).source_dimensions if d.kind != "levels"}
+    assert aa == {"1200": "foundation", "500": "foundation", "150": "slabs", "200": "local", "100": "local",
+                  "450": "local"}  # 450: the upper-floor beam, which the plan does not model
+    bb = next(p for c, p in ((s.command, s.params) for v in _views(plan, BB) for s in v.steps)
+              if c == "auto_dimension_section")
+    assert bb["include"] == ["foundation", "levels", "openings", "slabs"]  # BB dimensions the storey 4 window
     spots = next(p for c, p in steps if c == "spot_level")
     assert sorted((t["label"], t["level_name"]) for t in spots["targets"]) == [("GL", "GL"), ("PL", "Ground Floor")]
 
@@ -106,9 +123,16 @@ def test_plan_annotation_from_the_source(sample):
     plan = plan_sheet_set(project, building, result, sheets, FRONT)
     typical = next(s for s in plan.sheets if s.file == TYPICAL)
     steps = typical.views[0].steps
-    grid_dims = [s for s in steps if s.command == "create_dimensions"]
+    grid_dims = [s for s in steps if s.command == "create_dimensions" and s.purpose.endswith("(grids)")]
     assert sorted(s.purpose for s in grid_dims) == ["source dimension 13375 (grids)", "source dimension 17000 (grids)",
                                                     "source dimension 3250 (grids)"]
+    faces = [s for s in steps if s.command == "create_dimensions" and s.purpose.endswith("(references)")]
+    assert sorted(s.purpose.split()[2] for s in faces) == ["1500", "1500", "2250", "2375", "2687.5", "2687.5", "5875"]
+    for s in faces:  # room sizes between wall faces: the face on the measured side of each wall
+        assert [r["mode"] for r in s.params["references"]] == ["wall_face", "wall_face"]
+        line = s.params["line"]
+        length = math.dist((line["start"]["x"], line["start"]["y"]), (line["end"]["x"], line["end"]["y"]))
+        assert f"{length:g}" == s.purpose.split()[2]
     for s in grid_dims:  # the line runs between the two grids, where the source draws it
         line = s.params["line"]
         length = math.dist((line["start"]["x"], line["start"]["y"]), (line["end"]["x"], line["end"]["y"]))
@@ -121,7 +145,7 @@ def test_plan_annotation_from_the_source(sample):
     assert [s.params["category"] for s in steps if s.command == "tag_all_by_category"] == ["OST_Doors", "OST_Windows"]
     assert typical.source_marks == {"door": {"D": 12, "D1": 20}, "window": {"W": 24, "W1": 4, "W2": 4, "W3": 4, "W4": 1}}
     kinds = sorted(d.kind for d in typical.source_dimensions)
-    assert kinds == ["grids"] * 3 + ["local"] * 9
+    assert kinds == ["grids"] * 3 + ["local"] * 2 + ["references"] * 7
     tie = next(s for s in plan.sheets if s.file == TIE)
     assert sorted(d.text for d in tie.source_dimensions if d.kind == "grids") == [
         "12750", "13375", "17000", "30000", "4250", "6000"]
@@ -137,7 +161,8 @@ def test_the_elevation_direction_is_asked(sample):
 
 
 class FakeRevit:
-    def __init__(self, titleblocks=("Plinth A4: A4 Landscape", "Plinth A1: A1 Metric"), frame=A4):
+    def __init__(self, titleblocks=("Plinth A4: A4 Landscape", "Plinth A1: A1 Metric"), frame=A4, sizes=None):
+        self.sizes = sizes or {}
         self.calls = []
         self.ids = itertools.count(5000)
         self.titleblocks = titleblocks
@@ -147,7 +172,9 @@ class FakeRevit:
         self.calls.append((command, params))
         n = next(self.ids)
         if command == "list_titleblocks":
-            return {"titleblocks": [{"display_name": t, "type_id": i} for i, t in enumerate(self.titleblocks)]}
+            return {"titleblocks": [{"display_name": t, "type_id": i, "sheet_width_mm": self.sizes.get(t, (None,))[0],
+                                     "sheet_height_mm": self.sizes.get(t, (None, None))[1]}
+                                    for i, t in enumerate(self.titleblocks)]}
         if command == "create_sheet":
             return {"sheet_id": n, "sheet_number": params["sheet_number"], "sheet_name": params["sheet_name"],
                     "frame_sheet_mm": self.frame}
@@ -174,6 +201,8 @@ class FakeRevit:
             return {}
         if command == "place_view_on_sheet":
             return {"viewport_id": n}
+        if command == "import_cad_to_view":
+            return {"instance_id": n}
         if command == "export_pdf":
             return {"path": params["output_folder"] + "\\" + params["file_name"]}
         raise AssertionError(command)
@@ -185,7 +214,7 @@ def test_drawing_set_in_revit(sample, tmp_path):
     out = make_import_drawing_set(revit, project, building, result, created, tmp_path, sheets=sheets, answers=FRONT,
                                   record=lambda k, i: recorded.__setitem__(k, i))
     assert out["status"] == "done" and out["failed"] == []
-    assert out["sheets"] == [str(n) for n in range(28, 36)]  # source pages 28-35 in order; 36 (site plan) not made
+    assert out["sheets"] == [str(n) for n in range(28, 37)]  # source pages 28-36 in order
     commands = [c for c, _ in revit.calls]
     assert commands[:2] == ["list_titleblocks", "create_sheet"] and commands[-1] == "export_pdf"
     sheets_made = [p for c, p in revit.calls if c == "create_sheet"]
@@ -195,16 +224,17 @@ def test_drawing_set_in_revit(sample, tmp_path):
     exported = [p for c, p in revit.calls if c == "export_pdf"][0]["view_ids"]
     assert exported == [recorded[f"DWG-SHEET-{n}"] for n in out["sheets"]]
     assert all(k.startswith("DWG-") for k in recorded)
-    assert sum(k.startswith("DWG-VIEW-") and not k.endswith("MARKER") for k in recorded) == 9  # BB has two
+    assert sum(k.startswith("DWG-VIEW-") and not k.endswith("MARKER") for k in recorded) == 10  # BB has two
     assert "DWG-VIEW-31-V1-MARKER" in recorded
 
     # per sheet: views, then their crop/visibility, annotation, then the viewport
     seq = [c for c, p in revit.calls if c not in ("list_titleblocks", "export_pdf")]
     typical = seq[seq.index("create_sheet", 1) + 1:]
-    assert typical[:9] == ["create_view", "create_dimensions", "create_dimensions", "create_dimensions", "label_rooms",
-                           "tag_elements", "tag_all_by_category", "tag_all_by_category", "place_view_on_sheet"]
+    assert typical[:16] == ["create_view"] + ["create_dimensions"] * 10 + [
+        "label_rooms", "tag_elements", "tag_all_by_category", "tag_all_by_category", "place_view_on_sheet"]
     places = [p for c, p in revit.calls if c == "place_view_on_sheet"]
-    assert all("x_mm" in p for p in places) and len(places) == 9
+    assert all("x_mm" in p for p in places) and len(places) == 10
+    assert [p["unit"] for c, p in revit.calls if c == "import_cad_to_view"] == ["millimeter"]
 
     comparison = json.loads((tmp_path / "drawings-comparison.json").read_text(encoding="utf-8"))
     assert (tmp_path / "drawings-comparison.html").read_text(encoding="utf-8").startswith("<!doctype html>")
@@ -212,11 +242,14 @@ def test_drawing_set_in_revit(sample, tmp_path):
     by_file = {s["file"]: s for s in comparison["sheets"]}
     typical = by_file[TYPICAL]
     assert typical["made"] == {"number": "29", "title": "FIRST STOREY TO FOURTH STOREY FLOOR PLAN", "scales": [150]}
-    assert typical["dimensions"]["missing"] == [1200, 1500, 1500, 1500, 2250, 2375, 2687.5, 2687.5, 5875]
+    assert typical["dimensions"]["missing"] == [1200, 1500]  # 9 before the face/reference dimensions
     assert typical["dimensions"]["extra"] == []
     assert typical["room_labels"]["missing"] == [] or typical["room_labels"]["made"] == 14
     assert typical["marks"] == {"door": {"source": 32, "tagged": 3}, "window": {"source": 37, "tagged": 3}}
-    assert by_file[SITE]["made"] is None and "sheet not reproduced" in by_file[SITE]["differences"]
+    assert by_file[SITE]["made"] == {"number": "36", "title": "SITE PLAN", "scales": [3000]}
+    # source dimension values no command draws, over the whole sample: 62 before the T10b commands, 30 now
+    left_out = {n["sheet"]: len(n["values"]) for n in out["not_reproduced"] if n["what"] == "dimensions"}
+    assert sum(left_out.values()) == 30 and left_out == {GROUND: 3, TYPICAL: 2, AA: 3, BB: 13, FOUNDATION: 9}
     assert by_file[AA]["level_marks"] == {"source": ["PL", "GL"], "made": ["GL", "PL"]}
 
 
@@ -239,6 +272,16 @@ def test_a_title_block_of_the_wrong_size_is_not_used(sample, tmp_path):
                                   record=lambda k, i: recorded.__setitem__(k, i))
     assert out["status"] == "questions" and "420 x 297" in out["questions"][0]["text"]
     assert [c for c, _ in revit.calls] == ["list_titleblocks", "create_sheet", "delete_element"] and recorded == {}
+
+
+def test_a_title_block_that_reports_its_size_needs_no_trial_sheet(sample, tmp_path):
+    project, building, result, sheets, created = sample
+    revit = FakeRevit(sizes={"Plinth A4: A4 Landscape": (297, 210)})
+    out = make_import_drawing_set(revit, project, building, result, created, tmp_path, sheets=sheets, answers=FRONT)
+    assert out["status"] == "done" and "delete_element" not in [c for c, _ in revit.calls]
+    revit = FakeRevit(titleblocks=("Plinth A4: A4 Landscape",), sizes={"Plinth A4: A4 Landscape": (420, 297)})
+    out = make_import_drawing_set(revit, project, building, result, created, tmp_path, sheets=sheets, answers=FRONT)
+    assert out["status"] == "questions" and [c for c, _ in revit.calls] == ["list_titleblocks"]
 
 
 def test_title_block_choice():
