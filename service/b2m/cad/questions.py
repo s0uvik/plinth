@@ -685,8 +685,10 @@ def update(project: ImportProject, raw: RecognisedBuilding,
     for q in t2:  # a sheet whose role is unknown cannot be recognised: that must be settled first
         if q.topic == "sheet_role" and q.options:
             q.severity = "blocking"
-    orphans = [q for q in project.questions if not T2_ID.match(q.id) and q.id not in new_ids and not q.open]
-    project.questions = t2 + new + orphans
+    staged = [q for q in project.questions if q.key.get("stage")]  # drawing-set / estimate questions: theirs
+    orphans = [q for q in project.questions if not T2_ID.match(q.id) and q.id not in new_ids and not q.open
+               and not q.key.get("stage")]
+    project.questions = t2 + new + orphans + staged
     sync_inputs(project)
     from b2m.cad import plan_bridge
 

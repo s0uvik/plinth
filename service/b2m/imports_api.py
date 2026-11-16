@@ -58,6 +58,13 @@ def assume(project: ImportProject, question_ids: list[str] | None) -> list[Any]:
     return _engine("assumptions").assume(project, question_ids)
 
 
+def refresh(project: ImportProject, building: RecognisedBuilding | None) -> None:
+    """T5: re-derive the questions after an answer or an assumption (answers kept): what the answer settles drops
+    out, and what the build plan now needs (a mark given by answer needs its door heights) is asked."""
+    if building is not None:
+        _engine("questions").update(project, building)
+
+
 def ready_to_build(project: ImportProject, building: RecognisedBuilding | None) -> Any:
     """T5: the readiness report. Expected: {"ready": bool, "blocking": [items]} (or an object with those fields)."""
     return _engine("readiness").ready_to_build(project)

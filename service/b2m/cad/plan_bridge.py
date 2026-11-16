@@ -195,7 +195,8 @@ def merge(project: ImportProject, raw: RecognisedBuilding, old: dict[str, Questi
             for e in _elements(q, b):
                 covered.setdefault(f"element:{e}", q)
     added = []
-    project.questions = [q for q in project.questions if not (q.id.count(":") and q.open)]  # re-derived below
+    project.questions = [q for q in project.questions  # T6's open questions are re-derived below
+                         if not (q.id.count(":") and q.open and not q.key.get("stage"))]
     have = {q.id for q in project.questions}
     asked: list[Any] = []
     for m in result.missing:
@@ -207,10 +208,13 @@ def merge(project: ImportProject, raw: RecognisedBuilding, old: dict[str, Questi
             by.key = {**by.key, "plan_ids": sorted(set(by.key.get("plan_ids", [])) | {m.id})}
             continue
         asked.append(m)
-    # one question per fact: T6's questions on the same topic with the same choices are asked once, listing each place
+    # one question per fact: T6's per-place questions ("<topic>:<sheet>:<element>") on the same topic with the same
+    # choices are asked once, listing each place; per-type ones ("projection_thickness:chajja") stay apart
     groups: dict[tuple, list[Any]] = {}
     for m in asked:
-        groups.setdefault((m.topic, json.dumps(m.options, sort_keys=True, default=str), m.unit), []).append(m)
+        per_place = m.id.count(":") >= 2
+        groups.setdefault((m.topic, json.dumps(m.options, sort_keys=True, default=str), m.unit) if per_place
+                          else (m.id,), []).append(m)
     for ms in groups.values():
         elements = list(dict.fromkeys(e for m in ms for e in m.elements))
         hs = _handles(b, elements)

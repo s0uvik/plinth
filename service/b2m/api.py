@@ -546,6 +546,14 @@ def _approved(project: ImportProject) -> bool:
     return False
 
 
+def _refresh(project: ImportProject, building: RecognisedBuilding | None) -> None:
+    """Re-derive the questions after an answer (answers kept), so what the answer raises is asked now, not at build."""
+    try:
+        imports_api.refresh(project, building)
+    except NotWired:
+        pass
+
+
 def _withdraw_approval(project: ImportProject, why: str) -> None:
     """Anything the user changes after approving needs a new approval before a build."""
     if _approved(project):
@@ -836,6 +844,7 @@ def add_import_routes(app: FastAPI, service: BuildService, imports: Imports) -> 
             if q.key.get("stage"):  # a drawing-set / estimate input: the model is unchanged
                 stage_questions.record(project, q)
             else:
+                _refresh(project, imports.building(import_id))
                 _withdraw_approval(project, f"answer to {request.question_id} changed after approval")
             imports.store.save(project)
             return _review(project, imports.building(import_id))
@@ -878,6 +887,7 @@ def add_import_routes(app: FastAPI, service: BuildService, imports: Imports) -> 
                 raise HTTPException(409, str(e)) from e
             except KeyError as e:
                 raise HTTPException(404, str(e)) from e
+            _refresh(project, imports.building(import_id))
             _withdraw_approval(project, "assumptions made after approval")
             imports.store.save(project)
             return {**_review(project, imports.building(import_id)), "assumed": jsonable_encoder(made)}
