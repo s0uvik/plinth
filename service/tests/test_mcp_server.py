@@ -11,7 +11,9 @@ COMMANDS = [
      "schema": {"type": "object", "properties": {"from": {"type": "string"}}}},
 ]
 
-B2M_TOOLS = {"b2m_plan_from_brief", "b2m_preview", "b2m_check", "b2m_build", "b2m_run_status", "b2m_drawing_set", "b2m_remove"}
+B2M_TOOLS = {"b2m_plan_from_brief", "b2m_preview", "b2m_check", "b2m_build", "b2m_run_status", "b2m_drawing_set", "b2m_remove",
+             "b2m_import_start", "b2m_import_status", "b2m_import_questions", "b2m_import_answer",
+             "b2m_import_set_location", "b2m_import_assume", "b2m_import_approve", "b2m_import_build"}
 GATEWAY_READS = {"revit_list_available_targets", "revit_get_current_target", "revit_health", "revit_get_operation_status",
                  "revit_lookup_message", "revit_analyze_usage_patterns", "revit_get_failure_records",
                  "revit_get_change_records", "revit_list_code_modules", "revit_list_bake_suggestions"}
@@ -87,3 +89,37 @@ def test_b2m_and_gateway_tools_forward_to_the_local_service():
         ("POST", "/revit/target", {"target": "2026", "verify": True}),
         ("GET", "/revit/lookup?text=DOCUMENT_CHANGED", None),
     ]
+
+
+def test_import_tools_forward_to_the_local_service():
+    api = FakeApi()
+    server = build_server(api, {"toolsets": [], "read_only": False})
+    run(server.call_tool("b2m_import_start", {"folder": "D:/Jobs/G4/dwg"}))
+    run(server.call_tool("b2m_import_status", {"import_id": "i1"}))
+    run(server.call_tool("b2m_import_questions", {"import_id": "i1"}))
+    run(server.call_tool("b2m_import_answer", {"import_id": "i1", "question_id": "Q2", "answer": "3000"}))
+    run(server.call_tool("b2m_import_set_location", {"import_id": "i1", "city": "Kolkata", "state": "West Bengal",
+                                                     "country": "India"}))
+    run(server.call_tool("b2m_import_assume", {"import_id": "i1", "question_ids": ["Q3", "Q4"]}))
+    run(server.call_tool("b2m_import_assume", {"import_id": "i1", "question_ids": "all"}))
+    run(server.call_tool("b2m_import_approve", {"import_id": "i1"}))
+    run(server.call_tool("b2m_import_build", {"import_id": "i1", "document_title": "Scratch"}))
+    assert api.calls == [
+        ("POST", "/imports", {"folder": "D:/Jobs/G4/dwg"}),
+        ("GET", "/imports/i1", None),
+        ("GET", "/imports/i1/questions", None),
+        ("POST", "/imports/i1/answers", {"question_id": "Q2", "answer": "3000"}),
+        ("POST", "/imports/i1/location", {"city": "Kolkata", "municipality": None, "state": "West Bengal",
+                                          "country": "India"}),
+        ("POST", "/imports/i1/assume", {"question_ids": ["Q3", "Q4"]}),
+        ("POST", "/imports/i1/assume", {"question_ids": "all"}),
+        ("POST", "/imports/i1/approve", {"note": None}),
+        ("POST", "/imports/i1/build", {"document_title": "Scratch"}),
+    ]
+
+
+def test_assume_tool_says_when_it_may_be_called():
+    tools = {t.name: t for t in run(build_server(FakeApi(), {"toolsets": [], "read_only": False}).list_tools())}
+    description = tools["b2m_import_assume"].description
+    assert "NEVER call this unless the user explicitly said \"assume\"" in description
+    assert "location" in description
