@@ -20,8 +20,9 @@ How it decides, per need:
   own: the user may name it.
 - sizes: the type's Width and Depth (or Length) parameters, else a "W x D" in its name, against the item's width
   (along its back) and depth. Within ``SIZE_TOL_MM`` it fits.
-- the best keyword match wins; among equals a type that fits, then one that can be copied to the size, then the
-  closest; the project before the templates. Templates are only searched when the project has no type that fits.
+- the best keyword match wins; among equals a type that fits (the project's before a template's), then one that can
+  be copied to the size, then any, the closest first. Templates are only searched when the project has no type that
+  fits.
 - adapt a copy: when the chosen type's size differs and the family has the size parameters (writable Width, Depth or
   Length), a copy of the type is made at the size (a family_type_copy op; the type itself is never changed);
   otherwise the closest type is used as it is and the difference is listed.
@@ -274,7 +275,9 @@ def _sizable(need: Need, c: Candidate) -> dict[str, float] | None:
 def _rank(need: Need, c: Candidate) -> tuple:
     miss = _miss(need, c)
     fit = 0 if miss is not None and miss <= SIZE_TOL_MM else 1 if _sizable(need, c) else 2
-    return (-c.score, fit, 0 if c.source == "project" else 1, miss if miss is not None else 1e9, c.family or "", c.type)
+    # A type that fits: the project's first. One to adapt or use as it is: the closest first (the least changed).
+    closeness = 0 if fit == 0 else (miss if miss is not None else 1e9)
+    return (-c.score, fit, closeness, 0 if c.source == "project" else 1, c.family or "", c.type)
 
 
 def _dims(dims: dict[str, Any], name: str) -> tuple[float | None, float | None, str | None]:
