@@ -100,7 +100,7 @@ plumbing:
 
   branches:
     slope_pct: {soil: 1.67, waste: 2.5}
-    depth_below_floor_mm: 300
+    depth_below_floor_mm: 250
     max_depth_below_floor_mm: 1200
     tee_spacing_mm: 200
     max_length_m: 12
