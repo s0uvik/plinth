@@ -256,6 +256,11 @@ def test_sample_drawings_to_model_drawings_and_estimate(flow):
     assert drawn["source"] == "drawings" and drawn["urls"]["estimate.xlsx"].startswith(f"/imports/{import_id}/")
     assert drawn["comparison"] is None
 
+    # the review page offers all of it after a build
+    page = api.get("/import").text
+    assert all(t in page for t in ("Make drawing set", "Make estimate", "Open the self-check report",
+                                   "Comparison with your workbook", "drawings-comparison.html"))
+
 
 EXPECTED_ESTIMATE_TOPICS = Counter({
     "estimate_rules": 1,  # the rules file gives SL. NO 3 to two sections
