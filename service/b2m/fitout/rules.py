@@ -77,7 +77,7 @@ class RoomClass(Sourced):
     outdoor: bool = False
     in_flat: bool = True  # may belong to a flat (a stair, lift or terrace does not)
     flat_boundary: bool = False  # separates flats: rooms are in one flat when connected without passing it
-    boundary_near_core: bool = False  # a lobby: a flat boundary when it holds or opens onto a stair or lift
+    boundary_near_core: bool = False  # a lobby: common when it holds or opens onto a stair or lift, or into 2+ flats
     furnish: bool = True
 
 

@@ -43,7 +43,7 @@ rooms:
     names: [lobby, passage, corridor, entrance, entry, foyer, landing, gallery, entrance lobby, lift lobby,
             common passage, common lobby, vestibule]
     boundary_near_core: true
-    source: "B2M naming practice; a lobby holding or opening onto a stair or lift is common (outside the flats)"
+    source: "B2M naming practice; a lobby holding or opening onto a stair or lift, or into several flats, is common"
   dress:
     label: Dressing
     names: [dress, dressing, dressing room, walk in, walk in closet, wardrobe room]
