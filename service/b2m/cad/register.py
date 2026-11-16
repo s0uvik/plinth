@@ -14,8 +14,10 @@ Sections register vertically: elevation 0 is the datum (PL, else GL); a section 
 datum of a section whose storey levels it repeats. Section cut lines come from the marks on the plans, moved into
 the frame; marks of one section on several plans are compared.
 
-Plan features come from ``PlanRecognition`` (T3). Until T3 lands, ``provisional_plan`` gives a plan its simplest
-features (solid filled rectangles as columns, centre lines as grids) so registration can run on real sheets.
+Plan features come from ``PlanRecognition`` (T3): columns, grids, wall axes, the outline and the section marks
+(``PlanRecognition.section_marks``, found by ``b2m.cad.marks`` for every sheet). ``provisional_plan`` is the
+fallback for a plan T3 cannot recognise: its simplest features (solid filled rectangles as columns, centre lines as
+grids, the section marks) so the sheet can still be placed.
 """
 
 from __future__ import annotations
@@ -28,6 +30,7 @@ from b2m.cad import marks as section_marks
 from b2m.cad.annot import TOL, flatten, name_of, segments, solid_boxes
 from b2m.cad.building import (BeamLayoutRecognition, Column, Evidence, Finding, FoundationRecognition, Grid,
                               PlanRecognition, Registration, SectionRecognition)
+from b2m.cad.building import SectionMark as SectionMarkModel
 from b2m.cad.sheet import Sheet
 
 REGISTER_TOL = 5.0  # mm: matched features must coincide this well (PRD gate: 1 mm, reported as residual)
@@ -70,8 +73,9 @@ def _size_label(w: float, d: float) -> str:
     return f"{a}x{b}"
 
 
-def plan_features(plan: PlanRecognition, marks: list[section_marks.SectionMark] = ()) -> Features:
-    """The adapter T3's output plugs into: columns, grids (and their nodes), wall axes, outline corners, marks."""
+def plan_features(plan: PlanRecognition, marks: list[section_marks.SectionMark] | None = None) -> Features:
+    """The adapter T3's output plugs into: columns, grids (and their nodes), wall axes, outline corners, marks
+    (the plan's own section marks unless others are given)."""
     f = Features(plan.sheet)
     for c in plan.columns:
         f.points.append(FPoint("column", _size_label(c.width_mm, c.depth_mm), c.center, c.evidence.handles))
@@ -82,7 +86,7 @@ def plan_features(plan: PlanRecognition, marks: list[section_marks.SectionMark] 
     f.points += _nodes([ln for ln in f.lines], plan.grids)
     for p in plan.outline or []:
         f.points.append(FPoint("corner", None, p, []))
-    _add_marks(f, marks)
+    _add_marks(f, marks if marks is not None else [section_marks.from_model(m) for m in plan.section_marks])
     return f
 
 
@@ -160,7 +164,8 @@ def provisional_plan(sheet: Sheet, role: str = "floor_plan", storeys: list[int] 
         if s.centre_styled() and s.handle not in taken:
             grids.append(Grid(id=f"L{len(grids) + 1}", start=s.a, end=s.b, evidence=Evidence(sheet=src, handles=[s.handle])))
     plan = PlanRecognition(sheet=src, role=role if role in ("floor_plan", "roof_plan") else "floor_plan",
-                           storeys=storeys or [], columns=columns, grids=grids, findings=findings)
+                           storeys=storeys or [], columns=columns, grids=grids, findings=findings,
+                           section_marks=[section_marks.to_model(m, src) for m in marks])
     return plan, marks
 
 
@@ -540,9 +545,12 @@ def _datum_handles(s: SectionRecognition) -> list[str]:
     return lv.evidence.handles if lv else []
 
 
-def place_cut_lines(sections: list[SectionRecognition], marks_by_sheet: dict[str, list[section_marks.SectionMark]],
+def place_cut_lines(sections: list[SectionRecognition], marks_by_sheet: dict[str, list],
                     regs: dict[str, Registration], frame: str | None, tol: float = REGISTER_TOL) -> list[Finding]:
-    """Each section's cut line from the plans' marks, in the building frame where the plan is registered."""
+    """Each section's cut line from the plans' marks (``PlanRecognition.section_marks`` or the finder's own
+    marks), in the building frame where the plan is registered."""
+    marks_by_sheet = {sheet: [section_marks.from_model(m) if isinstance(m, SectionMarkModel) else m for m in ms]
+                      for sheet, ms in marks_by_sheet.items()}
     findings = []
     for s in sections:
         label = section_marks.mark_label(s.name)

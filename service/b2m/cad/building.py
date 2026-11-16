@@ -14,6 +14,10 @@ Optional fields added by T4 (all default to "not given", so older producers stay
 SectionRecognition.cut_path / cut_sheet / view_direction / unexplained, Footing.kind, RebarSpec.legs,
 FoundationRecognition.plan_columns / unexplained, BeamLayoutRecognition.column_evidence / unexplained,
 Registration.frame.
+
+Optional fields added by T5 (the import pipeline): SectionMark.cut / view, PlanRecognition.room_separations,
+RecognisedBuilding.resolved (cross-sheet resolutions, with evidence from every sheet involved) and
+RecognisedBuilding.answered (which answered questions have been applied to this copy).
 """
 
 from __future__ import annotations
@@ -132,11 +136,13 @@ class Projection(_Model):
 
 
 class SectionMark(_Model):
-    """A section cut line drawn on a plan (centre line with the section's letter at both ends): where section
-    recognition (T4) takes the section's cut_line from."""
+    """A section cut line drawn on a plan (labelled arrows joined by a cut line): where section recognition (T4)
+    takes the section's cut_line from. One finder (b2m.cad.marks) produces these for every sheet."""
 
     name: str  # "A" for section AA
-    points: list[Point]  # the cut line as drawn (may be stepped)
+    points: list[Point]  # the line as drawn, from one arrow's base to the other's, every corner (may be stepped)
+    cut: list[Point] | None = None  # the cut itself: points without the tails that run along the arrows
+    view: Point | None = None  # unit vector the section looks along (the arrows' direction)
     evidence: Evidence
 
 
@@ -148,6 +154,16 @@ class RoofFall(_Model):
     end: Point
     label: str | None = None  # the text written along it, e.g. "SLOPE"
     evidence: Evidence
+
+
+class RoomSeparation(_Model):
+    """A line dividing rooms that share one enclosed space (no wall between them): given by the user's answer."""
+
+    id: str
+    start: Point
+    end: Point
+    rooms: list[str] = []  # the ids of the rooms it separates
+    evidence: Evidence  # the question that gave it (note) and the rooms' handles
 
 
 class PlanRecognition(_Model):
@@ -165,6 +181,7 @@ class PlanRecognition(_Model):
     outline: list[Point] | None = None  # outer face of the building on this plan
     section_marks: list[SectionMark] = []  # section cut lines drawn on the plan (for T4's cut_line)
     falls: list[RoofFall] = []  # roof plans: slope arrows (no other field carries roof drainage)
+    room_separations: list[RoomSeparation] = []  # from answers (rooms sharing one space)
     findings: list[Finding] = []
     unclaimed: list[Evidence] = []  # drawing geometry no recogniser used (listed, never silently dropped)
 
@@ -268,6 +285,17 @@ class Registration(_Model):
     evidence: Evidence
 
 
+class Resolution(_Model):
+    """A finding that another sheet settles, e.g. an unlabelled opening on one plan that sits in the wall of a lift
+    shaft labelled on another plan. The finding is dropped from its sheet; this keeps what settled it."""
+
+    id: str
+    topic: str  # the resolved finding's topic
+    text: str  # what was decided and why
+    findings: list[str] = []  # "<sheet>#<finding id>" of every finding it settles
+    evidence: list[Evidence] = []  # from every sheet involved
+
+
 class RecognisedBuilding(_Model):
     plans: list[PlanRecognition] = []
     sections: list[SectionRecognition] = []
@@ -275,3 +303,6 @@ class RecognisedBuilding(_Model):
     beam_layouts: list[BeamLayoutRecognition] = []
     registrations: list[Registration] = []
     findings: list[Finding] = Field(default_factory=list)  # cross-sheet findings
+    resolved: list[Resolution] = []  # findings settled by another sheet (removed from the findings lists)
+    answered: list[str] = []  # ids of the import project's questions whose answers are applied to this copy
+
