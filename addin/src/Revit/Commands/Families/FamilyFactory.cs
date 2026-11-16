@@ -726,6 +726,9 @@ namespace B2M.Revit.Commands.Families
             var face = FindFace(extrusion, faceNormal);
             if (Doc.FamilyCreate.NewAlignment(view, datum, face.Reference) == null)
                 throw new InvalidOperationException("Revit did not create the alignment");
+            // Regenerate now, so a lock that conflicts with the others fails at its own step instead of at the next
+            // regeneration (the first live run reported "Document regeneration failed" at the material binding).
+            Doc.Regenerate();
         }
 
         private static PlanarFace FindFace(Extrusion extrusion, XYZ normal)
