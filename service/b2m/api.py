@@ -5,15 +5,27 @@
 
 from __future__ import annotations
 
+import html
+import json
+import logging
+import math
+import secrets
 import threading
+from datetime import datetime, timezone
 from importlib.resources import files
-from typing import Any, Callable
+from pathlib import Path
+from typing import Any, Callable, Literal
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from pydantic import BaseModel
 
-from b2m import logs
+from b2m import imports_api, logs
+from b2m.cad import overlay, reader as cad_reader, sheet as cad_sheet
+from b2m.cad.building import PlanRecognition, RecognisedBuilding
+from b2m.cad.project import ImportProject, ImportStore, LocationRequired, analyse, collect
+from b2m.imports_api import NotWired
 from b2m.brief.agent import BriefFailed, BriefSession, MessagesClient, Questions, SpecReady, anthropic_client
 from b2m.builds import BuildService, Busy, product_version
 from b2m.compliance import evaluate, facts_after_build, facts_before_build, hard_failures
@@ -23,10 +35,12 @@ from b2m.gateway import Gateway, GatewayError
 from b2m.engine import LayoutError, generate
 from b2m.plan import BuildPlan, RoomOp
 from b2m.revit import RevitClient
+from b2m.revit.errors import hint
 from b2m.runs import RunStore
 from b2m.spec import BuildingSpec, parse_spec
 
 HOST, PORT = "127.0.0.1", 8765
+log = logging.getLogger(__name__)
 
 
 class BuildRequest(BaseModel):
@@ -123,7 +137,8 @@ def brief_json(session: BriefSession) -> dict[str, Any]:
     return body
 
 
-def create_app(service: BuildService | None = None, brief_client: Callable[[], MessagesClient] = anthropic_client) -> FastAPI:
+def create_app(service: BuildService | None = None, brief_client: Callable[[], MessagesClient] = anthropic_client,
+               import_store: ImportStore | None = None) -> FastAPI:
     service = service or BuildService(RunStore())
     app = FastAPI(title="B2M", version=product_version())
     briefs: dict[str, BriefSession] = {}
@@ -369,7 +384,510 @@ def create_app(service: BuildService | None = None, brief_client: Callable[[], M
         except Busy as e:
             raise HTTPException(409, str(e)) from e
 
+    add_import_routes(app, service, Imports(import_store or ImportStore()))
     return app
+
+
+# ---- drawing import (PRD Step 9 T8): import, review (overlay + questions), location, assumptions, approval, build
+
+SEVERITY_ORDER = ("blocking", "check", "info")
+
+
+class ImportRequest(BaseModel):
+    folder: str | None = None
+    files: list[str] = []
+
+
+class ImportAnswerRequest(BaseModel):
+    question_id: str
+    answer: Any
+
+
+class LocationRequest(BaseModel):
+    city: str
+    municipality: str | None = None
+    state: str
+    country: str
+
+
+class AssumeRequest(BaseModel):
+    question_ids: list[str] | Literal["all"]
+
+
+class ApproveRequest(BaseModel):
+    note: str | None = None
+
+
+class ImportBuildRequest(BaseModel):
+    document_title: str
+
+
+def _utc() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+class Imports:
+    """Import projects in the import store, each with an import.json status record beside its project.json, and the
+    background import (read, frame, classify, then recognise and register), one at a time like builds."""
+
+    def __init__(self, store: ImportStore, oda: Path | str | None = None):
+        self.store = store
+        self.oda = oda
+        self.lock = threading.Lock()  # held while an import runs
+        self.edit = threading.Lock()  # one read-modify-write of a project at a time
+        self._sheets: dict[tuple[str, int], cad_sheet.Sheet] = {}
+
+    def dir(self, import_id: str) -> Path:
+        return self.store.root / import_id
+
+    def record(self, import_id: str) -> dict[str, Any] | None:
+        if not import_id or "/" in import_id or "\\" in import_id or import_id.startswith("."):
+            return None
+        path = self.dir(import_id) / "import.json"
+        return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
+
+    def update(self, import_id: str, **fields: Any) -> dict[str, Any]:
+        record = self.record(import_id) or {"import_id": import_id}
+        record.update(fields)
+        temp = self.dir(import_id) / ".import.json.tmp"
+        temp.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
+        temp.replace(self.dir(import_id) / "import.json")
+        return record
+
+    def list(self, limit: int = 50) -> list[dict[str, Any]]:
+        if not self.store.root.is_dir():
+            return []
+        found = (self.record(d.name) for d in sorted(self.store.root.iterdir(), reverse=True) if d.is_dir())
+        return [r for r in found if r][:limit]
+
+    def start(self, inputs: list[str]) -> str:
+        drawings = collect(inputs)  # FileNotFoundError for a missing path
+        if not drawings:
+            raise ValueError("No DWG or DXF drawings found there.")
+        if not self.lock.acquire(blocking=False):
+            raise Busy("An import is already running; wait for it to finish.")
+        try:
+            stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
+            import_id = f"{stamp}-{secrets.token_hex(2)}"
+            self.dir(import_id).mkdir(parents=True)
+            self.update(import_id, status="queued", inputs=[str(p) for p in drawings], created_utc=_utc(), runs=[])
+        except Exception:
+            self.lock.release()
+            raise
+        threading.Thread(target=self._import, args=(import_id, drawings), name=f"import-{import_id}", daemon=True).start()
+        return import_id
+
+    def _import(self, import_id: str, drawings: list[Path]) -> None:
+        try:
+            self.update(import_id, status="reading")
+            project = analyse(drawings, self.oda, project_id=import_id)
+            self.store.save(project)
+            self.update(import_id, status="recognising")
+            building = imports_api.run_import(project)
+            imports_api.save_building(self.dir(import_id), building)
+            self.store.save(project)  # recognition may have added questions
+            self.update(import_id, status="ready")
+        except Exception as e:  # Record it, never lose the import.
+            log.exception("import %s failed", import_id)
+            self.update(import_id, status="failed", error=f"{type(e).__name__}: {e}",
+                        hint=getattr(e, "hint", None) or hint(str(e)))
+        finally:
+            self.update(import_id, finished_utc=_utc())
+            self.lock.release()
+
+    def project(self, import_id: str) -> ImportProject:
+        if self.record(import_id) is None:
+            raise HTTPException(404, "No such import.")
+        project = self.store.get(import_id)
+        if project is None:
+            raise HTTPException(409, "The drawings are still being read; try again in a moment.")
+        return project
+
+    def building(self, import_id: str) -> RecognisedBuilding | None:
+        return imports_api.load_building(self.dir(import_id))
+
+    def sheet(self, project: ImportProject, n: int) -> cad_sheet.Sheet:
+        key = (project.id, n)
+        if key not in self._sheets:
+            source = project.sources[n - 1]
+            if len(self._sheets) >= 6:
+                self._sheets.pop(next(iter(self._sheets)))
+            self._sheets[key] = cad_sheet.detect(cad_reader.read_dxf(source.dxf, source.path))
+        return self._sheets[key]
+
+
+def _approved(project: ImportProject) -> bool:
+    for approval in reversed(project.approvals):
+        if approval.what in ("review", "review_withdrawn"):
+            return approval.what == "review"
+    return False
+
+
+def _withdraw_approval(project: ImportProject, why: str) -> None:
+    """Anything the user changes after approving needs a new approval before a build."""
+    if _approved(project):
+        project.approve("review_withdrawn", by="b2m", note=why)
+
+
+def _question_groups(project: ImportProject) -> list[dict[str, Any]]:
+    """Questions grouped by severity, blocking first. Until the question engine is wired, every question counts as
+    blocking: an unknown severity is never understated."""
+    try:
+        raw = jsonable_encoder(imports_api.question_groups(project))
+    except NotWired:
+        raw = [{"severity": "blocking", "questions": [q.model_dump(mode="json") for q in project.questions]}]
+    groups = [{"severity": k, "questions": v} for k, v in raw.items()] if isinstance(raw, dict) else raw
+    known = {q.id: q for q in project.questions}
+    for group in groups:
+        for q in group["questions"]:
+            stored = known.get(q.get("id"))
+            if stored is not None:  # the project file is the record of who answered what
+                q.update(answer=stored.answer, answered_by=stored.answered_by, at=stored.at)
+            q.setdefault("severity", group["severity"])
+    rank = {s: i for i, s in enumerate(SEVERITY_ORDER)}
+    return sorted(groups, key=lambda g: rank.get(g["severity"], len(rank)))
+
+
+def _readiness(project: ImportProject, building: RecognisedBuilding | None) -> dict[str, Any]:
+    """The engine's readiness report, made safe: never ready without a recognised building."""
+    try:
+        report = jsonable_encoder(imports_api.ready_to_build(project, building))
+    except NotWired as e:
+        open_questions = [f"{q.id}: {q.text}" for q in project.open_questions()]
+        return {"ready": False, "blocking": open_questions, "error": str(e)}
+    if not isinstance(report, dict):
+        report = {"ready": bool(report)}
+    report.setdefault("blocking", [])
+    if building is None:
+        report["ready"] = False
+        report["blocking"] = ["The drawings have not been recognised yet."] + list(report["blocking"])
+    report["ready"] = bool(report.get("ready")) and not report["blocking"]
+    return report
+
+
+def _item_text(item: Any) -> str:
+    if isinstance(item, dict):
+        return str(item.get("text") or item.get("message") or item.get("name") or json.dumps(item))
+    return str(item)
+
+
+def _location(project: ImportProject) -> dict[str, Any] | None:
+    if project.inputs.location is None:
+        return None
+    return {**project.inputs.location.model_dump(), "country": project.inputs.values.get("country")}
+
+
+def _review(project: ImportProject, building: RecognisedBuilding | None) -> dict[str, Any]:
+    return {"import_id": project.id, "location": _location(project), "groups": _question_groups(project),
+            "assumptions": [a.model_dump(mode="json") for a in project.assumptions],
+            "readiness": _readiness(project, building), "approved": _approved(project),
+            "approvals": [a.model_dump(mode="json") for a in project.approvals]}
+
+
+def _sheet_summary(building: RecognisedBuilding | None, file: str) -> dict[str, int]:
+    """What recognition found on one sheet, as counts."""
+    if building is None:
+        return {}
+    for p in building.plans:
+        if p.sheet == file:
+            kinds = [o.kind for o in p.openings]
+            return {"walls": len(p.walls), "columns": len(p.columns), "doors": kinds.count("door"),
+                    "windows": kinds.count("window"), "other openings": len(kinds) - kinds.count("door") - kinds.count("window"),
+                    "rooms": len(p.rooms), "stairs": len(p.stairs), "shafts": len(p.shafts),
+                    "projections": len(p.projections), "grids": len(p.grids), "findings": len(p.findings),
+                    "unclaimed": len(p.unclaimed)}
+    for s in building.sections:
+        if s.sheet == file:
+            return {"levels": len(s.levels), "storey heights": len(s.storey_heights_mm), "findings": len(s.findings),
+                    "unexplained": len(s.unexplained)}
+    for f in building.foundations:
+        if f.sheet == file:
+            return {"footings": len(f.footings), "column sections": len(f.column_sections), "rebar notes": len(f.rebar),
+                    "findings": len(f.findings), "unexplained": len(f.unexplained)}
+    for b in building.beam_layouts:
+        if b.sheet == file:
+            return {"beams": len(b.beams), "grids": len(b.grids), "columns": len(b.column_points),
+                    "findings": len(b.findings), "unexplained": len(b.unexplained)}
+    return {}
+
+
+def _sheet_findings(building: RecognisedBuilding | None, file: str) -> list:
+    if building is None:
+        return []
+    found = [f for f in building.findings if f.evidence.sheet == file]
+    for group in (building.plans, building.sections, building.foundations, building.beam_layouts):
+        found += [f for r in group if r.sheet == file for f in r.findings]
+    return found
+
+
+def _plan_of(building: RecognisedBuilding | None, file: str) -> PlanRecognition | None:
+    return next((p for p in building.plans if p.sheet == file), None) if building else None
+
+
+def _elements(building: RecognisedBuilding | None, file: str) -> dict[str, dict[str, Any]]:
+    """What the review page shows when a shape on the overlay is clicked: kind, mark, size and evidence."""
+    out: dict[str, dict[str, Any]] = {}
+
+    def put(element_id: str, kind: str, evidence, **info: Any) -> None:
+        details = {k: v for k, v in info.items() if v not in (None, "", [])}
+        out[element_id] = {"id": element_id, "kind": kind, "handles": list(evidence.handles),
+                           **({"note": evidence.note} if getattr(evidence, "note", None) else {}), **details}
+
+    plan = _plan_of(building, file)
+    if plan is not None:
+        for w in plan.walls:
+            length = math.hypot(w.end[0] - w.start[0], w.end[1] - w.start[1])
+            put(w.id, f"{w.kind} wall", w.evidence, size=f"{w.thickness_mm:g} mm thick, {length:.0f} mm long",
+                height=f"{w.height_mm:g} mm" if w.height_mm else None)
+        for c in plan.columns:
+            put(c.id, f"{c.shape} column", c.evidence, size=f"{c.width_mm:g} x {c.depth_mm:g} mm")
+        for o in plan.openings:
+            size = f"{o.width_mm:g} mm wide" + (f" x {o.height_mm:g} mm high" if o.height_mm else "")
+            put(o.id, o.kind, o.evidence, mark=o.mark_normalised or o.mark, size=size, swing=o.swing, wall=o.wall_id)
+        for r in plan.rooms:
+            labelled = f"{r.labelled_size_mm[0]:g} X {r.labelled_size_mm[1]:g} (as labelled)" if r.labelled_size_mm else None
+            put(r.id, "room", r.evidence, mark=r.name, size=labelled,
+                area=f"{r.area_m2:.2f} m²" if r.area_m2 else None, unit=r.unit)
+        for s in plan.stairs:
+            put(s.id, f"{s.kind.replace('_', '-')} stair", s.evidence,
+                size=f"{s.width_mm:g} mm wide" if s.width_mm else None)
+        for s in plan.shafts:
+            put(s.id, f"{s.kind} shaft", s.evidence, mark=s.label)
+        for p in plan.projections:
+            put(p.id, p.kind, p.evidence)
+        for g in plan.grids:
+            put(g.id, "grid", g.evidence, mark=g.name)
+    for f in _sheet_findings(building, file):
+        put(f.id, "finding", f.evidence, mark=f.topic, text=f.text, severity=f.severity)
+    return out
+
+
+def _evidence_layer(sheet: cad_sheet.Sheet, project: ImportProject, file: str) -> str:
+    """A box round every entity a question points at on this sheet, hidden until the page shows it."""
+    by_handle = {e.handle: e for top in sheet.drawing_entities for e in top.walk()}
+    by_handle.update({e.handle: e for e in sheet.cad.walk()})
+    parts = ['<g class="evidence">']
+    for q in project.questions:
+        for ev in q.evidence:
+            if ev.sheet != file:
+                continue
+            for h in ev.handles:
+                box = by_handle[h].bounds() if h in by_handle else None
+                if not box:
+                    continue
+                pad = 150.0
+                x0, y0, x1, y1 = box[0] - pad, box[1] - pad, box[2] + pad, box[3] + pad
+                parts.append(f'<rect class="evidence" x="{x0:.1f}" y="{-y1:.1f}" width="{x1 - x0:.1f}" '
+                             f'height="{y1 - y0:.1f}" fill="#d6007e" fill-opacity="0.12" stroke="#d6007e" '
+                             f'stroke-width="3" vector-effect="non-scaling-stroke" visibility="hidden" '
+                             f'data-question="{html.escape(q.id)}" data-handles="{html.escape(h)}"/>')
+    parts.append("</g>")
+    return "\n".join(parts) if len(parts) > 2 else ""
+
+
+def add_import_routes(app: FastAPI, service: BuildService, imports: Imports) -> None:
+    app.state.imports = imports
+
+    def engine(fn, *args):
+        try:
+            return fn(*args)
+        except NotWired as e:
+            raise HTTPException(501, str(e)) from e
+
+    def finished(import_id: str) -> dict[str, Any]:
+        record = imports.record(import_id)
+        if record is None:
+            raise HTTPException(404, "No such import.")
+        if record.get("status") != "ready":
+            raise HTTPException(409, "The import has not finished recognising the drawings."
+                                     + (f" It failed: {record.get('error')}" if record.get("status") == "failed" else ""))
+        return record
+
+    def sheet_number(project: ImportProject, n: int) -> None:
+        if not 1 <= n <= len(project.sheets):
+            raise HTTPException(404, "No such sheet.")
+
+    @app.get("/import", response_class=HTMLResponse)
+    def import_page() -> str:
+        return files("b2m.web").joinpath("import.html").read_text(encoding="utf-8")
+
+    @app.post("/imports", status_code=202)
+    def start_import(request: ImportRequest) -> dict[str, str]:
+        inputs = ([request.folder] if request.folder and request.folder.strip() else []) + \
+                 [f for f in request.files if f.strip()]
+        if not inputs:
+            raise HTTPException(422, "Give the folder with the DWG/DXF drawings, or the drawing files.")
+        try:
+            return {"import_id": imports.start([i.strip().strip('"') for i in inputs])}
+        except FileNotFoundError as e:
+            raise HTTPException(404, str(e)) from e
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from e
+        except Busy as e:
+            raise HTTPException(409, str(e)) from e
+
+    @app.get("/imports")
+    def list_imports() -> list[dict[str, Any]]:
+        return imports.list()
+
+    @app.get("/imports/{import_id}")
+    def import_status(import_id: str) -> dict[str, Any]:
+        record = imports.record(import_id)
+        if record is None:
+            raise HTTPException(404, "No such import.")
+        project = imports.store.get(import_id)
+        if project is None:
+            return {**record, "sheets": [], "registrations": [], "readiness": {"ready": False, "blocking": []}}
+        building = imports.building(import_id)
+        sheets = [{"n": i, "file": s.file, "role": s.role, "storeys": s.storeys, "name": s.name, "title": s.title,
+                   "scale": s.scale, "page": s.page, "page_number": s.page_number, "decided_by": s.decided_by,
+                   "recognised": _sheet_summary(building, s.file)} for i, s in enumerate(project.sheets, 1)]
+        open_questions = project.open_questions()
+        return {**record, "sheets": sheets,
+                "registrations": [r.model_dump(mode="json") for r in building.registrations] if building else [],
+                "location": _location(project), "readiness": _readiness(project, building), "approved": _approved(project),
+                "questions": {"total": len(project.questions), "open": len(open_questions)},
+                "assumptions": len(project.assumptions)}
+
+    @app.get("/imports/{import_id}/sheets/{n}/overlay.svg")
+    def sheet_overlay(import_id: str, n: int) -> Response:
+        project = imports.project(import_id)
+        sheet_number(project, n)
+        record = project.sheets[n - 1]
+        sheet = imports.sheet(project, n)
+        svg = overlay.render(sheet.drawing_entities, _plan_of(imports.building(import_id), record.file))
+        evidence = _evidence_layer(sheet, project, record.file)
+        if evidence:
+            svg = svg[: svg.rindex("</svg>")] + evidence + "\n</svg>"
+        return Response(svg, media_type="image/svg+xml")
+
+    @app.get("/imports/{import_id}/sheets/{n}/elements")
+    def sheet_elements(import_id: str, n: int) -> dict[str, Any]:
+        project = imports.project(import_id)
+        sheet_number(project, n)
+        return {"sheet": project.sheets[n - 1].file,
+                "elements": _elements(imports.building(import_id), project.sheets[n - 1].file)}
+
+    @app.get("/imports/{import_id}/questions")
+    def import_questions(import_id: str) -> dict[str, Any]:
+        return _review(imports.project(import_id), imports.building(import_id))
+
+    @app.post("/imports/{import_id}/answers")
+    def import_answer(import_id: str, request: ImportAnswerRequest) -> dict[str, Any]:
+        with imports.edit:
+            project = imports.project(import_id)
+            try:
+                project.question(request.question_id)
+            except KeyError as e:
+                raise HTTPException(404, f"No question {request.question_id}.") from e
+            if isinstance(request.answer, str) and not request.answer.strip():
+                raise HTTPException(422, "The answer is empty.")
+            try:
+                try:
+                    imports_api.apply_answer(project, request.question_id, request.answer)
+                except NotWired:  # the answer as typed, recorded as the user's
+                    project.answer(request.question_id, request.answer, by="user")
+            except KeyError as e:
+                raise HTTPException(404, str(e)) from e
+            except ValueError as e:
+                raise HTTPException(422, str(e)) from e
+            _withdraw_approval(project, f"answer to {request.question_id} changed after approval")
+            imports.store.save(project)
+            return _review(project, imports.building(import_id))
+
+    @app.post("/imports/{import_id}/location")
+    def import_location(import_id: str, request: LocationRequest) -> dict[str, Any]:
+        fields = {k: (v or "").strip() or None for k, v in request.model_dump().items()}
+        missing = [k for k in ("city", "state", "country") if not fields[k]]
+        if missing:
+            raise HTTPException(422, f"The location needs its {', '.join(missing)}.")
+        with imports.edit:
+            project = imports.project(import_id)
+            project.set_location(city=fields["city"], municipality=fields["municipality"], state=fields["state"])
+            project.set_value("country", fields["country"])
+            _withdraw_approval(project, "location changed after approval")
+            imports.store.save(project)
+            return _review(project, imports.building(import_id))
+
+    @app.post("/imports/{import_id}/assume")
+    def import_assume(import_id: str, request: AssumeRequest) -> dict[str, Any]:
+        with imports.edit:
+            project = imports.project(import_id)
+            if project.inputs.location is None:
+                raise HTTPException(409, "Set the project location first (city, state, country): assumptions come from "
+                                         "that location's rules and typical practice. Nothing was assumed.")
+            ids = None if request.question_ids == "all" else list(request.question_ids)
+            if ids is not None:
+                if not ids:
+                    raise HTTPException(422, "Name the questions to assume, or \"all\".")
+                for qid in ids:
+                    try:
+                        project.question(qid)
+                    except KeyError as e:
+                        raise HTTPException(404, f"No question {qid}.") from e
+            try:
+                made = engine(imports_api.assume, project, ids)
+            except LocationRequired as e:
+                raise HTTPException(409, str(e)) from e
+            except KeyError as e:
+                raise HTTPException(404, str(e)) from e
+            _withdraw_approval(project, "assumptions made after approval")
+            imports.store.save(project)
+            return {**_review(project, imports.building(import_id)), "assumed": jsonable_encoder(made)}
+
+    @app.post("/imports/{import_id}/approve")
+    def import_approve(import_id: str, request: ApproveRequest | None = None) -> dict[str, Any]:
+        finished(import_id)
+        with imports.edit:
+            project = imports.project(import_id)
+            building = imports.building(import_id)
+            readiness = _readiness(project, building)
+            if not readiness["ready"]:
+                raise HTTPException(409, {"errors": ["Not ready to approve; settle these first:"]
+                                                    + [_item_text(i) for i in readiness["blocking"]]
+                                                    + ([readiness["error"]] if readiness.get("error") else []),
+                                          "readiness": readiness})
+            project.approve("review", by="user", note=request.note if request else None)
+            imports.store.save(project)
+            return _review(project, building)
+
+    @app.post("/imports/{import_id}/build", status_code=202)
+    def import_build(import_id: str, request: ImportBuildRequest) -> dict[str, str]:
+        record = finished(import_id)
+        title = request.document_title.strip()
+        if not title:
+            raise HTTPException(422, "Enter the title of the Revit document to build in.")
+        with imports.edit:
+            project = imports.project(import_id)
+            building = imports.building(import_id)
+            if not _approved(project):
+                raise HTTPException(409, "Approve the review first: nothing is built until you have approved what B2M "
+                                         "understood from the drawings.")
+            readiness = _readiness(project, building)
+            if not readiness["ready"]:
+                raise HTTPException(409, {"errors": ["Not ready to build:"] + [_item_text(i) for i in readiness["blocking"]],
+                                          "readiness": readiness})
+            result = engine(imports_api.to_plan, project, building)
+            if not isinstance(result, BuildPlan):
+                missing = jsonable_encoder(result)
+                raise HTTPException(409, {"errors": ["B2M needs these inputs before it can build:"]
+                                                    + [_item_text(m) for m in missing], "missing": missing})
+            approval = next(a for a in reversed(project.approvals) if a.what == "review")
+            attachments = {
+                "import": {"id": project.id, "sources": [s.model_dump(mode="json") for s in project.sources],
+                           "sheets": [s.model_dump(mode="json") for s in project.sheets],
+                           "inputs": project.inputs.model_dump(mode="json")},
+                "recognised_building": building.model_dump(mode="json"),
+                "answers": [q.model_dump(mode="json") for q in project.questions if not q.open],
+                "assumptions": [a.model_dump(mode="json") for a in project.assumptions],
+                "approval": approval.model_dump(mode="json"),
+            }
+            try:
+                run_id = service.start(result, title, attachments)
+            except Busy as e:
+                raise HTTPException(409, str(e)) from e
+            imports.update(import_id, runs=(record.get("runs") or []) + [run_id])
+            return {"run_id": run_id}
 
 
 def main() -> None:
