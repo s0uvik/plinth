@@ -33,6 +33,7 @@ class Params:
     column_min_mm: float = 100.0  # shortest side of a plausible column section
     opening_max_mm: float = 4000.0  # widest plausible single opening (door/window/plain) in a wall
     text_width_factor: float = 0.75  # estimated character width / text height (box estimate for nearness)
+    projection_max_share: float = 0.25  # a projection is smaller than this share of the building outline
 
 
 @dataclass

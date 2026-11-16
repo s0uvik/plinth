@@ -153,27 +153,22 @@ def find_walls(ctx: Ctx, column_polys: list[Polygon], exclude: set[str],
 
     # pass 2: pairing per interval
     pieces: list[Piece] = []
+    shared: set[tuple[int, int]] = set()
     rejected: dict[tuple[int, int, int], list] = {}
     for gi, g in enumerate(groups):
         open_pairs: dict[tuple[int, int], Piece] = {}
         for ta, tb, active in sweeps[gi]:
             k = len(active)
-            score = [0.0] * (k + 1)
-            choice = [None] * (k + 1)
-            for j in range(2, k + 1):
-                score[j], choice[j] = score[j - 1], None
-                d = g.faces[active[j - 1]].offset - g.faces[active[j - 2]].offset
-                s = share(d) if p.wall_min_mm - tol <= d <= p.wall_max_mm + tol else 0.0
-                if s > 0 and score[j - 2] + s * (tb - ta) > score[j]:
-                    score[j], choice[j] = score[j - 2] + s * (tb - ta), (active[j - 2], active[j - 1])
+            # every pair of neighbouring faces at a thickness class is a wall; two such pairs sharing a face are two
+            # walls side by side (asked about once the walls are joined)
             chosen = set()
-            j = k
-            while j >= 2:
-                if choice[j] is not None:
-                    chosen.add(choice[j])
-                    j -= 2
-                else:
-                    j -= 1
+            for i in range(k - 1):
+                d = g.faces[active[i + 1]].offset - g.faces[active[i]].offset
+                if p.wall_min_mm - tol <= d <= p.wall_max_mm + tol and share(d) > 0:
+                    chosen.add((active[i], active[i + 1]))
+            for i in range(k - 2):
+                if (active[i], active[i + 1]) in chosen and (active[i + 1], active[i + 2]) in chosen:
+                    shared.add((gi, active[i + 1]))
             for i in range(k - 1):
                 pair = (active[i], active[i + 1])
                 d = g.faces[pair[1]].offset - g.faces[pair[0]].offset
@@ -195,7 +190,36 @@ def find_walls(ctx: Ctx, column_polys: list[Polygon], exclude: set[str],
         pieces = [pc for pc in pieces if not cols_all.contains(_piece_body(groups[pc.g], pc))]
     walls = _join(ctx, groups, pieces, column_polys, door_spans or [])
     _clean_junctions(ctx, walls)
+    # a wall its junctions squeezed to nothing was a scrap between other walls
+    walls = [w for w in walls if w.length >= w.thickness / 2 or w.gaps]
+    walls.sort(key=lambda w: (round(-w.start[1]), round(w.start[0])))
+    for w in walls:
+        w.id = ctx.new_id("wall")
+    _side_by_side(ctx, walls, shared)
     return WallResult(walls, groups, classes, hist, [tuple(v) for v in rejected.values()])
+
+
+def _side_by_side(ctx: Ctx, walls: list[WallLine], shared: set[tuple[int, int]]) -> None:
+    """Walls that share a face line: two walls side by side (e.g. a parapet beside a wall or ledge), or one
+    thicker wall drawn with a line inside? Asked once per pair of thicknesses, with every place as evidence."""
+    pairs: dict[tuple[float, float], list[tuple[WallLine, WallLine]]] = {}
+    for gi, fi in sorted(shared):
+        mine = [w for w in walls if w.g == gi and fi in w.faces]
+        for i in range(len(mine)):
+            for j in range(i + 1, len(mine)):
+                a, b = mine[i], mine[j]
+                if abs(a.center - b.center) < 1 or min(a.t1, b.t1) - max(a.t0, b.t0) <= 0:
+                    continue
+                key = tuple(sorted((round(a.thickness), round(b.thickness))))
+                if all({a.id, b.id} != {x.id, y.id} for x, y in pairs.get(key, [])):
+                    pairs.setdefault(key, []).append((a, b))
+    for (ta, tb), found in pairs.items():
+        handles = [h for a, b in found for h in (a.handles[:2] + b.handles[:2])]
+        ids = ", ".join(f"{a.id}+{b.id}" for a, b in found[:12]) + (" ..." if len(found) > 12 else "")
+        ctx.finding("walls_side_by_side", f"In {len(found)} places a {ta:g} mm wall and a {tb:g} mm wall run side by "
+                    f"side sharing one line ({ids}). Are they two walls (e.g. a parapet beside a wall, ledge or "
+                    f"coping) or one {ta + tb:g} mm wall?", handles,
+                    options=["two walls", f"one {ta + tb:g} mm wall"])
 
 
 def _piece_body(g: Group, pc: Piece) -> Polygon:
@@ -289,6 +313,8 @@ def _join(ctx: Ctx, groups: list[Group], pieces: list[Piece], column_polys: list
     # evidence and ids; infill spans inside a wall become its window-like gaps
     out = []
     for w in sorted(merged, key=lambda w: (-w.length)):
+        if w.length < w.thickness / 2 and not w.gaps:
+            continue  # a pair of lines shorter than half their spacing is no wall (a scrap of a symbol)
         g = groups[w.g]
         handles = []
         for fi in w.faces:
@@ -297,9 +323,6 @@ def _join(ctx: Ctx, groups: list[Group], pieces: list[Piece], column_polys: list
         _infill_gaps(ctx, g, w)
         _caps(ctx, g, w)
         out.append(w)
-    out.sort(key=lambda w: (round(-w.start[1]), round(w.start[0])))
-    for w in out:
-        w.id = ctx.new_id("wall")
     return out
 
 

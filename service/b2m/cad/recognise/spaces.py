@@ -37,6 +37,10 @@ def solid(walls: list[WallLine], columns: list[Polygon], drafts: list[OpeningDra
             if jamb_pts:  # the door's frame marks reach the wall line the door is drawn off
                 parts.append(MultiPoint(list(d.span) + jamb_pts).convex_hull.buffer(tol, join_style=2))
     u = unary_union(parts) if parts else Polygon()
+    # close slivers narrower than half the thinnest wall (walls meeting corner to corner): no one walks through them
+    r = thin / 4
+    if not u.is_empty and r > tol:
+        u = u.buffer(r, join_style=2).buffer(-r, join_style=2)
     polys = [u] if u.geom_type == "Polygon" else list(getattr(u, "geoms", []))
     polys = [p for p in polys if p.geom_type == "Polygon" and not p.is_empty]
     holes = [Polygon(r) for p in polys for r in p.interiors]
@@ -278,7 +282,7 @@ def units(ctx: Ctx, room_list: list[Room], sol: Solid, drafts: list[OpeningDraft
     groups = [g for g in comps.values() if len(g) >= 2]
     if len(groups) < 2:
         return len(groups)
-    groups.sort(key=lambda g: (round(-sum(r.point[1] for r in g) / len(g) / 1000), sum(r.point[0] for r in g)))
+    groups = _reading_order(groups)
     for i, g in enumerate(groups, 1):
         for r in g:
             r.unit = f"U{i}"
@@ -313,6 +317,8 @@ def projections(ctx: Ctx, out_line: Polygon | None, segs: list[Seg], drafts: lis
         for f in faces:
             if f.area <= 0 or not accept(f):
                 continue
+            if out_line is not None and not hidden_only and f.area > ctx.params.projection_max_share * out_line.area:
+                continue  # a space as large as a good part of the building is not a projection (a floor above)
             shared = f.exterior.intersection(ring.buffer(2 * tol)).length
             if shared < 4 * tol or shared > 0.5 * f.exterior.length:  # attached along one side, not wrapped
                 continue
@@ -384,3 +390,22 @@ def _railing(face: Polygon, segs: list[Seg], tol: float) -> bool | None:
         if inner.contains(ls) and ls.length > 0.3 * math.sqrt(face.area):
             count += 1
     return True if count >= 2 else None
+
+
+def _reading_order(groups: list[list[Room]]) -> list[list[Room]]:
+    """Units in reading order: rows top to bottom (units whose label spans overlap vertically share a row), then
+    left to right."""
+    spans = sorted(((min(r.point[1] for r in g), max(r.point[1] for r in g), g) for g in groups), key=lambda s: -s[1])
+    rows: list[list] = []
+    for lo, hi, g in spans:
+        for row in rows:
+            if min(hi, row[1]) - max(lo, row[0]) > 0.5 * min(hi - lo, row[1] - row[0]):
+                row[2].append(g)
+                row[0], row[1] = min(lo, row[0]), max(hi, row[1])
+                break
+        else:
+            rows.append([lo, hi, [g]])
+    out = []
+    for row in rows:
+        out.extend(sorted(row[2], key=lambda g: sum(r.point[0] for r in g) / len(g)))
+    return out

@@ -18,6 +18,7 @@ from shapely.ops import unary_union
 
 from b2m.cad.building import Evidence, Grid, PlanRecognition, RoofFall, SectionMark, Stair, Wall
 from b2m.cad.classify import Classification
+from b2m.cad.reader import CadEntity
 from b2m.cad.recognise import columns as cols_mod
 from b2m.cad.recognise import openings as op_mod
 from b2m.cad.recognise import spaces as sp_mod
@@ -69,7 +70,8 @@ def recognise_plan_detailed(sheet: Sheet, classification: Classification,
     walls = _drop_labelled(ctx, wres.walls)
 
     drafts = op_mod.find_openings(ctx, walls, doors, [])
-    _boundary(ctx, walls, column_shapes)
+    if role == "floor_plan":  # a roof plan's parapets enclose its roof rooms; they are no boundary wall
+        _boundary(ctx, walls, column_shapes)
     sol = sp_mod.solid(walls, [c.polygon for c in column_shapes], drafts, tol)
     out_poly = sp_mod.outline(sol, ctx, tol) if any(w.kind != "boundary" for w in walls) else None
     exterior_side = _classify_walls(ctx, walls, sol, role)
@@ -85,6 +87,7 @@ def recognise_plan_detailed(sheet: Sheet, classification: Classification,
     openings = op_mod.to_openings(ctx, drafts, exterior_side)
     report.marks = op_mod.mark_report(ctx, openings, mark_texts)
 
+    falls = _falls(ctx)  # slope arrows take their words before rooms are named
     labels = sp_mod.room_labels(ctx, [t for t in ctx.texts if not ctx.claimed(t.handle)])
     sp_mod.word_order_check(ctx, labels)
     room_list = sp_mod.rooms(ctx, labels, sol, set())
@@ -100,7 +103,6 @@ def recognise_plan_detailed(sheet: Sheet, classification: Classification,
 
     projections = sp_mod.projections(ctx, out_poly, ctx.segs, drafts, set(), sol)
     grids = _grids(ctx)
-    falls = _falls(ctx) if role == "roof_plan" else []
     wall_models = _wall_models(ctx, walls)
     cols_mod.claim_outlines(ctx, column_shapes)
     _thin_pairs(ctx, wres)
@@ -150,7 +152,8 @@ def _thin_pairs(ctx: Ctx, wres: walls_mod.WallResult) -> None:
 
 
 def _boundary(ctx: Ctx, walls: list[walls_mod.WallLine], column_shapes) -> None:
-    """A group of connected walls, joined to nothing else, around everything else: a boundary (compound) wall."""
+    """Boundary (compound) walls: the walls on the outer hull of everything, joined to nothing inside and well clear
+    of it (ten wall thicknesses), around at least two other things (wall groups or columns)."""
     if len(walls) < 2:
         return
     tol = ctx.params.tol_mm
@@ -170,16 +173,21 @@ def _boundary(ctx: Ctx, walls: list[walls_mod.WallLine], column_shapes) -> None:
     comps: dict[int, list[int]] = {}
     for i in range(len(walls)):
         comps.setdefault(find(i), []).append(i)
-    if len(comps) < 2:
+    col_polys = [c.polygon for c in column_shapes]
+    hull = unary_union(bodies + col_polys).convex_hull
+    ring = hull.exterior.buffer(4 * tol)
+    outer = [k for k, v in comps.items() if any(bodies[i].intersects(ring) for i in v)]
+    inner = [k for k in comps if k not in outer]
+    if not outer:
         return
-    items = [(k, unary_union([bodies[i] for i in v])) for k, v in comps.items()]
-    col_pts = [SPoint(c.column.center) for c in column_shapes]
-    for k, geom in items:
-        hull = geom.convex_hull
-        inside = [g for kk, g in items if kk != k and hull.contains(g)]
-        inner_cols = [c for c in col_pts if hull.contains(c) and not geom.buffer(tol).contains(c)]
-        others_area = sum(g.area for kk, g in items if kk != k)
-        if len(inside) + len(inner_cols) >= 2 and len(inside) == len(items) - 1 and hull.area > 4 * others_area:
+    outer_geom = unary_union([bodies[i] for k in outer for i in comps[k]])
+    inside = [unary_union([bodies[i] for i in comps[k]]) for k in inner] + col_polys
+    if len(inside) < 2:
+        return
+    thick = max(walls[i].thickness for k in outer for i in comps[k])
+    clear = min(outer_geom.distance(g) for g in inside)
+    if clear >= 10 * thick and all(outer_geom.convex_hull.contains(g) for g in inside):
+        for k in outer:
             for i in comps[k]:
                 walls[i].kind = "boundary"
 
@@ -278,7 +286,7 @@ def _flights(ctx: Ctx) -> list[_StairDraft]:
     """Stair flights grouped into stairs (flights within one flight width of each other); their tread lines are
     claimed now so no wall can be made of them. The outline is finished once the walls are known."""
     tol = ctx.params.tol_mm
-    segs = [s for s in ctx.segs if s.linetype == "continuous" and not ctx.claimed(s.handles[0])]
+    segs = [s for s in ctx.segs if s.linetype in ("continuous", "hidden") and not ctx.claimed(s.handles[0])]
     flights = sym.find_flights(segs, tol)
     if not flights:
         return []
@@ -460,26 +468,96 @@ def _site_items(ctx: Ctx) -> None:
 
 
 def _unclaimed(ctx: Ctx, report: Report) -> list[Evidence]:
-    out = []
+    """Everything no recogniser used. Loose linework that touches is listed together (a drawn symbol such as a
+    tree or a car is one item, not hundreds), each item with what it looks like."""
+    tol = ctx.params.tol_mm
+    out: list[Evidence] = []
     counts: Counter = Counter()
+    loose: list[tuple[CadEntity, object]] = []
     for e in ctx.entities:
         if e.invisible or e.kind == "dimension":
             continue
         if ctx.claimed(e.handle) or any(ctx.claimed(c.handle) for c in e.walk()):
             continue
         note = ctx.notes.get(e.handle)
+        geom = None if note else _geom(e)
+        if geom is not None and e.kind != "text":
+            loose.append((e, geom))
+            continue
         if note is None:
-            if e.kind == "text":
-                note = f"text \"{' '.join((e.text or '').split())}\""
-            elif e.kind in ("line", "polyline"):
-                lt = ctx.linetype_class(e)
-                note = f"{e.kind}" + (f" ({lt})" if lt != "continuous" else "")
-            elif e.kind == "hatch":
-                note = "solid fill" if e.solid else f"hatch {e.pattern or ''}".strip()
-            else:
-                note = e.kind
+            note = f"text \"{' '.join((e.text or '').split())}\"" if e.kind == "text" else e.kind
         out.append(ctx.ev([e.handle], note))
-        key = note.split("\"")[0].strip() + (f" \"{note.split(chr(34))[1]}\"" if note.startswith("block") else "")
-        counts[key] += 1
+        counts[_note_key(note)] += 1
+    for group in _touching(loose, tol):
+        ents = [e for e, _ in group]
+        if len(ents) == 1:
+            e = ents[0]
+            lt = ctx.linetype_class(e)
+            note = (f"{e.kind}" + (f" ({lt})" if lt != "continuous" else "")) if e.kind in ("line", "polyline") else (
+                ("solid fill" if e.solid else f"hatch {e.pattern or ''}".strip()) if e.kind == "hatch" else e.kind)
+        else:
+            x0, y0, x1, y1 = unary_union([g for _, g in group]).bounds
+            kinds = Counter(e.kind for e in ents)
+            layers = sorted({e.layer for e in ents})
+            note = (f"drawing of {len(ents)} pieces ({', '.join(f'{k} {v}' for k, v in sorted(kinds.items()))}), "
+                    f"{x1 - x0:.0f} x {y1 - y0:.0f} mm, layer {', '.join(layers)}")
+        out.append(ctx.ev([e.handle for e in ents], note))
+        counts[_note_key(note)] += 1
     report.unclaimed_by_note = dict(counts.most_common())
     return out
+
+
+def _note_key(note: str) -> str:
+    if note.startswith("block"):
+        return note
+    if note.startswith("drawing of"):
+        return "drawing (several pieces)"
+    return note.split("\"")[0].strip()
+
+
+def _geom(e: CadEntity):
+    """A shapely shape of a loose entity, for grouping what touches."""
+    try:
+        if e.kind == "line" and len(e.points) == 2:
+            return LineString(e.points)
+        if e.kind == "polyline" and len(e.points) >= 2:
+            return LineString(e.points + ([e.points[0]] if e.closed else []))
+        if e.kind in ("arc", "circle") and e.points and e.radius:
+            a0 = math.radians(e.start_angle or 0.0)
+            sweep = math.radians(((e.end_angle or 360.0) - (e.start_angle or 0.0)) % 360 or 360)
+            pts = [(e.points[0][0] + e.radius * math.cos(a0 + sweep * i / 16),
+                    e.points[0][1] + e.radius * math.sin(a0 + sweep * i / 16)) for i in range(17)]
+            return LineString(pts)
+        if e.kind == "hatch" and e.boundaries:
+            polys = [Polygon(b) for b in e.boundaries if len(b) >= 3]
+            return unary_union([q.buffer(0) for q in polys]) if polys else None
+        if e.kind == "point" and e.points:
+            return SPoint(e.points[0])
+    except (ValueError, TypeError):
+        return None
+    return None
+
+
+def _touching(items: list, tol: float) -> list[list]:
+    from shapely import STRtree
+    if not items:
+        return []
+    geoms = [g for _, g in items]
+    tree = STRtree(geoms)
+    parent = list(range(len(items)))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for i, g in enumerate(geoms):
+        for j in tree.query(g.buffer(tol)):
+            j = int(j)
+            if j != i and geoms[j].distance(g) <= tol:
+                parent[find(i)] = find(j)
+    groups: dict[int, list] = {}
+    for i in range(len(items)):
+        groups.setdefault(find(i), []).append(items[i])
+    return list(groups.values())
