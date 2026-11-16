@@ -5,7 +5,9 @@
 // (paper mm, times the view scale) beyond it at both ends, with a bubble at both ends; in a section or elevation it
 // runs from the box bottom to head_offset_mm above its top, with the bubble at the top only. Only this view changes:
 // the grids' model (3D) extents, other views and the grid types stay as they are, and deleting the view drops it all.
-// The caller makes the crop region large enough for the heads (Revit stops datums at the crop region).
+// The caller makes the crop region large enough for the heads (Revit stops datums at the crop region). Grids the view
+// does not show (parallel to a section, or off the building box) are listed as skipped, not failures: a call fails
+// only when grids the view shows could not be set and none was.
 
 using System;
 using System.Linq;
@@ -64,7 +66,12 @@ namespace B2M.Revit.Commands.View
 
             var done = new JArray();
             var skipped = new JArray();
-            void Skip(long id, string reason) => skipped.Add(new JObject { ["element_id"] = id, ["reason"] = reason });
+            var failed = 0;  // grids the view shows that could not be set (unseen ones are not failures)
+            void Skip(long id, string reason, bool seen = true)
+            {
+                skipped.Add(new JObject { ["element_id"] = id, ["reason"] = reason });
+                if (seen) failed++;
+            }
 
             using (var tx = new Transaction(doc, "B2M: Set grid heads"))
             {
@@ -78,10 +85,11 @@ namespace B2M.Revit.Commands.View
                     }
                     if (!grid.CanBeVisibleInView(view))
                     {
-                        Skip(id, "not seen in this view");
+                        Skip(id, "not seen in this view", false);
                         continue;
                     }
-                    var line = grid.GetCurvesInView(DatumExtentType.ViewSpecific, view).FirstOrDefault() as Line;
+                    var line = (grid.GetCurvesInView(DatumExtentType.ViewSpecific, view).FirstOrDefault()
+                        ?? grid.GetCurvesInView(DatumExtentType.Model, view).FirstOrDefault()) as Line;
                     if (line == null)
                     {
                         Skip(id, "not a straight grid in this view");
@@ -96,7 +104,7 @@ namespace B2M.Revit.Commands.View
                             B("max_x_mm") + offset, B("max_y_mm") + offset);
                         if (s == null)
                         {
-                            Skip(id, "does not cross the building box");
+                            Skip(id, "does not cross the building box", false);
                             continue;
                         }
                         start = new XYZ(s.X0, s.Y0, a.Z);
@@ -143,12 +151,13 @@ namespace B2M.Revit.Commands.View
                         ["bubbles"] = bubbleOnly == null ? "both" : "top"
                     });
                 }
-                if (done.Count == 0)
+                if (done.Count == 0 && failed > 0)
                 {
                     tx.RollBack();
                     return CommandResult.Fail("NOTHING_CHANGED: no grid could be set in '" + view.Name + "'.", new JObject { ["skipped"] = skipped });
                 }
-                if (tx.Commit() != TransactionStatus.Committed)
+                if (done.Count == 0) tx.RollBack();  // none of the grids shows here: nothing to do
+                else if (tx.Commit() != TransactionStatus.Committed)
                     return CommandResult.Fail("NOT_COMMITTED: Revit rolled the change back; see failures. Nothing changed.");
             }
             return CommandResult.Ok(new JObject

@@ -104,8 +104,11 @@ namespace B2M.Revit.Commands.Sheets
                         crop = crop.Value.Translated(dx, dy);
                         anchorUsed = "crop";
                     }
-                    if (crop.HasValue && p.Value<bool?>("title_below_crop") == true)
-                        TitleBelow(doc, viewport, crop.Value, Mm.ToFeet(p.Value<double?>("title_gap_mm") ?? DefaultTitleGapMm));
+                    string title = null;
+                    if (p.Value<bool?>("title_below_crop") == true)
+                        title = crop.HasValue
+                            ? TitleBelow(doc, viewport, crop.Value, Mm.ToFeet(p.Value<double?>("title_gap_mm") ?? DefaultTitleGapMm))
+                            : "left where Revit puts it: the view has no active crop region";
                     if (tx.Commit() != TransactionStatus.Committed)
                         return CommandResult.Fail("NOT_COMMITTED: Revit rolled the transaction back; see failures.");
 
@@ -120,6 +123,7 @@ namespace B2M.Revit.Commands.Sheets
                         view_name = view.Name,
                         center_sheet_mm = new { x = ViewportSheetSupport.ToMm(at.X), y = ViewportSheetSupport.ToMm(at.Y) },
                         anchor_used = anchorUsed,
+                        title_note = title,
                         crop_sheet_mm = ViewportSheetSupport.RectDto(crop),
                         label_sheet_mm = LabelRect(viewport),
                         box_sheet_mm = box == null ? null : ViewportSheetSupport.RectDto(
@@ -137,25 +141,41 @@ namespace B2M.Revit.Commands.Sheets
         /// <summary>
         /// The title's line as long as the drawing is wide, then the whole title (bubble, name, scale, line) moved so its
         /// lower left sits gap below the crop region's lower left. LabelOffset is measured from the box, which includes
-        /// annotation past the crop, so the move is worked out from where the title is now.
+        /// annotation past the crop, so the move is worked out from where the title is now. A viewport type without a
+        /// title cannot be moved: the view is still placed, and the returned note says why the title was not moved.
         /// </summary>
-        private static void TitleBelow(Document doc, Viewport viewport, SheetRect crop, double gap)
+        private static string TitleBelow(Document doc, Viewport viewport, SheetRect crop, double gap)
         {
-            viewport.LabelLineLength = Math.Max(crop.Width, Mm.ToFeet(20));
-            doc.Regenerate();
-            var label = viewport.GetLabelOutline();
-            if (label == null) return;
-            var height = label.MaximumPoint.Y - label.MinimumPoint.Y;
-            var move = new XYZ(crop.MinX - label.MinimumPoint.X, crop.MinY - gap - height - label.MinimumPoint.Y, 0);
-            viewport.LabelOffset = viewport.LabelOffset + move;
-            doc.Regenerate();
+            try
+            {
+                viewport.LabelLineLength = Math.Max(crop.Width, Mm.ToFeet(20));
+                doc.Regenerate();
+                var label = viewport.GetLabelOutline();
+                if (label == null) return "the viewport has no title";
+                var height = label.MaximumPoint.Y - label.MinimumPoint.Y;
+                var move = new XYZ(crop.MinX - label.MinimumPoint.X, crop.MinY - gap - height - label.MinimumPoint.Y, 0);
+                viewport.LabelOffset = viewport.LabelOffset + move;
+                doc.Regenerate();
+                return null;
+            }
+            catch (Autodesk.Revit.Exceptions.ApplicationException ex)
+            {
+                return "not moved: " + ex.Message;
+            }
         }
 
         private static object LabelRect(Viewport viewport)
         {
-            var label = viewport.GetLabelOutline();
-            return label == null ? null : ViewportSheetSupport.RectDto(new SheetRect(
-                label.MinimumPoint.X, label.MinimumPoint.Y, label.MaximumPoint.X, label.MaximumPoint.Y));
+            try
+            {
+                var label = viewport.GetLabelOutline();
+                return label == null ? null : ViewportSheetSupport.RectDto(new SheetRect(
+                    label.MinimumPoint.X, label.MinimumPoint.Y, label.MaximumPoint.X, label.MaximumPoint.Y));
+            }
+            catch (Autodesk.Revit.Exceptions.ApplicationException)
+            {
+                return null;
+            }
         }
     }
 }
