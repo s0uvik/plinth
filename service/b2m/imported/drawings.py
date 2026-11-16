@@ -1291,7 +1291,7 @@ def make_import_drawing_set(revit, project: ImportProject, building: RecognisedB
                 return {"status": "questions", "sheets": [],
                         "not_reproduced": [n.model_dump() for n in plan.not_reproduced],
                         "questions": [_size_question(chosen[paper], f"{w:g} x {h:g} mm", paper, first, rows)]}
-            fit_mode[paper] = mode or "paper"
+            fit_mode[paper] = mode or "fit"  # the user chose a title block of another size: fit the views to it
             continue
         data = ex.call("create_sheet", {"sheet_number": first.number, "sheet_name": first.title or first.file,
                                         "title_block_name": chosen[paper]}, first.file, "sheet")
@@ -1304,7 +1304,7 @@ def make_import_drawing_set(revit, project: ImportProject, building: RecognisedB
             size = f"{frame.get('width', 0):g} x {frame.get('height', 0):g} mm" if frame else "unknown"
             return {"status": "questions", "sheets": [], "not_reproduced": [n.model_dump() for n in plan.not_reproduced],
                     "questions": [_size_question(chosen[paper], size, paper, first, rows)]}
-        fit_mode[paper] = mode or "paper"
+        fit_mode[paper] = mode or "fit"
         ex.keep(f"DWG-SHEET-{first.number}", data["sheet_id"])
         made[first.file] = data
 
@@ -1376,12 +1376,71 @@ def _sheet_point(frame: dict[str, Any], s: PlannedSheet, paper: Point | None, mo
     return _r(frame["min_x"] + x), _r(frame["min_y"] + y)
 
 
+# When the title block is not the source paper (the user chose another, e.g. A1 for an A4 set), the source page
+# position and scale mean nothing on it: each view is fitted instead. The scale is the largest standard scale at
+# which the view (plus room for its dimension chains and tags) fits its share of the drawing area, set before any
+# annotation so tags and notes are placed at the final scale; the view is centred in its share. Title blocks keep
+# their information strip on the right (landscape) or at the bottom (portrait); its size is not exposed by Revit's
+# API, so the drawing area is the frame less TITLE_STRIP of that side.
+STANDARD_SCALES = (1, 2, 5, 10, 20, 25, 50, 75, 100, 125, 150, 200, 250, 300, 400, 500, 750, 1000, 1250, 1500,
+                   2000, 2500, 3000, 5000, 10000)
+TITLE_STRIP = 0.18  # share of the frame's long side taken by the title block's information strip
+FIT_FILL = 0.78  # share of the drawing area the view itself may use; the rest is for dimensions, tags and titles
+
+
+def _extent_mm(v: PlannedView) -> tuple[float, float] | None:
+    """The view's model extent (width, height) in mm, from what it was planned with; None when unknown."""
+    c = v.create
+    if v.kind in ("floor_plan", "structural_plan") and {"cropMinX", "cropMaxX", "cropMinY", "cropMaxY"} <= c.keys():
+        return c["cropMaxX"] - c["cropMinX"], c["cropMaxY"] - c["cropMinY"]
+    if v.kind == "section" and {"startX", "startY", "endX", "endY", "bottom", "top"} <= c.keys():
+        return math.hypot(c["endX"] - c["startX"], c["endY"] - c["startY"]), c["top"] - c["bottom"]
+    if v.kind == "elevation":
+        for step in v.after_create:
+            b = step.params.get("bounds") if step.command == "set_view_crop" else None
+            if b:
+                across = (b["max_x_mm"] - b["min_x_mm"]) if c.get("direction") in ("north", "south")                     else (b["max_y_mm"] - b["min_y_mm"])
+                return across, b["max_z_mm"] - b["min_z_mm"]
+    return None
+
+
+def _drawing_area(frame: dict[str, Any]) -> tuple[float, float, float, float] | None:
+    """(min_x, min_y, width, height) of the frame's drawing area, in sheet mm."""
+    if not frame or not frame.get("width") or not frame.get("height"):
+        return None
+    x, y, w, h = frame["min_x"], frame["min_y"], frame["width"], frame["height"]
+    if w >= h:
+        return x, y, w * (1 - TITLE_STRIP), h
+    return x, y + h * TITLE_STRIP, w, h * (1 - TITLE_STRIP)
+
+
+def fit_scale(extent: tuple[float, float], slot: tuple[float, float]) -> int:
+    """The largest standard scale (smallest N of 1:N) at which extent (model mm) fits FIT_FILL of slot (paper mm)."""
+    need = max(extent[0] / (slot[0] * FIT_FILL), extent[1] / (slot[1] * FIT_FILL))
+    return next((n for n in STANDARD_SCALES if n >= need), STANDARD_SCALES[-1])
+
+
+def _fit_layout(frame: dict[str, Any], s: PlannedSheet) -> list[tuple[tuple[float, float], tuple[float, float]]]:
+    """Per view: (slot centre, slot size) in sheet mm, the drawing area split side by side."""
+    area = _drawing_area(frame)
+    if area is None or not s.views:
+        return []
+    x, y, w, h = area
+    n = len(s.views)
+    return [((x + w * (i + 0.5) / n, y + h / 2), (w / n, h)) for i in range(n)]
+
+
 def _make_sheet(ex: _Exec, s: PlannedSheet, sheet_data: dict[str, Any], mode: str) -> dict[str, Any]:
     out: dict[str, Any] = {"file": s.file, "number": sheet_data.get("sheet_number", s.number),
                            "name": sheet_data.get("sheet_name", s.title), "sheet_id": sheet_data["sheet_id"],
                            "views": []}
     frame = sheet_data.get("frame_sheet_mm") or {}
-    for v in s.views:
+    slots = _fit_layout(frame, s) if mode == "fit" else []
+    for i, v in enumerate(s.views):
+        if slots and v.kind != "drafting":
+            extent = _extent_mm(v)
+            if extent:  # fitted views get their scale before anything is drawn in them
+                v.create = {**v.create, "scale": fit_scale(extent, slots[i][1])}
         view = ex.call("create_view", v.create, s.file, f"view {v.name}")
         entry: dict[str, Any] = {"name": v.name, "kind": v.kind, "view_id": None, "scale": None, "dimensions": [],
                                  "labels": [], "tags": {}, "spots": [], "skipped": []}
@@ -1402,7 +1461,7 @@ def _make_sheet(ex: _Exec, s: PlannedSheet, sheet_data: dict[str, Any], mode: st
             if data is None:
                 continue
             _keep_step(ex, s, step, data, entry)
-        at = _sheet_point(frame, s, v.paper_center, mode)
+        at = slots[i][0] if slots else _sheet_point(frame, s, v.paper_center, mode)
         place = {"view_id": vid, "sheet_id": sheet_data["sheet_id"]}
         if at:
             place |= {"x_mm": at[0], "y_mm": at[1]}

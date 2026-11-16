@@ -313,3 +313,21 @@ def test_comparison_by_value_multiset():
     assert c["room_labels"] == {"source": 1, "made": 1, "missing": [], "extra": [], "name_tags": 1}
     assert c["marks"] == {"door": {"source": 2, "tagged": 2}}
     assert c["differences"] == ["dimension values differ"]
+
+
+def test_views_fit_a_title_block_of_another_size():
+    """An A4 set on an A1 title block: each view gets the largest standard scale that fits its share of the drawing
+    area (the frame less the title strip), centred in it; two views on a sheet sit side by side."""
+    from b2m.imported.drawings import PlannedSheet, PlannedView, _fit_layout, fit_scale
+    a1 = {"min_x": 0.0, "min_y": 0.0, "width": 841.0, "height": 594.0}
+    plan = PlannedView(key="V1", kind="floor_plan", name="p", create={"cropMinX": 0, "cropMinY": 0, "cropMaxX": 34000,
+                                                                       "cropMaxY": 21000})
+    sheet = PlannedSheet(file="f", role="floor_plan", title="t", page=None, page_number=None, number="29", scale=150,
+                         paper="A4", paper_mm=(297, 210), border_mm=(277, 190), margins_mm=(10, 10), views=[plan])
+    (centre, slot), = _fit_layout(a1, sheet)
+    assert slot == (841.0 * 0.82, 594.0) and centre == (841.0 * 0.82 / 2, 297.0)
+    assert fit_scale((34000, 21000), slot) == 75  # 1:150 on A4 becomes 1:75 on A1
+    assert fit_scale((340000, 210000), slot) == 750
+    two = sheet.model_copy(update={"views": [plan, plan]})
+    slots = _fit_layout(a1, two)
+    assert [round(c[0]) for c, _ in slots] == [172, 517] and all(sz[0] == 841.0 * 0.82 / 2 for _, sz in slots)
