@@ -266,6 +266,17 @@ namespace B2M.Revit.Core.Tests
         }
 
         [Theory]
+        [InlineData(850, 0.0, 850)]       // the hob live on 2026-11-17: asked 850 above the level, left on it
+        [InlineData(850, 849.5, 0)]       // raised: within 1 mm
+        [InlineData(850, 1700.0, -850)]   // too high: the difference, negative
+        [InlineData(850, null, 850)]      // no location: nothing is known to be raised
+        [InlineData(0.4, 0.0, 0)]         // on the level is on the level
+        public void HeightStillToGoIsWhatARaiseHasLeft(double wanted, double? actual, double expected)
+        {
+            Assert.Equal(expected, FamilyMeasure.HeightStillToGoMm(wanted, actual), 6);
+        }
+
+        [Theory]
         [InlineData("OneLevelBased", true)]
         [InlineData("WorkPlaneBased", true)]
         [InlineData("OneLevelBasedHosted", false)]

@@ -32,6 +32,18 @@ namespace B2M.Revit.Core.Families
             return 0;
         }
 
+        /// <summary>
+        /// How far an instance still is below the height asked for above its level (mm; negative when above it): 0 within
+        /// <see cref="ToleranceMm"/>, the whole height when Revit gives it no location. Used to raise a work-plane-based
+        /// family off the level's plane, each try checked by where Revit then puts it.
+        /// </summary>
+        public static double HeightStillToGoMm(double wantedAboveLevelMm, double? actualAboveLevelMm)
+        {
+            if (!actualAboveLevelMm.HasValue) return wantedAboveLevelMm;
+            var left = wantedAboveLevelMm - actualAboveLevelMm.Value;
+            return Math.Abs(left) <= ToleranceMm ? 0 : left;
+        }
+
         /// <summary>A box corner relative to the point asked for, in mm rounded to 0.1.</summary>
         public static double[] Relative(double[] cornerMm, double[] pointMm) =>
             cornerMm.Select((v, i) => Math.Round(v - pointMm[i], 1)).ToArray();
