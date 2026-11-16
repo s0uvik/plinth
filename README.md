@@ -1,7 +1,9 @@
 # B2M Brief-to-Model
 
 Turns a written brief for a G+3/G+4 apartment block into a native Revit model. See
-[`PRD Revit Brief-to-Model.md`](PRD%20Revit%20Brief-to-Model.md) for the product plan.
+[`PRD Revit Brief-to-Model.md`](PRD%20Revit%20Brief-to-Model.md) for the product plan. It also turns an office's DWG
+drawing set into a Revit model, drawing set and estimate (Step 9); a BIM engineer trying that starts with
+[`docs/quick-start.md`](docs/quick-start.md).
 
 ## Layout
 
