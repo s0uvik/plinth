@@ -61,8 +61,9 @@ def ready_to_build(project: ImportProject, building: RecognisedBuilding | None) 
 
 
 def to_plan(project: ImportProject, building: RecognisedBuilding) -> BuildPlan | list[Any]:
-    """T6: the build plan, or the list of inputs still missing."""
-    return _engine("to_plan").to_plan(building, project)
+    """T6: the build plan, or the list of inputs still missing. The building is the recognised one as saved;
+    T6 gets it with every recorded answer applied (T5's answers.apply)."""
+    return _engine("to_plan").to_plan(_engine("answers").apply(project, building), project)
 
 
 def save_building(directory: Path, building: RecognisedBuilding) -> None:

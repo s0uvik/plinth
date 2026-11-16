@@ -237,6 +237,17 @@ def answer(project: ImportProject, question_id: str, value: Any, by: str = "user
     return q
 
 
+def apply_answer(project: ImportProject, question_id: str, value: Any, by: str = "user",
+                 basis: str | None = None) -> Question:
+    """Record an answer (``answer``) and add the questions it raises (a new mark needs its heights)."""
+    from b2m.cad import questions
+
+    q = answer(project, question_id, value, by=by, basis=basis)
+    questions.follow_ups(project, q)
+    questions.sync_inputs(project)
+    return q
+
+
 # ---------------------------------------------------------------- applying
 
 def apply(project: ImportProject, building: RecognisedBuilding) -> RecognisedBuilding:

@@ -144,14 +144,17 @@ def profiles() -> dict[str, Profile]:
     return {pid: build(pid) for pid in raws}
 
 
-def profile_for(location: Location | None) -> Profile | None:
-    """The most specific profile covering the location: by state (fewest states wins), else by a known town."""
+def profile_for(location: Location | None, country: str | None = None) -> Profile | None:
+    """The most specific profile covering the location: by state (fewest states wins), else by a known town; a
+    country, when given, must be the profile's."""
     if location is None:
         return None
     state = _norm(location.state)
     town = {_norm(location.city), _norm(location.municipality)} - {""}
     cands = []
     for p in profiles().values():
+        if country and p.country and _norm(country) != _norm(p.country):
+            continue
         names = {_norm(s) for s in p.states + p.state_aliases}
         if state and state in names:
             cands.append(p)
@@ -160,9 +163,9 @@ def profile_for(location: Location | None) -> Profile | None:
     return min(cands, key=lambda p: len(p.states)) if cands else None
 
 
-def governing(location: Location | None) -> tuple[Profile, list[RuleSetRef]] | None:
+def governing(location: Location | None, country: str | None = None) -> tuple[Profile, list[RuleSetRef]] | None:
     """The rule sets that govern the location, by its profile."""
-    p = profile_for(location)
+    p = profile_for(location, country)
     if p is None:
         return None
     town = {_norm(location.city), _norm(location.municipality)} - {""}
@@ -222,20 +225,23 @@ class AssumeResult:
         return out
 
 
-def assume(project: ImportProject, question_ids: Iterable[str] | str = "all") -> AssumeResult:
+def assume(project: ImportProject, question_ids: Iterable[str] | str | None = "all") -> AssumeResult:
     """Answer open questions from the location's profile, recording each assumption with its basis."""
     from b2m.cad import answers  # answers does not import this module
 
     if project.inputs.location is None:
         raise LocationRequired("Cannot assume anything yet: ask the user for the project location first "
                                "(city or municipality, and state); assumptions come from that location's profile.")
-    prof = profile_for(project.inputs.location)
+    prof = profile_for(project.inputs.location, project.inputs.values.get("country"))
     if prof is None:
         loc = project.inputs.location
         raise ProfileRequired(
             f"No location profile covers {', '.join(x for x in (loc.city, loc.municipality, loc.state) if x)}. "
             f"Which profile should B2M assume from ({', '.join(sorted(profiles()))}), or which values?")
-    wanted = None if question_ids == "all" else set(question_ids)
+    from b2m.cad.questions import sync_inputs
+
+    sync_inputs(project)  # the rule-set question follows the location
+    wanted = None if question_ids in ("all", None) else set(question_ids)
     result = AssumeResult(profile=prof.name)
     for q in list(project.questions):
         if not q.open or (wanted is not None and q.id not in wanted):
