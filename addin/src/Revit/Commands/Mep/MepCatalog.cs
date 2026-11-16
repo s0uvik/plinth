@@ -24,6 +24,7 @@ namespace B2M.Revit.Commands.Mep
             dispatcher.Register(new FindMepDisconnectsHandler());
             dispatcher.Register(new AnalyzeMepNetworkHandler());
             dispatcher.Register(new CreateMepRunHandler());
+            dispatcher.Register(new CreateElectricalCircuitHandler());
         }
     }
 }
