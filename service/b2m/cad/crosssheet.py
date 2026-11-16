@@ -247,9 +247,10 @@ def storey_findings(building: RecognisedBuilding) -> list[Finding]:
         extra = [n for n in covered if n not in shown]
         parts = []
         if missing:
-            parts.append(f"no floor plan covers storey {_span(missing)}")
+            parts.append(f"no floor plan covers storey{'s' if len(missing) > 1 else ''} {_span(missing)}")
         if extra:
-            parts.append(f"the plans cover storey {_span(extra)}, which the section does not show")
+            parts.append(f"the plans cover storey{'s' if len(extra) > 1 else ''} {_span(extra)}, which the section "
+                         "does not show")
         out.append(Finding(
             id=f"storeys-disagree-{s.sheet}", topic="storeys", severity="blocking",
             text=f"Section {s.name} shows {len(shown)} storeys ({_span(shown)}) but {' and '.join(parts)} "
