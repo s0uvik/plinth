@@ -2,13 +2,15 @@
 // src/shared/Handlers/Families/UnloadFamilyHandler.cs, GetFamilyInstancesHandler.cs, ListFamilyTypesInFamilyHandler.cs
 // and ExportFamilyToPathHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
 // Modified for B2M: one lookup by integer id or name whose misses carry the valid families; no reflection fallbacks
-// (Family.GetFamilySymbolIds exists in every supported year).
+// (Family.GetFamilySymbolIds exists in every supported year). The family load options and the type-parameter setter
+// (from LoadFamilyFromPathHandler.cs and DuplicateFamilyTypeHandler.cs) live here so ensure_family_type reuses them.
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using B2M.Revit.Bridge;
+using B2M.Revit.Commands.Parameters;
 using Newtonsoft.Json.Linq;
 
 namespace B2M.Revit.Commands.Families
@@ -94,6 +96,35 @@ namespace B2M.Revit.Commands.Families
             return others.FirstOrDefault(t => t.Id != type.Id && string.Equals(t.Name, newName, StringComparison.OrdinalIgnoreCase));
         }
 
+        /// <summary>
+        /// Sets type parameters from {name: value} in wire units (see ParametersHelpers.TrySet). Runs inside the caller's
+        /// open transaction; on failure the caller rolls back. The error has no trailing "nothing changed" note.
+        /// </summary>
+        public static bool TrySetTypeParameters(Document doc, ElementType type, JObject values, out JObject set, out string error,
+            out JObject errorData)
+        {
+            set = new JObject();
+            error = null;
+            errorData = null;
+            foreach (var prop in values.Properties())
+            {
+                var parameter = ParametersHelpers.FindByName(type, prop.Name);
+                if (parameter == null)
+                {
+                    error = "PARAMETER_NOT_FOUND: the type has no parameter named '" + prop.Name + "'.";
+                    errorData = new JObject { ["writable_parameters"] = ParametersHelpers.ParameterNames(type) };
+                    return false;
+                }
+                if (!ParametersHelpers.TrySet(doc, parameter, prop.Value, "auto", out _, out var setError))
+                {
+                    error = "SET_FAILED: '" + prop.Name + "': " + setError + ".";
+                    return false;
+                }
+                set[parameter.Definition.Name] = ParametersHelpers.Read(doc, parameter);
+            }
+            return true;
+        }
+
         public static double[] PointMm(XYZ p) => new[] { Mm.FromFeet(p.X), Mm.FromFeet(p.Y), Mm.FromFeet(p.Z) };
 
         /// <summary>Paging over one list: start index, page size and what is left.</summary>
@@ -109,6 +140,36 @@ namespace B2M.Revit.Commands.Families
                 ["truncated"] = next < items.Count,
                 ["next_index"] = next < items.Count ? (JToken)next : null
             };
+        }
+    }
+
+    /// <summary>Answers Revit when a loaded family is found again: reload only when asked to.</summary>
+    internal sealed class FamilyLoadOptions : IFamilyLoadOptions
+    {
+        private readonly bool _overwrite;
+        private readonly bool _overwriteValues;
+
+        public FamilyLoadOptions(bool overwrite, bool overwriteValues)
+        {
+            _overwrite = overwrite;
+            _overwriteValues = overwriteValues;
+        }
+
+        public bool FamilyWasFound { get; private set; }
+
+        public bool OnFamilyFound(bool familyInUse, out bool overwriteParameterValues)
+        {
+            FamilyWasFound = true;
+            overwriteParameterValues = _overwriteValues;
+            return _overwrite;
+        }
+
+        public bool OnSharedFamilyFound(Family sharedFamily, bool familyInUse, out FamilySource source, out bool overwriteParameterValues)
+        {
+            FamilyWasFound = true;
+            source = FamilySource.Family;
+            overwriteParameterValues = _overwriteValues;
+            return _overwrite;
         }
     }
 }

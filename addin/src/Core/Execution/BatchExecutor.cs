@@ -33,6 +33,9 @@ namespace B2M.Revit.Core.Execution
             // Revit's StairsEditScope cannot start inside a transaction or close while a transaction group is open.
             ["create_stair"] = "create_stair cannot run inside batch_execute (Revit's stair edit mode cannot run inside the batch's "
                 + "transaction group); call it directly.",
+            // It opens, saves and closes family documents and may write .rfa files, which the batch's rollback cannot undo.
+            ["ensure_family_type"] = "ensure_family_type cannot run inside batch_execute (it opens and saves family files, which a batch "
+                + "rollback cannot undo); call it directly before the batch.",
         };
 
         public sealed class Outcome
