@@ -178,6 +178,19 @@ class Furniture(_Model):
     sets: dict[str, FurnitureSet]
 
 
+# ------------------------------------------------------------------------------------------------ MEP devices
+
+class MepDevice(Sourced):
+    """A kind of device the MEP layout (F4) places: what F1/F5 match a family type by (category and keywords, as for
+    furniture items), its nominal size, and for electrical loads the load key in ``electrical.loads_w``."""
+
+    label: str
+    category: str  # Revit category
+    keywords: list[str] = Field(min_length=1)
+    size: Size | None = None  # width along its wall (or x), depth from the wall (or y), height
+    load: str | None = None  # electrical.loads_w key: an electrical load that goes on a circuit
+
+
 # ------------------------------------------------------------------------------------------------ electrical
 
 class PointRule(_Model):
@@ -217,6 +230,17 @@ class Circuits(Sourced):
     lighting_max_points: int = Field(gt=0)
     lighting_max_w: float = Field(gt=0)
     power_16a_max_outlets: int = Field(gt=0)
+    socket_max_points: int = Field(default=10, gt=0)  # 6 A sockets per final circuit
+    dedicated: list[str] = []  # 16 A uses each on a circuit of its own (ac, geyser)
+
+
+class Wiring(Sourced):
+    """Conduits (F4 draws them simplified): in the slab over the room, dropping in the wall to each point."""
+
+    conduit_mm: float = Field(gt=0)  # final circuits: DB -> switchboard -> points
+    feeder_mm: float = Field(gt=0)  # riser -> each flat's DB
+    riser_mm: float = Field(gt=0)  # the rising main from the meter room
+    riser_above_top_floor_mm: float = Field(ge=0)
 
 
 class Electrical(_Model):
@@ -227,6 +251,8 @@ class Electrical(_Model):
     circuits: Circuits
     loads_w: dict[str, SourcedValue]  # device -> load assumed per point
     meter_room: SourcedValue
+    wiring: Wiring
+    devices: dict[str, MepDevice]
     supply_authority: SourcedValue | None = None
 
 
@@ -241,6 +267,8 @@ class Fixture(Sourced):
     cold: bool = True
     hot: bool = False
     furniture_item: str | None = None  # the furniture item that places it (its position comes from the layout)
+    outlet_from_back_mm: float | None = None  # drain outlet this far out from the wall; None: under its centre
+    supply_height_mm: float | None = None  # water connection above finished floor
 
 
 class PlumbingClass(Sourced):
@@ -251,6 +279,32 @@ class Stacks(Sourced):
     per_duct: list[Literal["soil", "waste", "vent", "rainwater"]]
     sizes_mm: dict[str, float]
     rainwater_roof_m2_per_pipe: float = Field(gt=0)
+    vent_above_roof_mm: float = Field(default=1500, ge=0)  # every stack ends this far above the roof (open vent)
+    base_below_floor_mm: float = Field(default=600, ge=0)  # foot of the stack below the lowest floor
+    spacing_mm: float = Field(default=250, gt=0)  # pipes in a duct, centre to centre
+
+
+class Branches(Sourced):
+    """Horizontal drains under the slab, from fixtures to their stack (one per flat, storey and stack)."""
+
+    slope_pct: dict[str, float]  # soil / waste: fall per 100 of length
+    depth_below_floor_mm: float = Field(gt=0)  # top of the highest branch below the floor it serves
+    max_depth_below_floor_mm: float = Field(gt=0)  # deepest a branch may arrive at its stack
+    tee_spacing_mm: float = Field(gt=0)  # branches into one stack are this far apart vertically
+    max_length_m: float = Field(gt=0)  # longer runs to the nearest stack are not drawn: a stack is asked
+
+
+class Supply(Sourced):
+    """Water supply: down-takes from the overhead tank in the ducts, branches at ceiling height, hot water from geysers."""
+
+    sizes_mm: dict[str, float]  # downtake, branch, fixture, hot, rising_main
+    below_ceiling_mm: float = Field(ge=0)  # cold water branches run this far under the ceiling
+    stagger_mm: float = Field(gt=0)  # branches off one down-take on one storey step down by this much
+
+
+class Geysers(Sourced):
+    litres: dict[str, float]  # room class -> storage capacity
+    bottom_mm: float = Field(gt=0)  # underside of the geyser above finished floor
 
 
 class WaterDemand(Sourced):
@@ -262,14 +316,21 @@ class WaterDemand(Sourced):
 class Tanks(Sourced):
     overhead_days: float = Field(gt=0)
     underground_days: float = Field(gt=0)
+    water_depth_mm: float = Field(default=1500, gt=0)  # tank side from the volume at this depth
+    freeboard_mm: float = Field(default=300, ge=0)
+    clear_mm: float = Field(default=600, ge=0)  # kept free round a tank (access, parapet)
 
 
 class Plumbing(_Model):
     fixtures: dict[str, Fixture]
     classes: dict[str, PlumbingClass]
     stacks: Stacks
+    branches: Branches
+    supply: Supply
+    geysers: Geysers
     water: WaterDemand
     tanks: Tanks
+    devices: dict[str, MepDevice]
 
 
 # ------------------------------------------------------------------------------------------------ HVAC
@@ -285,6 +346,7 @@ class SplitAc(Sourced):
     indoor: Size
     indoor_bottom_mm: float = Field(gt=0)
     outdoor: Size
+    outdoor_bottom_mm: float = Field(default=1500, ge=0)  # outdoor unit on wall brackets, underside above the floor
     max_pipe_run_m: float = Field(gt=0)
 
     def tr_for(self, area_m2: float) -> float | None:
@@ -300,6 +362,7 @@ class Exhaust(Sourced):
 class Hvac(_Model):
     split_ac: SplitAc
     exhaust: dict[str, Exhaust]
+    devices: dict[str, MepDevice]
 
 
 # ------------------------------------------------------------------------------------------------ fire
@@ -311,12 +374,15 @@ class Provision(Sourced):
 class FireBand(Sourced):
     max_height_m: float | None  # None: no upper limit
     provisions: list[str]
+    terrace_tank_l: float | None = None  # fire reserve on the terrace, when the band asks for a terrace tank
+    underground_tank_l: float | None = None  # fire reserve underground, when the band asks for one
 
 
 class Extinguishers(Sourced):
     kind: str
     per_area_m2: float = Field(gt=0)
     min_per_floor: int = Field(ge=1)
+    height_mm: float = Field(default=1000, gt=0)  # handle (top) above the floor
 
 
 class Fire(_Model):
@@ -326,6 +392,9 @@ class Fire(_Model):
     provisions: dict[str, Provision]
     bands: list[FireBand] = Field(min_length=1)
     extinguishers: Extinguishers
+    mounting_mm: dict[str, SourcedValue]  # device -> height above finished floor (exit sign, call point, hose reel)
+    devices: dict[str, MepDevice]
+    riser_mm: SourcedValue  # wet or dry riser diameter
     authority: SourcedValue | None = None
 
     def band(self, height_m: float) -> FireBand:
@@ -369,7 +438,12 @@ class FitoutRules(_Model):
             for ref in [it.anchor, *it.fixtures, *(it.on_counter.min_from_mm if it.on_counter else {})]:
                 if ref is not None and ref not in items:
                     raise ValueError(f"furniture item {iid}: unknown item {ref!r}")
-        for cls in [*self.electrical.points, *self.plumbing.classes, *self.hvac.split_ac.classes, *self.hvac.exhaust]:
+        for devices in (self.electrical.devices, self.plumbing.devices, self.hvac.devices, self.fire.devices):
+            for did, d in devices.items():
+                if d.load is not None and d.load not in self.electrical.loads_w:
+                    raise ValueError(f"MEP device {did}: unknown load {d.load!r}")
+        for cls in [*self.electrical.points, *self.plumbing.classes, *self.hvac.split_ac.classes, *self.hvac.exhaust,
+                    *self.plumbing.geysers.litres]:
             if cls not in classes:
                 raise ValueError(f"MEP rule for unknown room class {cls!r}")
         for cls, pc in self.plumbing.classes.items():

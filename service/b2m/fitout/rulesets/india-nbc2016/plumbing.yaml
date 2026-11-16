@@ -10,6 +10,8 @@ plumbing:
       outlet_mm: 100
       drains_to: soil
       furniture_item: wc
+      outlet_from_back_mm: 250
+      supply_height_mm: 750
       source: "NBC 2016 Part 9 Section 2 / IS 1742 fixture unit tables, as recalled"
       verified: false
     basin:
@@ -20,6 +22,8 @@ plumbing:
       drains_to: waste
       hot: true
       furniture_item: basin
+      outlet_from_back_mm: 150
+      supply_height_mm: 600
       source: "NBC 2016 Part 9 Section 2 / IS 1742 fixture unit tables, as recalled"
       verified: false
     shower:
@@ -30,6 +34,7 @@ plumbing:
       drains_to: waste
       hot: true
       furniture_item: shower
+      supply_height_mm: 1050
       source: "NBC 2016 Part 9 Section 2 / IS 1742 fixture unit tables, as recalled"
       verified: false
     kitchen_sink:
@@ -40,6 +45,8 @@ plumbing:
       drains_to: waste
       hot: true
       furniture_item: kitchen_sink
+      outlet_from_back_mm: 150
+      supply_height_mm: 1000
       source: "NBC 2016 Part 9 Section 2 / IS 1742 fixture unit tables, as recalled"
       verified: false
     washing_machine:
@@ -49,6 +56,8 @@ plumbing:
       outlet_mm: 50
       drains_to: waste
       furniture_item: washing_machine
+      outlet_from_back_mm: 150
+      supply_height_mm: 1000
       source: "NBC 2016 Part 9 Section 2 / IS 1742 fixture unit tables, as recalled"
       verified: false
     floor_trap:
@@ -83,7 +92,32 @@ plumbing:
     per_duct: [soil, waste, vent]
     sizes_mm: {soil: 100, waste: 75, vent: 75, rainwater: 100}
     rainwater_roof_m2_per_pipe: 40
-    source: "NBC 2016 Part 9 Section 2 (two-pipe system; 100 mm soil, 75 mm waste stacks) and rainwater pipe sizing at about 100 mm/h rainfall, as recalled"
+    vent_above_roof_mm: 1500
+    base_below_floor_mm: 600
+    spacing_mm: 250
+    source: "NBC 2016 Part 9 Section 2 (two-pipe system; 100 mm soil, 75 mm waste stacks; stacks carried up as open vents at least 1.5 m above a used roof) and rainwater pipe sizing at about 100 mm/h rainfall, as recalled; stack foot and spacing typical practice"
+    verified: false
+
+  branches:
+    slope_pct: {soil: 1.67, waste: 2.5}
+    depth_below_floor_mm: 300
+    max_depth_below_floor_mm: 1200
+    tee_spacing_mm: 200
+    max_length_m: 12
+    source: "NBC 2016 Part 9 Section 2 / IS 1742 self-cleansing gradients (about 1 in 60 for 100 mm, 1 in 40 for 75 mm and smaller), as recalled; branch depth, tee spacing and length typical practice (a sunken or false-ceiling zone under the slab)"
+    verified: false
+
+  supply:
+    sizes_mm: {downtake: 50, branch: 25, fixture: 15, hot: 20, rising_main: 40}
+    below_ceiling_mm: 150
+    stagger_mm: 150
+    source: "Typical Indian residential practice (CPVC: 50 mm down-take per duct, 25 mm flat branch, 15 mm to a fixture, 20 mm hot water); NBC 2016 Part 9 Section 1 for design, as recalled"
+    verified: false
+
+  geysers:
+    litres: {toilet: 25, kitchen: 10}
+    bottom_mm: 1800
+    source: "Typical Indian practice: a 25 L storage geyser per bathroom, a 10 L one over the kitchen sink, mounted above head height"
     verified: false
 
   water:
@@ -96,5 +130,53 @@ plumbing:
   tanks:
     overhead_days: 0.5
     underground_days: 1.0
-    source: "Typical Indian practice (pumping twice a day: overhead tank half a day's demand, underground tank one day's) plus fire reserves per fire rules; the authority may require more"
+    water_depth_mm: 1500
+    freeboard_mm: 300
+    clear_mm: 600
+    source: "Typical Indian practice (pumping twice a day: overhead tank half a day's demand, underground tank one day's) plus fire reserves per fire rules; the authority may require more; 1.5 m water depth, 300 mm freeboard, 600 mm access round a tank"
     verified: false
+
+  # What F1/F5 match a family type by; sizes are nominal (width, depth, height). Tank sizes come from their volume.
+  devices:
+    floor_trap:
+      label: Floor trap
+      category: Plumbing Fixtures
+      keywords: [floor drain, floor trap, nahani trap, drain]
+      size: {width_mm: 150, depth_mm: 150, height_mm: 100}
+      source: "Typical Indian practice (100 mm Nahani trap with grating)"
+      verified: false
+    geyser:
+      label: Storage water heater (geyser)
+      category: Plumbing Equipment
+      keywords: [water heater, geyser, heater, electric water heater]
+      size: {width_mm: 400, depth_mm: 400, height_mm: 550}
+      load: geyser
+      source: "Typical 25 L wall-hung storage geyser"
+      verified: false
+    roof_outlet:
+      label: Roof rainwater outlet
+      category: Plumbing Fixtures
+      keywords: [roof drain, rainwater outlet, drain]
+      size: {width_mm: 200, depth_mm: 200, height_mm: 100}
+      source: "Typical practice (khurra with grating)"
+      verified: false
+    overhead_tank:
+      label: Overhead water tank
+      category: Plumbing Equipment
+      keywords: [tank, water tank, storage tank, cistern]
+      source: "Typical practice (sized from the occupancy)"
+      verified: false
+    underground_tank:
+      label: Underground water tank (sump)
+      category: Plumbing Equipment
+      keywords: [tank, water tank, storage tank, sump]
+      source: "Typical practice (sized from the occupancy)"
+      verified: false
+    pump:
+      label: Transfer pump
+      category: Plumbing Equipment
+      keywords: [pump, water pump, transfer pump, booster]
+      size: {width_mm: 600, depth_mm: 400, height_mm: 450}
+      load: pump
+      source: "Typical 1.5 HP monoblock pump, underground tank to overhead tank"
+      verified: false

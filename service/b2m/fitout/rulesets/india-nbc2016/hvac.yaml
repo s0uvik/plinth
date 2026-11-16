@@ -10,6 +10,7 @@ hvac:
     indoor: {width_mm: 1000, depth_mm: 250, height_mm: 320}
     indoor_bottom_mm: 2100
     outdoor: {width_mm: 850, depth_mm: 320, height_mm: 600}
+    outdoor_bottom_mm: 1500
     max_pipe_run_m: 10
     source: "Typical Indian residential practice (about 1 TR per 10-12 m² in a hot-humid climate; NBC 2016 Part 8 Section 3 for design); larger rooms are asked"
     verified: false
@@ -25,4 +26,30 @@ hvac:
       fan_dia_mm: 300
       height_mm: 2100
       source: "NBC 2016 Part 8 Section 3 air changes for kitchens, as recalled; typical 300 mm fan"
+      verified: false
+
+  # What F1/F5 match a family type by; sizes are nominal (width along the wall, depth from it, height).
+  devices:
+    ac_indoor:
+      label: Split AC indoor unit
+      category: Mechanical Equipment
+      keywords: [split, indoor unit, air conditioner, fan coil, wall mounted]
+      size: {width_mm: 1000, depth_mm: 250, height_mm: 320}
+      load: ac
+      source: "Typical 1-2 TR wall-mounted split indoor unit"
+      verified: false
+    ac_outdoor:
+      label: Split AC outdoor unit
+      category: Mechanical Equipment
+      keywords: [condensing unit, outdoor unit, condenser, split]
+      size: {width_mm: 850, depth_mm: 320, height_mm: 600}
+      source: "Typical 1-2 TR split outdoor unit on wall brackets (fed through its indoor unit)"
+      verified: false
+    exhaust_fan:
+      label: Exhaust fan
+      category: Mechanical Equipment
+      keywords: [exhaust fan, extract fan, ventilation fan, fan]
+      size: {width_mm: 300, depth_mm: 150, height_mm: 300}
+      load: exhaust_fan
+      source: "Typical wall exhaust fan (150 mm toilet, 300 mm kitchen)"
       verified: false

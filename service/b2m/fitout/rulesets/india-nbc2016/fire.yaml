@@ -87,22 +87,91 @@ fire:
     - max_height_m: 35
       provisions: [extinguishers, hose_reel, wet_riser, yard_hydrant, manual_alarm, terrace_tank, underground_tank,
                    fire_pump, fire_lift, exit_signage, refuge_area]
-      source: "NBC 2016 Part 4 Table 7, residential A-4 15-35 m, as recalled"
+      terrace_tank_l: 25000
+      underground_tank_l: 75000
+      source: "NBC 2016 Part 4 Table 7, residential A-4 15-35 m (terrace tank 25 000 L, underground static tank 75 000 L), as recalled"
       verified: false
     - max_height_m: 45
       provisions: [extinguishers, hose_reel, wet_riser, yard_hydrant, sprinklers, manual_alarm, detection,
                    terrace_tank, underground_tank, fire_pump, fire_lift, exit_signage, refuge_area]
-      source: "NBC 2016 Part 4 Table 7, residential A-4 35-45 m, as recalled"
+      terrace_tank_l: 25000
+      underground_tank_l: 150000
+      source: "NBC 2016 Part 4 Table 7, residential A-4 35-45 m (terrace tank 25 000 L, underground static tank 150 000 L), as recalled"
       verified: false
     - max_height_m: null
       provisions: [extinguishers, hose_reel, wet_riser, yard_hydrant, sprinklers, manual_alarm, detection, pa_system,
                    terrace_tank, underground_tank, fire_pump, fire_lift, exit_signage, refuge_area]
-      source: "NBC 2016 Part 4 Table 7, residential A-4 above 45 m, as recalled"
+      terrace_tank_l: 25000
+      underground_tank_l: 200000
+      source: "NBC 2016 Part 4 Table 7, residential A-4 above 45 m (terrace tank 25 000 L, underground static tank 200 000 L), as recalled"
       verified: false
 
   extinguishers:
     kind: "ABC dry powder, 6 kg (stored pressure)"
     per_area_m2: 200
     min_per_floor: 2
-    source: "IS 2190 (one extinguisher per 200 m² of floor, at least two per floor), as recalled"
+    height_mm: 1000
+    source: "IS 2190 (one extinguisher per 200 m² of floor, at least two per floor, handle about 1 m above the floor), as recalled"
     verified: false
+
+  mounting_mm:
+    exit_sign:
+      value: 2200
+      source: "Typical practice: exit signs above door-head height along the escape route (NBC 2016 Part 4), as recalled"
+      verified: false
+    call_point:
+      value: 1400
+      source: "IS 2189: manual call points about 1.4 m above floor, as recalled"
+      verified: false
+    hose_reel:
+      value: 1000
+      source: "IS 884 practice: hose reel drum at about 1 m, as recalled"
+      verified: false
+    landing_valve:
+      value: 1000
+      source: "NBC 2016 Part 4 / IS 3844 practice: landing valve about 1 m above floor, as recalled"
+      verified: false
+
+  riser_mm:
+    value: 100
+    source: "NBC 2016 Part 4 Table 7: 100 mm wet/dry riser for residential buildings 15-45 m, as recalled"
+    verified: false
+
+  # What F1/F5 match a family type by; sizes are nominal (width along the wall, depth from it, height).
+  devices:
+    extinguisher:
+      label: Portable fire extinguisher
+      category: Fire Protection
+      keywords: [fire extinguisher, extinguisher]
+      size: {width_mm: 200, depth_mm: 200, height_mm: 600}
+      source: "IS 15683 portable extinguisher on a wall bracket"
+      verified: false
+    exit_sign:
+      label: Exit sign
+      category: Lighting Fixtures
+      keywords: [exit sign, exit, emergency sign]
+      size: {width_mm: 400, depth_mm: 50, height_mm: 200}
+      load: exit_sign
+      source: "Typical illuminated exit sign (NBC 2016 Part 4)"
+      verified: false
+    hose_reel:
+      label: First-aid hose reel
+      category: Fire Protection
+      keywords: [hose reel, fire hose, hose cabinet]
+      size: {width_mm: 750, depth_mm: 250, height_mm: 750}
+      source: "IS 884 hose reel"
+      verified: false
+    call_point:
+      label: Manual call point
+      category: Fire Alarm Devices
+      keywords: [manual pull station, call point, break glass, fire alarm]
+      size: {width_mm: 100, depth_mm: 50, height_mm: 100}
+      source: "IS 2189 manual call point"
+      verified: false
+    landing_valve:
+      label: Landing valve
+      category: Fire Protection
+      keywords: [landing valve, hydrant valve, fire department connection, valve]
+      size: {width_mm: 300, depth_mm: 300, height_mm: 300}
+      source: "IS 5290 landing valve on the riser"
+      verified: false
