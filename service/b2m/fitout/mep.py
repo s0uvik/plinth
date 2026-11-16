@@ -18,6 +18,21 @@ then fire safety (exit signs need power), and last the circuits and conduits ove
 says why it lays its system out as it does. The layout is deterministic: the same plan, rules and answers give the
 same records with the same keys. It is an indicative coordination model (``NOTICE``), not an engineer's design.
 
+Answers (``answers``: question id -> value; each question's text says its shapes):
+
+- ``fitout:ac:<name>:<area>``: a room beyond the AC sizing table: a size in TR, a list (``[1.5, 1.5]``: two units,
+  spread on its outside walls, each with its socket and circuit) or "none" (``b2m.fitout.hvac``).
+- ``fitout:meter_room``: a room key, or a place on a wall (``{"near": "stair"}``, ``{"point": [x, y], "level": ..}``;
+  ``b2m.fitout.siting``); the electrical riser starts at the meter board. ``fitout:common_board``: a room key,
+  "meter_board" (beside it) or a place on a wall (``b2m.fitout.electrical``).
+- ``fitout:extinguisher_room:<level>``: a room key or a place on a wall; a floor with no common room but a stair
+  takes the stair (assumed) (``b2m.fitout.fire``).
+- ``fitout:underground_tank``: a plan point [x, y], or ``{"side": "front" | "north" | ..., "near": "entrance"}``
+  (in that setback, 1 m off the footings, clear of the entrance path; the pump beside it; the rising main up the
+  nearest duct or stair well); ``fitout:front_side``: which compass side is the front (asked when "front" is used).
+- ``fitout:overhead_tank_on``: "stair_roof" puts the overhead tanks on the roof of the stair/lift rooms (asked when
+  the plan has none), "terrace" (the default) on the roof terraces (``b2m.fitout.plumbing``).
+
 ``shaft_kinds``: what each shaft op is (duct, lift, stair). A plan's shaft op does not say; a plan made from DWGs knows
 it from the drawing (``shaft_kinds_from_sources``), otherwise it is asked (``fitout:shaft_kind:<op key>``).
 """

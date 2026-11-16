@@ -15,6 +15,17 @@ run down the building's outer face (Indian practice; the ducts carry soil, waste
 is in the way. Tanks are sized from the occupancy (persons per flat x litres per head per day, overhead half a day,
 underground a day, plus the fire reserves the height band asks for).
 
+Where the tanks stand (answered, never guessed): an overhead tank per terrace group stands on its roof terrace, or,
+with ``fitout:overhead_tank_on`` = "stair_roof", on the roof of the stair/lift rooms above the terrace (more head for
+the top floor; ``siting.stair_roof``; asked when the plan has no such roof), its down-take crossing that roof and
+running down the room's outer wall to the terrace and on to its duct. The underground tank stands at the answered
+plan point, or ``{"side": "front" | "north" | "south" | "east" | "west", "near": "entrance"}``: in the setback on that
+side, nearest the entrance, at least 1 m from the foundations and clear of the entrance path (``siting.outside_box``;
+"front" is ``fitout:front_side``, asked). Its pump stands in the pump room, else beside the tank off the entrance
+path, on the side nearest the core the rising main goes up: the duct or stair well (at a corner off its flights)
+giving the shortest main from the pump to the highest overhead tank, buried below the ground floor from an outside
+pump, entering that tank from above; the other tanks tee off it into their sides near the top.
+
 How a branch is drawn (a "tree"): from its port (beside the stack or down-take, square to the duct's row of pipes; or
 the geyser) a main runs along the port's axis and then square to it to a header line laid parallel to the port axis,
 200 mm clear of every fixture it serves; each fixture's stub runs square into the header (moved along it when two would
@@ -35,8 +46,9 @@ from typing import Literal
 from shapely.geometry import LineString, Point as SPoint, Polygon, box
 
 from b2m.fitout.furniture import Placed
-from b2m.fitout.mepcore import (TEE_GAP_MM, Ctx, Duct, Host, Spot, WaterSizing, add, centre_of, face_point,
-                                nearest_spot, pt, spread, wall_spots)
+from b2m.fitout import siting
+from b2m.fitout.mepcore import (TEE_GAP_MM, Ctx, Duct, Host, Spot, WaterSizing, add, centre_of, dot, face_point,
+                                nearest_spot, pt, spread, sub, wall_spots)
 from b2m.fitout.rooms import Room
 from b2m.fitout.rules import Fixture, Size
 
@@ -45,6 +57,7 @@ HEADER_CLEAR_MM = 200.0  # a header line keeps this far from the fixtures it ser
 HEADER_END_MM = 150.0  # and runs this far past the outermost tee
 STUB_GAP_MM = 150.0  # stubs meet a header at least this far apart
 HEADER_SHIFTS, HEADER_SHIFT_MM = 4, 300.0  # header lines tried farther out, to keep the run off doors and inside
+STAIR_ROOF_ANSWERS = ("stair_roof", "lift_roof", "mumty_roof")
 
 
 class Fx:
@@ -79,6 +92,7 @@ class _Plumbing:
         self.downtake_tees: dict[tuple[str, str], int] = defaultdict(int)  # (duct, level) -> branches so far
         self.cold_trees: list[tuple[Duct, str, str, list]] = []
         self.flats_by_duct: dict[str, set] = defaultdict(set)
+        self.stair_roof: siting.StairRoof | None = None  # where the overhead tanks stand when answered so
 
     # ---------------------------------------------------------------- run
 
@@ -434,9 +448,18 @@ class _Plumbing:
         terraces = ctx.roof_terraces()
         oht: dict[str, tuple] = {}  # duct key -> (tank device, terrace)
         overhead: dict[str, float] = {}
-        if not terraces:
+        on = ctx.answer("fitout:overhead_tank_on")
+        if on in STAIR_ROOF_ANSWERS:
+            self.stair_roof = siting.stair_roof(ctx)
+            if self.stair_roof is None:
+                ctx.ask("fitout:overhead_tank_on", "fitout_tank", "Where do the overhead tanks stand? They are "
+                        "answered on the stair/lift roof, but no room on the roof terrace holds the stair, mumty or "
+                        "lift with a roof level above it in the plan: answer \"terrace\" (on the roof terrace) or "
+                        "add the stair room's roof.", options=["terrace", "stair_roof"])
+        if not terraces or (on in STAIR_ROOF_ANSWERS and self.stair_roof is None):
             for dk in by_duct:
-                ctx.unplace("overhead_tank", None, None, "no roof terrace to stand on (the roof level is asked)")
+                ctx.unplace("overhead_tank", None, None, "no roof terrace to stand on (the roof level is asked)"
+                            if not terraces else "on the stair/lift roof, which the plan does not have (asked)")
         else:
             serve: dict[str, list[Duct]] = defaultdict(list)
             for d in ctx.ducts:
@@ -453,7 +476,8 @@ class _Plumbing:
                 litres = math.ceil(n_flats * ppf * w.lpcd * tanks.overhead_days / 100) * 100
                 extra = fire_t if first else 0.0
                 dev = self.place_tank(t, "overhead_tank", litres + extra, [d.centre for d in ducts],
-                                      note=(f"includes the fire reserve of {fire_t:g} L" if extra else None))
+                                      note=(f"includes the fire reserve of {fire_t:g} L" if extra else None),
+                                      roof=self.stair_roof)
                 first = False
                 if dev is None:
                     continue
@@ -491,13 +515,27 @@ class _Plumbing:
                 self.cold_tree(d, run.key, level, group, items, z)
         self.underground(ugt_l + fire_u, fire_u, oht)
 
-    def place_tank(self, terrace: Room, what: str, litres: float, near: list[Point], note: str | None = None):
+    def place_tank(self, terrace: Room, what: str, litres: float, near: list[Point], note: str | None = None,
+                   roof: siting.StairRoof | None = None):
+        """A square tank on the terrace (or on the stair/lift roof, ``roof``) clear of its edge, the ducts and the
+        tanks already there by ``tanks.clear_mm``, nearest the ducts it feeds."""
         ctx, tanks = self.ctx, self.rules.tanks
         side = math.ceil(math.sqrt(litres / 1000 / (tanks.water_depth_mm / 1000)) * 10) * 100
         height = tanks.water_depth_mm + tanks.freeboard_mm
-        free = Polygon(terrace.polygon).buffer(-tanks.clear_mm, join_style="mitre")
-        for h in [*terrace.holes, *(d.outline for d in ctx.ducts)]:  # off the ducts and their vent pipes
+        if roof is None:
+            level, where = terrace.level, f"\"{terrace.name}\""
+            free = Polygon(terrace.polygon).buffer(-tanks.clear_mm, join_style="mitre")
+            holes = [*terrace.holes, *(d.outline for d in ctx.ducts)]  # off the ducts and their vent pipes
+        else:
+            level = roof.level
+            where = f"the roof of the {', '.join(sorted({r.name.lower() for r in roof.rooms}))} ({level})"
+            free = roof.outline.buffer(-tanks.clear_mm, join_style="mitre")
+            holes = [d.outline for d in ctx.ducts]
+        for h in holes:
             free = free.difference(Polygon(h).buffer(tanks.clear_mm, join_style="mitre"))
+        for d in ctx.devices:
+            if d.what in ("overhead_tank", "underground_tank") and d.level == level:
+                free = free.difference(Polygon(_tank_box(d)).buffer(tanks.clear_mm, join_style="mitre"))
         best = None
         if not free.is_empty:
             minx, miny, maxx, maxy = free.bounds
@@ -512,13 +550,18 @@ class _Plumbing:
                     y += 250
                 x += 250
         if best is None:
-            ctx.unplace(what, terrace, terrace.level, f"no {side:g} x {side:g} mm space on the terrace clear of its "
-                        f"parapet and ducts by {tanks.clear_mm:g} mm for a {litres:g} L tank")
+            ctx.unplace(what, terrace if roof is None else None, level, f"no {side:g} x {side:g} mm space on {where} "
+                        f"clear of its edge, ducts and other tanks by {tanks.clear_mm:g} mm for a {litres:g} L tank")
             ctx.ask(f"fitout:{what}", "fitout_tank", f"Where does the {litres:g} L overhead tank go? It does not fit "
-                    "on "
-                    f"\"{terrace.name}\" ({side:g} x {side:g} mm plus access).", instances=[terrace.key])
+                    f"on {where} ({side:g} x {side:g} mm plus access).", instances=[terrace.key])
             return None
         c = best[1]
+        if roof is not None:
+            slab = "" if roof.slab else f"; the plan has no slab at {level} over them: the tank needs one"
+            note = "; ".join(x for x in (note, f"on {where} for pressure on the top floor (answer){slab}") if x)
+            return ctx.place(what, "plumbing", None, level, c, 0.0, 270.0, Host(kind="floor"), scope=level,
+                             size=Size(width_mm=side, depth_mm=side, height_mm=height), rating=f"{litres:g} L",
+                             capacity_l=litres, source=tanks.source, note=note)
         return ctx.place(what, "plumbing", terrace, terrace.level, c, 0.0, 270.0, Host(kind="floor"),
                          size=Size(width_mm=side, depth_mm=side, height_mm=height), rating=f"{litres:g} L",
                          capacity_l=litres, source=tanks.source, note=note)
@@ -533,6 +576,15 @@ class _Plumbing:
         out = (math.copysign(1, dx), 0.0) if abs(dx) >= abs(dy) else (0.0, math.copysign(1, dy))
         o = add(c, out, half)
         z = roof + 150
+        head: list = []
+        if tank.level != terrace.level and self.stair_roof is not None:
+            # from the tank on the stair/lift roof: across it, down its outer wall to the terrace
+            zt = ctx.elev(tank.level) + 150
+            ray = LineString([o, add(o, out, 100000)]).intersection(self.stair_roof.outline)
+            reach = max((dot(sub(q, o), out) for g in getattr(ray, "geoms", [ray]) for q in g.coords), default=0.0)
+            o2 = pt(add(o, out, max(reach, 0.0) + 150))
+            head = [(*o, zt), (*o2, zt)]
+            o = o2
         shape = Polygon(terrace.polygon).buffer(5)
         path = None
         for first in ("x", "y") if out[0] else ("y", "x"):  # leave the tank square to its side first
@@ -541,10 +593,11 @@ class _Plumbing:
                 path = cand
                 break
         path = path or [o, (dxy[0], o[1]), dxy]
-        pts = [(*p, z) for p in path] + [(*dxy, bottom)]
+        pts = head + [(*p, z) for p in path] + [(*dxy, bottom)]
         return ctx.add_run("pipe", "cold_water", terrace.level, pts, sup.sizes_mm.get("downtake", 50), scope=d.key,
                            what="cold_downtake", start=tank.key, source=sup.source,
-                           note=f"from {tank.key} down duct {d.key}; capped at its foot")
+                           note=f"from {tank.key} " + ("down the stair/lift room's outer wall to the terrace, then "
+                                                        if head else "") + f"down duct {d.key}; capped at its foot")
 
     def cold_tree(self, d: Duct, downtake: str, level: str, group: str, items: list, z: float) -> None:
         ctx, sup = self.ctx, self.rules.supply
@@ -605,8 +658,9 @@ class _Plumbing:
                             source=sup.source)
 
     def underground(self, litres: float, fire_l: float, oht: dict) -> None:
-        """The underground tank where the user puts it, its pump (in a pump room, else beside the tank) and the rising
-        main up a duct to each overhead tank."""
+        """The underground tank where the user puts it (``fitout:underground_tank``: a plan point [x, y], or a side
+        of the building, ``siting.outside_box``), its pump (in a pump room, else beside the tank) and the rising main
+        from the pump up the nearest duct or stair core to each overhead tank."""
         ctx, tanks, sup = self.ctx, self.rules.tanks, self.rules.supply
         ground = ctx.storeys[0]
         z0 = ctx.elev(ground)
@@ -614,55 +668,141 @@ class _Plumbing:
         side = math.ceil(math.sqrt(litres / 1000 / (tanks.water_depth_mm / 1000)) * 10) * 100
         height = tanks.water_depth_mm + tanks.freeboard_mm
         note = f"includes the fire reserve of {fire_l:g} L" if fire_l else None
-        if not (isinstance(given, (list, tuple)) and len(given) == 2):
-            ctx.ask("fitout:underground_tank", "fitout_tank", f"Where does the {litres:g} L underground water tank "
-                    f"(about {side:g} x {side:g} mm, {height:g} mm deep) go? Give its centre as a plan point [x, y] in "
-                    "mm, on the site clear of the footings; the plan has no site or pump room to put it in.")
-            ctx.unplace("underground_tank", None, ground, f"{litres:g} L sized from the occupancy; its place on the "
-                        "site is asked")
+        c, info, reason, waiting = None, {}, None, False
+        if isinstance(given, (list, tuple)) and len(given) == 2 and all(isinstance(v, (int, float)) for v in given):
+            c = (float(given[0]), float(given[1]))
+        elif isinstance(given, dict) and given.get("side") in ("front", *siting.SIDES):
+            compass, _ = siting.front_side(ctx, given["side"], "the underground tank is answered on that side")
+            if compass is None:
+                waiting = True
+            else:
+                c, why, info = siting.outside_box(ctx, compass, given.get("near", "entrance"), side, side,
+                                                  tanks.clear_mm)
+                if c is None:
+                    reason = why
+                else:
+                    note = "; ".join(x for x in (note, why + " (answer)") if x)
+        if c is None:
+            if not waiting:
+                ctx.ask("fitout:underground_tank", "fitout_tank", f"Where does the {litres:g} L underground water "
+                        f"tank (about {side:g} x {side:g} mm, {height:g} mm deep) go? " +
+                        (f"The answered side has no room for it: {reason}. " if reason else
+                         "The plan has no site or pump room to put it in. ") +
+                        "Answer its centre as a plan point [x, y] in mm on the site clear of the footings, or a side "
+                        "of the building: {\"side\": \"front\" (or north, south, east, west), \"near\": "
+                        "\"entrance\"} (in that setback, at least 1 m from the footings, clear of the entrance path).")
+            ctx.unplace("underground_tank", None, ground, f"{litres:g} L sized from the occupancy; " +
+                        ("which side is the front is asked (fitout:front_side)" if waiting else
+                         "its place on the site is asked"))
             ctx.unplace("pump", None, ground, "stands at the underground tank, whose place is asked")
             ctx.unroute("rising main", "from the pump at the underground tank (asked) to the overhead tank(s)")
             return
-        c = (float(given[0]), float(given[1]))
         ugt = ctx.place("underground_tank", "plumbing", None, ground, c, -height, 270.0, Host(kind="floor"),
                         scope="site", size=Size(width_mm=side, depth_mm=side, height_mm=height),
                         rating=f"{litres:g} L", capacity_l=litres, source=tanks.source, note=note)
-        pump_room = next(iter(ctx.rooms_of("pump_room", level=ground)), None)
-        if pump_room is not None:
-            pxy, room = centre_of(pump_room), pump_room
-        else:
-            pxy, room = add(c, (1.0, 0.0), side / 2 + 600), None
-        pump = ctx.place("pump", "plumbing", room, ground, pxy, 0.0, 270.0, Host(kind="floor"),
-                         scope=room.key if room else "site", source=ctx.spec("pump").source,
-                         note=f"draws from {ugt.key}")
-        if not oht:
-            ctx.unroute("rising main", "no overhead tank placed", start=pump.key)
-            return
         tanks_ = {}
         for dk, (dev, terrace) in oht.items():
             tanks_.setdefault(dev.key, (dev, terrace, dk))
-        duct = min(ctx.ducts, key=lambda d: (abs(d.centre[0] - pxy[0]) + abs(d.centre[1] - pxy[1]), d.key))
-        rxy = duct.slot("rising")
-        z = z0 + 300
-        main_tank, terrace, _ = next(iter(sorted(tanks_.values(), key=lambda t: (
-            abs(t[0].insertion[0] - rxy[0]) + abs(t[0].insertion[1] - rxy[1]), t[0].key))))
-        roof = ctx.elev(terrace.level)
-        top = roof + main_tank.size.height_mm + 150
-        pts = [(*pxy, z0 + 300), (rxy[0], pxy[1], z), (*rxy, z), (*rxy, top), (main_tank.insertion[0], rxy[1], top),
-               (*main_tank.insertion, top)]
-        run = ctx.add_run("pipe", "cold_water", ground, pts, sup.sizes_mm.get("rising_main", 40), scope="site",
+        # the main tank: the highest (the others tee off the rising main below its inlet)
+        main_tank = None
+        if tanks_:
+            main_tank = min((t[0] for t in tanks_.values()), key=lambda d: (
+                -(ctx.elev(d.level) + d.size.height_mm), abs(d.insertion[0] - c[0]) + abs(d.insertion[1] - c[1]),
+                d.key))
+        cores = self.cores()
+        pump_room = next(iter(ctx.rooms_of("pump_room", level=ground)), None)
+        if pump_room is not None:
+            pxy, room = centre_of(pump_room), pump_room
+            pnote = f"draws from {ugt.key}"
+        else:
+            room = None
+            towards = self.best_core(cores, c, main_tank)[1] if cores else None
+            spec = ctx.spec("pump")
+            size = (spec.size.width_mm, spec.size.depth_mm) if spec.size else (600.0, 400.0)
+            pxy = siting.beside(ctx, c, side / 2, size, info, towards) if info else None
+            pxy = pxy or pt(add(c, (1.0, 0.0), side / 2 + 600))
+            pnote = f"draws from {ugt.key}, beside it"
+        pump = ctx.place("pump", "plumbing", room, ground, pxy, 0.0, 270.0, Host(kind="floor"),
+                         scope=room.key if room else "site", source=ctx.spec("pump").source, note=pnote)
+        if main_tank is None:
+            ctx.unroute("rising main", "no overhead tank placed", start=pump.key)
+            return
+        label, rxy, _ = self.best_core(cores, pxy, main_tank)
+        if rxy is None:
+            ctx.unroute("rising main", "no duct or stair core to rise in", start=pump.key, end=main_tank.key)
+            return
+        top = ctx.elev(main_tank.level) + main_tank.size.height_mm + 150
+        zb = z0 - 300 if room is None else z0 + 300  # from outside: buried below the ground floor to the core
+        best = None
+        for first in ("x", "y"):
+            mid = (rxy[0], pxy[1]) if first == "x" else (pxy[0], rxy[1])
+            pts = [(*pxy, z0 + 300), (*pxy, zb), (*mid, zb), (*rxy, zb), (*rxy, top),
+                   (main_tank.insertion[0], rxy[1], top), (*main_tank.insertion, top)]
+            crossed = ctx.crossings(pts)
+            if best is None or len(crossed) < len(best[1]):
+                best = (pts, crossed)
+        run = ctx.add_run("pipe", "cold_water", ground, best[0], sup.sizes_mm.get("rising_main", 40), scope="site",
                           what="rising_main", start=pump.key, end=main_tank.key, source=sup.source,
-                          note=f"up duct {duct.key}; enters the tank from above")
+                          note=f"up {label}; enters the tank from above" +
+                          (" (buried below the ground floor from the pump)" if room is None else ""))
         for dev, terrace, _ in tanks_.values():
             if dev.key == main_tank.key or run is None:
                 continue
-            port, _ = duct.approach(rxy, dev.insertion)
-            zt = roof + 150
-            pts = [(*port, zt), (port[0], dev.insertion[1], zt), (*dev.insertion, zt)] if duct.long == "x" else \
-                [(*port, zt), (dev.insertion[0], port[1], zt), (*dev.insertion, zt)]
-            pts = pts[:-1] + [(*pts[-1][:2], roof + dev.size.height_mm + 150)]
-            ctx.add_run("pipe", "cold_water", terrace.level, pts, sup.sizes_mm.get("rising_main", 40), scope="site",
-                        what="rising_main", start=run.key, end=dev.key, source=sup.source)
+            zt = ctx.elev(dev.level) + dev.size.height_mm - 150  # the inlet near the tank's top
+            if not zb + 50 <= zt <= top - 50:
+                ctx.unroute("rising main", f"{dev.key} stands above the main tank's inlet", start=run.key,
+                            end=dev.key)
+                continue
+            branch = self.tank_branch(rxy, dev, zt, [d for d, _, _ in tanks_.values() if d.key != dev.key])
+            ctx.add_run("pipe", "cold_water", dev.level, branch, sup.sizes_mm.get("rising_main", 40), scope="site",
+                        what="rising_main", start=run.key, end=dev.key, source=sup.source,
+                        note=f"tees off the rising main up {label}; enters the tank's side near its top")
+
+    def cores(self) -> list[tuple[str, object, Duct | None]]:
+        """Where a rising main can go up: each duct's rising slot, each stair well (at a corner off its flights)."""
+        out = [(f"duct {d.key}", d.slot("rising"), d) for d in self.ctx.ducts if d.slot("rising")]
+        for key, poly in siting.stair_cores(self.ctx):
+            out.append((f"the corner of stair well {key}", poly, None))
+        return out
+
+    def best_core(self, cores: list, frm: Point, tank) -> tuple[str | None, Point | None, Duct | None]:
+        """The core giving the shortest rising main from ``frm`` to ``tank`` (a stair well at its nearest corner)."""
+        best = None
+        for label, where, duct in cores:
+            xy = where if duct is not None else siting.core_corner(self.ctx, where, frm)
+            if xy is None:
+                continue
+            cost = abs(xy[0] - frm[0]) + abs(xy[1] - frm[1])
+            if tank is not None:
+                cost += abs(xy[0] - tank.insertion[0]) + abs(xy[1] - tank.insertion[1])
+            if best is None or (cost, label) < best[0]:
+                best = ((cost, label), (label, xy, duct))
+        return best[1] if best else (None, None, None)
+
+    def tank_branch(self, rxy: Point, dev, z: float, others: list) -> list:
+        """From beside the rising main at ``z`` to the side of tank ``dev`` facing it, clear of the other tanks."""
+        half = dev.size.width_mm / 2
+        c = dev.insertion
+        boxes = [Polygon(_tank_box(o)).buffer(50) for o in others]
+        best = None
+        for k in (0, 1):  # leave the main along x, or along y
+            n = [0.0, 0.0]
+            n[k] = math.copysign(1.0, c[k] - rxy[k]) if abs(c[k] - rxy[k]) > 1 else 1.0
+            port = add(rxy, (n[0], n[1]), TEE_GAP_MM)
+            end = [0.0, 0.0]
+            if abs(c[1 - k] - port[1 - k]) <= half - 100:  # straight on into the tank's side
+                end[k], end[1 - k] = c[k] - n[k] * half, port[1 - k]
+                path = [port, (end[0], end[1])]
+            else:
+                mid = [0.0, 0.0]
+                mid[k], mid[1 - k] = c[k], port[1 - k]
+                m = math.copysign(1.0, c[1 - k] - port[1 - k])
+                end[k], end[1 - k] = c[k], c[1 - k] - m * half
+                path = [port, (mid[0], mid[1]), (end[0], end[1])]
+            clear = not any(b.intersects(LineString(path)) for b in boxes)
+            if best is None or (clear and not best[0]):
+                best = (clear, path)
+        return [(*p, z) for p in best[1]]
 
     # ---------------------------------------------------------------- rainwater
 
