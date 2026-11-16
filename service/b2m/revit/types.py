@@ -22,7 +22,7 @@ walls, floors, stairs and railings are system families and take a type name only
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from b2m import paths
@@ -68,6 +68,21 @@ class TypeMap:
 
     def railing(self, name: str) -> str:
         return self.railings.get(name, name)
+
+    # A build's type pre-steps (ensure_wall_type, ensure_floor_type, ensure_family_type) report the project type a
+    # logical name resolved to; these return a copy with that mapping added, leaving the loaded map untouched.
+
+    def with_wall(self, name: str, project_type: str) -> "TypeMap":
+        return replace(self, walls={**self.walls, name: project_type})
+
+    def with_floor(self, name: str, project_type: str) -> "TypeMap":
+        return replace(self, floors={**self.floors, name: project_type})
+
+    def with_opening(self, category: str, name: str, project_type: str, family: str | None) -> "TypeMap":
+        entry = {name: FamilyType(project_type, family)}
+        if category == "door":
+            return replace(self, doors={**self.doors, **entry})
+        return replace(self, windows={**self.windows, **entry})
 
     @classmethod
     def from_dict(cls, data: dict) -> "TypeMap":

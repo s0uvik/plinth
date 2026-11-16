@@ -2,8 +2,10 @@
 
 Splits a build plan into batch_execute calls of at most 20 ops, one build phase per batch, in
 dependency order. Each batch is one Revit undo step and either builds completely or not at all.
-Stairs and railings are the exception: the add-in will not run create_stair inside a batch, so each of
-those ops is its own direct call (and undo step). Keys are swapped for element ids as batches return;
+Stairs, railings and type pre-steps are the exception: the add-in will not run create_stair inside a batch,
+and a type pre-step (ensure_wall_type, ensure_floor_type, ensure_family_type) returns the project type every later
+op must use, so each of those ops is its own direct call (and undo step); a type the add-in cannot find or copy
+without the user stops the run as needs_input. Keys are swapped for element ids as batches return;
 an op that creates several elements (a stair and the railings Revit gives it) records them as key,
 key#2, key#3... The first failed batch stops the run; what was
 built so far is reported and can be removed. After a build, element counts and warnings are read back
@@ -18,7 +20,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
-from b2m.plan import KEY_SEPARATOR, PHASE_OF, BeamOp, BuildPlan, ColumnOp, Op, RailingOp
+from b2m.plan import KEY_SEPARATOR, PHASE_OF, TYPE_OPS, BeamOp, BuildPlan, ColumnOp, Op, RailingOp
 from b2m.revit import commands
 from b2m.revit.client import RevitError, RevitTimeout
 from b2m.revit.types import TypeMap
@@ -30,6 +32,13 @@ ENSURE_TIMEOUT_SECONDS = 600  # creating a family from its template can take a w
 # Logical frame types carry their section in the name ("RCC Column 230x450": b 230, h 450).
 SECTION = re.compile(r"(\d+)\s*[xX×]\s*(\d+)")
 ENSURE_CATEGORY = {"column": "structural_column", "beam": "structural_framing"}
+# Errors of a type pre-step (ensure_wall_type, ensure_floor_type, ensure_family_type) that need the user's answer:
+# nothing to find or copy (no foundation slab type to copy, no family), a tie to choose from, a mark or size clash,
+# a material that is not in the project. The run stops before anything is built, as needs_input.
+TYPE_QUESTIONS = frozenset({
+    "FAMILY_NOT_FOUND", "FAMILY_CHOICE_NEEDED", "TYPE_MARK_IN_USE", "TYPE_MARK_MISMATCH",
+    "BASE_TYPE_NOT_FOUND", "TYPE_CHOICE_NEEDED", "TYPE_DIMENSION_MISMATCH", "MATERIAL_NOT_FOUND",
+})
 
 log = logging.getLogger(__name__)
 
@@ -73,10 +82,13 @@ class Runner:
         # A family B2M cannot find or adapt is only created from Revit's template when the user said yes.
         self.allow_family_create = allow_family_create
         self.family_folders = list(family_folders or [])
+        # The type mapping in use during a build: the loaded one plus what the plan's type pre-steps resolved.
+        self._active = self.types
 
     def build(self, plan: BuildPlan) -> BuildResult:
         by_key = plan.by_key()
         batches = plan_batches(plan)
+        self._active = self.types
         result = BuildResult(status="built", batches_total=len(batches), batches_succeeded=0)
         stopped = self._ensure_frame_types(plan, result)
         if stopped is not None:
@@ -90,7 +102,7 @@ class Runner:
                 result.batches_succeeded += 1
                 self.progress(index + 1, len(batches))
                 continue
-            subcommands = [commands.to_command(op, by_key, result.created, self.types) for op in batch]
+            subcommands = [commands.to_command(op, by_key, result.created, self._active) for op in batch]
             log.info("batch %d of %d: %d ops (%s)", index + 1, len(batches), len(batch), batch[0].op)
             try:
                 data = self.revit.call("batch_execute", {"commands": subcommands}, timeout_seconds=BATCH_TIMEOUT_SECONDS)
@@ -144,14 +156,20 @@ class Runner:
             # Revit already gave the stair its railings (the add-in refuses a second set): they stand for this op.
             log.info("%s: stair %s came with its own railings; not adding more", op.key, op.stair_key)
             return None
-        command = commands.to_command(op, by_key, result.created, self.types)
+        command = commands.to_command(op, by_key, result.created, self._active)
         log.info("direct call: %s (%s)", command["command"], op.key)
+        type_op = op.op in TYPE_OPS
         try:
-            data = self.revit.call(command["command"], command["params"], timeout_seconds=BATCH_TIMEOUT_SECONDS)
+            data = self.revit.call(command["command"], command["params"],
+                                   timeout_seconds=ENSURE_TIMEOUT_SECONDS if type_op else BATCH_TIMEOUT_SECONDS)
         except RevitTimeout as e:
             return self._stop(result, "unknown", e, op.key)
         except RevitError as e:
-            return self._stop(result, "failed", e, op.key)
+            # A type that cannot be found, copied or chosen without the user is a question, not a failure.
+            return self._stop(result, "needs_input" if type_op and e.code in TYPE_QUESTIONS else "failed", e, op.key)
+        if type_op:
+            self._active = commands.resolved_type(op, data, self._active)
+            log.info("%s %s: %s %r", op.op, op.name, data.get("action"), data.get("type_name"))
         result.created.update(commands.created_keys(op, commands.created_ids(op, data)))
         return None
 
@@ -166,6 +184,8 @@ class Runner:
     def verify(self, plan: BuildPlan, created: dict[str, int]) -> dict[str, Any]:
         """Read back what was built: counts per category and level against the plan, missing ids, warnings."""
         by_key = plan.by_key()
+        # Types a run made are removed with it but are not model elements: they are not read back.
+        created = {k: v for k, v in created.items() if by_key[commands.op_key(k)].op not in TYPE_OPS}
         ids = list(created.values())
         stats = self.revit.call("analyze_model_statistics", {"elementIds": ids, "groupByLevel": True})
         warnings = self.revit.call("get_model_warnings_summary", {"elementIds": ids})
