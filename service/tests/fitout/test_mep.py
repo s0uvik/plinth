@@ -46,12 +46,12 @@ def test_sample_counts_per_system(sample_mep):
     _, _, _, layout = sample_mep
     assert Counter(d.what for d in layout.devices) == {
         "socket_6a": 370, "light": 253, "socket_16a": 145, "fan": 112, "switchboard": 103, "tv_outlet": 64,
-        "exhaust_fan": 49, "geyser": 49, "ac_indoor": 48, "ac_outdoor": 48, "floor_trap": 33, "exit_sign": 18,
+        "exhaust_fan": 49, "geyser": 49, "ac_indoor": 48, "ac_outdoor": 48, "floor_trap": 33, "exit_sign": 9,
         "distribution_board": 17, "data_outlet": 16, "extinguisher": 15, "roof_outlet": 12, "overhead_tank": 2}
     assert Counter((r.kind, r.system) for r in layout.runs) == {
-        ("conduit", "power"): 648, ("conduit", "lighting"): 517, ("pipe", "cold_water"): 182, ("pipe", "waste"): 133,
+        ("conduit", "power"): 639, ("conduit", "lighting"): 517, ("pipe", "cold_water"): 182, ("pipe", "waste"): 133,
         ("pipe", "hot_water"): 113, ("pipe", "soil"): 51, ("pipe", "rainwater"): 12, ("pipe", "vent"): 2}
-    assert Counter(c.kind for c in layout.circuits) == {"dedicated": 113, "lighting": 53, "sockets": 49, "power": 32}
+    assert Counter(c.kind for c in layout.circuits) == {"dedicated": 113, "lighting": 52, "sockets": 49, "power": 32}
     stacks = sorted(r.key.split("-")[-2] for r in layout.runs if r.key.split("-")[-2].endswith("_stack"))
     assert stacks == ["soil_stack", "soil_stack", "vent_stack", "vent_stack", "waste_stack", "waste_stack"]
     assert layout.notice == mep.NOTICE and "indicative" in layout.notice.lower()
@@ -157,6 +157,9 @@ def test_fire_band_at_13_5_m_gives_its_provisions(sample_mep, wb_rules):
         ("extinguisher", "Ground Floor")] * 2
     assert all(by_lobby for by_lobby in (model.by_key()[d.room_key].flat is None for d in layout.devices
                                          if d.system == "fire"))
+    # exit signs face the stairs arriving at and leaving each lobby (and the stair up into the mumty), not the lifts
+    signs = Counter(d.level for d in layout.devices if d.what == "exit_sign")
+    assert signs == {"Floor 1": 2, "Floor 2": 2, "Floor 3": 2, "Floor 4": 2, "Roof": 1}
 
 
 def test_sample_asks_what_the_plan_does_not_tell(sample_mep):

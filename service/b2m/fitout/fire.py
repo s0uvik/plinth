@@ -20,11 +20,12 @@ from __future__ import annotations
 
 import math
 
-from shapely.geometry import Point as SPoint
+from shapely.geometry import Point as SPoint, Polygon
 
 from b2m.fitout.mepcore import (Ctx, Host, Provision, add, centre_of, common_core, core_points, nearest_spot, spread,
                                 wall_spots)
 from b2m.fitout.rooms import Room
+from b2m.plan import ShaftOp
 
 COMMON = ("lobby", "stair", "parking", "mumty", "lift_machine_room", "meter_room", "pump_room", "guard")
 CIRCULATION = ("lobby", "stair", "mumty", "parking")
@@ -129,7 +130,8 @@ def _exit_targets(ctx: Ctx, room: Room) -> list:
             continue
         f = room.faces[o.face]
         beyond = add(o.center, f.inward, -((f.thickness_mm or 250) + 150))
-        if ctx.footprint(room.level).covers(SPoint(beyond)):
+        shafts = [Polygon(op.points) for op in ctx.plan.ops if isinstance(op, ShaftOp)]
+        if not f.outer or any(s.covers(SPoint(beyond)) for s in shafts):
             continue  # into a lift, a duct or another enclosed space, not out of the building
         out.append(o.center)
     for st in ctx.stairs:
