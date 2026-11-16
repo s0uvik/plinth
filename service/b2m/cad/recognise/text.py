@@ -18,6 +18,8 @@ LIFT_RE = re.compile(r"\b(?:LIFTS?|ELEVATORS?)\b", re.I)
 DUCT_RE = re.compile(r"\b(?:DUCTS?|SHAFTS?|SHAFT|VOID|OTS|CUT\s*OUT)\b", re.I)
 STAIR_RE = re.compile(r"\b(?:STAIRS?|STAIRCASE|STAIR\s*CASE)\b", re.I)
 SLOPE_RE = re.compile(r"\b(?:SLOPES?|FALLS?|GRADIENT)\b", re.I)
+# drafting words for spaces with no roof over them (a roof plan's parapets enclose these)
+OPEN_TO_SKY_RE = re.compile(r"\b(?:TERRACES?|ROOF|ROOF\s*TOP|OPEN\s+TO\s+SKY|COURT(?:YARD)?)\b", re.I)
 UP_RE = re.compile(r"^\s*(?:UP|DN|DOWN)\s*$", re.I)
 # drafting prefixes of opening marks: door, window, ventilator (D, W, V; also DW, FD, SD, KW, ... as written)
 KIND_BY_PREFIX = {"D": "door", "W": "window", "V": "ventilator"}

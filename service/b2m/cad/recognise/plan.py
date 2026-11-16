@@ -27,7 +27,7 @@ from b2m.cad.recognise import walls as walls_mod
 from b2m.cad.recognise.context import Ctx, Params, build
 from b2m.cad.recognise.geometry import (Line1D, Point, Seg, angle_diff, dot, frame, from_frame, group_by_direction,
                                         merge_collinear, point_seg_distance, polygon_area, to_frame)
-from b2m.cad.recognise.text import LIFT_RE, MARK_RE, SLOPE_RE, is_name, normalise_mark
+from b2m.cad.recognise.text import MARK_RE, OPEN_TO_SKY_RE, SLOPE_RE, is_name
 from b2m.cad.sheet import Sheet
 
 
@@ -267,7 +267,7 @@ def _roof_kinds(ctx: Ctx, walls: list[walls_mod.WallLine], sol: sp_mod.Solid) ->
     for h in sol.holes:
         texts = [t for t in ctx.texts if h.contains(SPoint(t.center)) and is_name(t.flat)]
         names = " ".join(t.flat.upper() for t in texts)
-        if "TERRACE" in names or "ROOF" in names.split() or not texts:
+        if OPEN_TO_SKY_RE.search(names) or not texts:
             continue
         roofed.append(h)
     for w in walls:

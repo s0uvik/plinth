@@ -227,8 +227,6 @@ def from_frame(offset: float, t: float, u: Point, n: Point) -> Point:
 def merge_collinear(lines: list[Line1D], tol: float, gap: float = 0.0) -> list[Line1D]:
     """Merge lines on the same offset (within tol) that overlap or whose ends are within gap+tol."""
     out: list[Line1D] = []
-    for ln in sorted(lines, key=lambda l: (l.offset, l.t0)):
-        pass
     # cluster by offset first
     by_off: list[list[Line1D]] = []
     for ln in sorted(lines, key=lambda l: l.offset):
