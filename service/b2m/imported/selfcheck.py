@@ -817,7 +817,10 @@ class _Comparer:
         points = [tuple(p) for p in op.points]
         if rec is not None:
             data = rec.get("shaft") or {}
-            loops = [[q for q in (_xy(v) for v in loop) if q is not None] for loop in data.get("outline") or []]
+            raw = data.get("outline") or []
+            if raw and isinstance(raw[0], dict):
+                raw = [raw]  # add-ins before the loop-shape fix sent one flat loop of points
+            loops = [[q for q in (_xy(v) for v in loop) if q is not None] for loop in raw]
             outer = max(loops, key=polygon_area_m2) if loops else None
             self.corners("shaft", "plan_to_model", "outline corners", points, outer, **kw)
             self.same("shaft", "plan_to_model", "base level", op.base_level, data.get("base_level"), **kw)

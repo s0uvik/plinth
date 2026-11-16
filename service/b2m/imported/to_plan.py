@@ -150,6 +150,27 @@ def _unit(a: Point, b: Point) -> tuple[Point, float]:
     return ((d[0] / length, d[1] / length) if length else (0.0, 0.0)), length
 
 
+def _to_abutting_centreline(end: Point, outward: Point, walls: Iterable[Wall], tol: float = 5.0) -> Point:
+    """A wall end on another wall's face, moved on to that wall's centreline.
+
+    Revit joins a wall that ends on another wall's face at the other wall's location line (a T join) and moves its
+    end there, so a planned end on the face would read back half the other wall's thickness off (and an opening's
+    offset from the start would shift by as much). Ends that touch no wall face stay where they are."""
+    for w in walls:
+        along, length = _unit(w.start, w.end)
+        if not length or abs(_dot(outward, along)) > 0.02:
+            continue  # only walls across the gap's direction
+        normal = (-along[1], along[0])
+        rel = _sub(end, w.start)
+        distance = _dot(rel, normal)  # signed, from the other wall's centreline
+        if abs(abs(distance) - w.thickness_mm / 2) > tol or not -tol <= _dot(rel, along) <= length + tol:
+            continue
+        step = -distance / _dot(outward, normal)  # along outward to reach the centreline
+        if step > 0:
+            return (round(end[0] + outward[0] * step, 2), round(end[1] + outward[1] * step, 2))
+    return end
+
+
 def _ref(sheet: str, element_id: str) -> str:
     return f"{sheet}#{element_id}"
 
@@ -629,8 +650,11 @@ class _Converter:
                     text=f"The answer for the {category} in no wall needs mode new_wall, thickness_mm and function "
                          "(and the drawing a hinge to give the gap's direction).")
                 return
-            c, h = t(o.center), t(o.hinge)
-            start, end = h, (round(2 * c[0] - h[0], 2), round(2 * c[1] - h[1], 2))
+            c, h = o.center, o.hinge
+            far = (2 * c[0] - h[0], 2 * c[1] - h[1])
+            u, _ = _unit(h, far)
+            start = t(_to_abutting_centreline(h, (-u[0], -u[1]), walls.values()))
+            end = t(_to_abutting_centreline(far, u, walls.values()))
             host_key = self.emit({"op": "wall", "key": f"{sheet}-{o.id}.wall-{storey}", "level": level,
                                   "top_level": top, "type": self.wall_type(thickness, function), "start": start,
                                   "end": end}, Source(sheet=sheet, element=o.id, storey=storey,

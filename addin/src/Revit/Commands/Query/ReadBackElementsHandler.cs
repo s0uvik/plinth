@@ -215,16 +215,12 @@ namespace B2M.Revit.Commands.Query
 
         private static JObject ShaftFacts(Document doc, Opening opening)
         {
-            JArray outline;
-            if (opening.IsRectBoundary)
-            {
-                var corners = opening.BoundaryRect;
-                outline = new JArray(new JArray(corners.Select(Xy)));
-            }
-            else
-            {
-                outline = new JArray(Loop(opening.BoundaryCurves.Cast<Curve>()));
-            }
+            // One loop inside the outline array. new JArray(JArray) copies the inner array's items instead of nesting
+            // it, so the loop is added with Add.
+            var outline = new JArray();
+            outline.Add(opening.IsRectBoundary
+                ? new JArray(opening.BoundaryRect.Select(Xy))
+                : Loop(opening.BoundaryCurves.Cast<Curve>()));
             var box = opening.get_BoundingBox(null);
             return Clean(new JObject
             {

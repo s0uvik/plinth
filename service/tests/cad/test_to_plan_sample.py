@@ -94,3 +94,14 @@ def test_with_answers_the_plan(building, answers):
                if not key.startswith(("TYPE-", "LEVEL-")))
     assert {n.what for n in result.not_modelled} >= {"reinforcement", "roof falls (slope arrows)",
                                                      "beams at Floor 1, Floor 2, Floor 3, Floor 4, Roof"}
+
+
+
+def test_a_wall_across_a_door_gap_ends_on_the_centrelines_it_abuts(building, answers):
+    """Revit moves a wall end on another wall's face to that wall's centreline (T join): the plan ends it there, as
+    the live build read back (2026-11-16), and the door's offset is measured from that start."""
+    ops = to_plan(building, answers).plan.by_key()
+    ends = {n: (ops[f"{TYPICAL}-opening-{n}.wall-1"].start[0], ops[f"{TYPICAL}-opening-{n}.wall-1"].end[0],
+                ops[f"{TYPICAL}-opening-{n}-1"].offset_mm) for n in (29, 30, 47, 48)}
+    assert ends == {29: (19175.03, 18050.03, 625.0), 30: (22425.03, 23550.03, 625.0),
+                    47: (19175.03, 17925.03, 625.0), 48: (22425.03, 23675.03, 625.0)}

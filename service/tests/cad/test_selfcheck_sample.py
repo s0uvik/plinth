@@ -88,3 +88,14 @@ def test_changed_values_are_exactly_the_differences(sample):
                                                                        "area vs written size": "warning"}
     w = next(d for d in new if d.op_key == wall)
     assert (w.sheet, w.element, w.storey, w.element_id) == (TYPICAL, "wall-12", "3", created[wall]) and w.handles
+
+
+def test_a_shaft_outline_sent_as_one_flat_loop_reads_the_same(sample):
+    """Add-ins before 2026-11-16 sent a shaft outline as a flat list of points, not a list of loops."""
+    building, answers, result, created, readback = sample
+    rb = copy.deepcopy(readback)
+    shafts = [k for k, op in result.plan.by_key().items() if op.op == "shaft"]
+    for key in shafts:
+        rb[created[key]]["shaft"]["outline"] = rb[created[key]]["shaft"]["outline"][0]
+    report = selfcheck.compare(result, building, created, rb, answers=answers)
+    assert shafts and unexplained(report) == []
