@@ -21,9 +21,12 @@ namespace B2M.Revit.Commands.Delete
         private const int MaxIds = 5000;
 
         public string Name => "delete_element";
-        public string Description => "Delete elements by ID. Elements Revit removes with them (hosted doors, a level's views) are listed in alsoDeleted.";
+        public string Description => "Delete elements by ID. Elements Revit removes with them (hosted doors, a level's views) are listed in alsoDeleted. "
+            + "Deleting a type or a family also deletes every element using it, so a type or family that is in use is refused unless "
+            + "confirm_delete_all gives its exact number of users ({\"<id>\": N}).";
         public string ParametersSchema => @"{""type"":""object"",""properties"":{
-            ""elementIds"":{""type"":""array"",""items"":{""type"":""integer""}}},""required"":[""elementIds""]}";
+            ""elementIds"":{""type"":""array"",""items"":{""type"":""integer""}},
+            ""confirm_delete_all"":{""type"":""object""}},""required"":[""elementIds""]}";
         public bool ReadOnly => false;
 
         public CommandResult Execute(UIApplication app, JObject p)
@@ -34,6 +37,8 @@ namespace B2M.Revit.Commands.Delete
             var ids = p["elementIds"].ToObject<long[]>().Distinct().ToArray();
             if (ids.Length == 0) return CommandResult.Fail("INVALID_PARAMS: elementIds must not be empty.");
             if (ids.Length > MaxIds) return CommandResult.Fail("INVALID_PARAMS: at most " + MaxIds + " ids per call.");
+            var refusal = SharedDeleteRefusal(doc, ids, p["confirm_delete_all"] as JObject);
+            if (refusal != null) return refusal;
 
             var requested = new HashSet<long>(ids);
             var gone = new HashSet<long>();
@@ -83,6 +88,52 @@ namespace B2M.Revit.Commands.Delete
                 errors,
                 alsoDeleted = gone.Where(id => !requested.Contains(id)).OrderBy(id => id).ToList()
             });
+        }
+
+        /// <summary>
+        /// Duplicate-before-edit's sibling for deletes: deleting a type (or a whole family) silently deletes every
+        /// element using it. A type or family with users is refused unless confirm_delete_all names its exact count.
+        /// Nothing has been deleted when this returns a refusal.
+        /// </summary>
+        private static CommandResult SharedDeleteRefusal(Document doc, long[] ids, JObject confirm)
+        {
+            var refused = new JArray();
+            foreach (var id in ids)
+            {
+                var element = doc.GetElement(RevitCompat.ToElementId(id));
+                List<long> users;
+                string name;
+                if (element is ElementType type)
+                {
+                    users = TypeEditGuard.TypeUsers(doc, new[] { type.Id })[id];
+                    name = (type is FamilySymbol fs ? fs.FamilyName + " : " : "") + type.Name;
+                }
+                else if (element is Family family)
+                {
+                    var typeIds = family.GetFamilySymbolIds().ToList();
+                    users = TypeEditGuard.TypeUsers(doc, typeIds).Values.SelectMany(v => v).Distinct().ToList();
+                    name = "family " + family.Name;
+                }
+                else continue;
+
+                if (users.Count == 0) continue;
+                var given = confirm?[id.ToString()];
+                if (given != null && given.Type == JTokenType.Integer && given.Value<int>() == users.Count) continue;
+                refused.Add(new JObject
+                {
+                    ["id"] = id,
+                    ["name"] = name,
+                    ["instance_count"] = users.Count,
+                    ["given"] = given?.DeepClone(),
+                    ["sample_element_ids"] = new JArray(users.Take(20))
+                });
+            }
+            if (refused.Count == 0) return null;
+            var first = refused[0];
+            return CommandResult.Fail("TYPE_IN_USE: " + first.Value<string>("name") + " is used by " + first.Value<int>("instance_count")
+                + " elements; deleting it deletes all of them. Pass confirm_delete_all {\"" + first.Value<long>("id") + "\": "
+                + first.Value<int>("instance_count") + "} only if that is intended. Nothing was deleted.",
+                new JObject { ["in_use"] = refused });
         }
     }
 }
