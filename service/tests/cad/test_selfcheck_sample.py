@@ -1,0 +1,92 @@
+"""The self-check (T9) on the G+4 sample: the plan made with answers-test.json, a read-back of a model built exactly
+as planned, then a few values changed in that read-back.
+
+A perfect build leaves no difference between plan and model, nor between drawing and plan beyond what the answers
+explain. What remains unexplained is one finding of the self-check itself: 14 centre lines on the roof plan lie on none
+of the floor plans' grid lines (100, 87.5, 125 and 900 mm off them); the plan conversion builds grids from the floor
+plans only and does not list these in not_modelled.
+"""
+
+import copy
+import json
+from collections import Counter
+
+import pytest
+
+from b2m.cad import structure
+from b2m.cad.recognise import recognise_plan
+from b2m.imported import selfcheck, to_plan
+from tests.cad.conftest import SAMPLE
+from tests.selfcheck_readback import perfect_readback
+
+TYPICAL, ROOF = "2.PLAN 1st to 4th.dxf", "3.ROOF PLAN.dxf"
+ROOF_LINES_OFF_GRID = [f"grid-{n}" for n in (1, 3, 6, 10, 13, 15, 16, 18, 19, 21, 23, 24, 27, 29)]
+
+
+@pytest.fixture(scope="module")
+def sample(sample_sheets):
+    building = structure.recognise_set(list(sample_sheets.values()), recognise_plan)
+    answers = {k: v for k, v in json.loads((SAMPLE / "answers-test.json").read_text(encoding="utf-8")).items()
+               if not k.startswith("_")}
+    result = to_plan(building, answers)
+    assert result.plan is not None
+    created, readback = perfect_readback(result, building)
+    return building, answers, result, created, readback
+
+
+def unexplained(report):
+    return [d for d in report.differences if not d.explained]
+
+
+def test_a_perfect_build_of_the_sample(sample):
+    building, answers, result, created, readback = sample
+    report = selfcheck.compare(result, building, created, readback, answers=answers)
+    assert report.elements_read == len(readback) == 1332 - 20  # every op but the 20 type pre-steps
+    # plan -> model and drawing -> model: nothing; drawing -> plan: only what the answers changed
+    assert [d for d in report.differences if d.stage in ("plan_to_model", "drawing_to_model")] == []
+    explained = Counter((d.kind, d.field, d.reason.split(" = ")[0]) for d in report.differences
+                        if d.stage == "drawing_to_plan")
+    assert all(d.explained for d in report.differences if d.stage == "drawing_to_plan")
+    assert explained == {
+        ("opening", "width", "answered question door_width:D1"): 16,  # D1 drawn 900 wide 4x per storey, answered 800
+        ("room", "name", f"answered question rooms:{TYPICAL}:rooms-share-space-1"): 4,
+        ("room", "name", f"answered question rooms:{TYPICAL}:rooms-share-space-2"): 4,
+        ("room", "name", f"answered question rooms:{TYPICAL}:rooms-share-space-3"): 4,
+        ("room", "name", f"answered question rooms:{TYPICAL}:rooms-share-space-4"): 4,
+        ("room", "name", f"answered question rooms:{TYPICAL}:rooms-share-space-5"): 4,
+    }
+    # accounting: every recognised element is planned, listed as not modelled, or accounted for by a rule
+    assert report.accounting == {"recognised": 641, "planned": 549, "not_modelled": 13, "explained": 65,
+                                 "unaccounted": 14}
+    rules = Counter(d.kind for d in report.differences if d.stage == "accounting" and d.explained)
+    assert rules == {"recognised grids": 32, "recognised levels": 16, "recognised rooms": 9,
+                     "recognised section_marks": 6, "recognised column_sections": 2}
+    left = unexplained(report)
+    assert sorted((d.kind, d.sheet, d.element) for d in left) == sorted(
+        ("recognised grids", ROOF, g) for g in ROOF_LINES_OFF_GRID)
+    assert all(d.handles for d in left)
+
+
+def test_changed_values_are_exactly_the_differences(sample):
+    building, answers, result, created, readback = sample
+    by_key = result.plan.by_key()
+    wall = f"{TYPICAL}-wall-12-3"
+    door = next(k for k, op in by_key.items() if op.op == "door" and k.endswith("-2"))
+    room = next(k for k, op in by_key.items() if op.op == "room" and result.sources[k].element == "room-2"
+                and k.endswith("-1"))
+    rb = copy.deepcopy(readback)
+    rb[created[wall]]["location"]["end"]["x"] += 5
+    rb[created[door]]["opening"]["hand_flipped"] = not rb[created[door]]["opening"]["hand_flipped"]
+    rb[created[room]]["room"]["area_m2"] += 0.5
+    rb[created["LEVEL-Floor 2"]]["level_element"]["elevation_mm"] += 2
+    report = selfcheck.compare(result, building, created, rb, answers=answers)
+    new = [d for d in unexplained(report) if d.stage != "accounting"]
+    assert {(d.op_key, d.field): d.delta for d in new} == {
+        (wall, "end"): 5.0, (door, "hand flipped"): None, (room, "area vs drawn boundary"): 0.5,
+        (room, "area vs written size"): 0.493,  # drawn 13.993 m2 inside, written 3500 X 4000
+        ("LEVEL-Floor 2", "elevation"): 2.0}
+    assert len(new) == 5
+    assert {d.field: d.severity for d in new if d.op_key == room} == {"area vs drawn boundary": "error",
+                                                                       "area vs written size": "warning"}
+    w = next(d for d in new if d.op_key == wall)
+    assert (w.sheet, w.element, w.storey, w.element_id) == (TYPICAL, "wall-12", "3", created[wall]) and w.handles

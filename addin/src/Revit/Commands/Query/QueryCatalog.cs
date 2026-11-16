@@ -21,6 +21,7 @@ namespace B2M.Revit.Commands.Query
             dispatcher.Register(new ListAssembliesHandler());
             dispatcher.Register(new GetAssemblyMembersHandler());
             dispatcher.Register(new ListWorksetsHandler());
+            dispatcher.Register(new ReadBackElementsHandler());
         }
     }
 }
