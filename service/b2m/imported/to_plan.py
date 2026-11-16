@@ -352,6 +352,9 @@ class _Converter:
                 op["type_mark"] = o.mark
             if o.hint:
                 op["hint"] = o.hint
+            family = self.answers.get(f"family:{o.category}:{o.name}") or self.answers.get(f"family:{o.category}")
+            if family:  # the user's answer to the build's family question (never chosen here)
+                op["family"] = family
             ops.append(op)
         for op in ops:
             self.sources[op["key"]] = Source(note="project standards")

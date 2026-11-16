@@ -16,7 +16,7 @@ from typing import Any, Iterable
 
 from b2m.cad.project import ImportProject, Question
 
-STAGES = ("drawings", "estimate")
+STAGES = ("drawings", "estimate", "build")
 
 
 def merge(project: ImportProject, stage: str, items: Iterable[dict[str, Any]]) -> list[Question]:
@@ -45,6 +45,25 @@ def merge(project: ImportProject, stage: str, items: Iterable[dict[str, Any]]) -
                 q.instances = list(item.get("instances") or q.instances)
         out.append(q)
     return sorted(out, key=lambda q: not q.open)
+
+
+def from_build(project: ImportProject, run: dict[str, Any]) -> list[Question]:
+    """A build that stopped for the user (status needs_input) because the add-in could not choose a family on its own:
+    ask which family to use, keyed so the next plan carries it (``family:<category>`` in project.inputs.values)."""
+    if run.get("status") != "needs_input" or run.get("error_code") != "FAMILY_CHOICE_NEEDED":
+        return []
+    key = run.get("failed_key") or ""
+    parts = key.split("-", 2)  # TYPE-<category>-<name>
+    category = parts[1] if len(parts) == 3 and parts[0] == "TYPE" else None
+    if category is None:
+        return []
+    data = run.get("error_data") or {}
+    names = [c.get("family_name") for c in data.get("candidates") or [] if c.get("family_name") and c.get("eligible", True)]
+    item = {"id": f"family:{category}", "topic": "family",
+            "text": f"Several loaded {category} families fit equally well, so B2M will not pick one: which family "
+                    f"should the {category} types be made from? (asked by the build, run {run.get('run_id')})",
+            "options": names}
+    return merge(project, "build", [item])
 
 
 def stage_values(project: ImportProject, stage: str) -> dict[str, Any]:

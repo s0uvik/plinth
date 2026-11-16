@@ -788,6 +788,13 @@ def add_import_routes(app: FastAPI, service: BuildService, imports: Imports) -> 
         if project is None:
             return {**record, "sheets": [], "registrations": [], "readiness": {"ready": False, "blocking": []}}
         building = imports.building(import_id)
+        for run_id in reversed(record.get("runs") or []):  # the latest run that says something
+            run = service.store.get(run_id)
+            data = run.load("run") if run else None
+            if data:
+                if stage_questions.from_build(project, {**data, "run_id": run_id}):
+                    imports.store.save(project)
+                break
         sheets = [{"n": i, "file": s.file, "role": s.role, "storeys": s.storeys, "name": s.name, "title": s.title,
                    "scale": s.scale, "page": s.page, "page_number": s.page_number, "decided_by": s.decided_by,
                    "recognised": _sheet_summary(building, s.file)} for i, s in enumerate(project.sheets, 1)]
