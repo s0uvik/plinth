@@ -5,6 +5,7 @@ from b2m.examples import two_storey_house
 from b2m.plan import BuildPlan
 from b2m.revit import commands
 from b2m.revit.client import RevitError, RevitTimeout
+from b2m.revit.types import TypeMap
 from b2m.runner import Runner, plan_batches
 
 HOUSE = two_storey_house("Door 900", "Window 1200")
@@ -216,3 +217,61 @@ def test_translate_moves_every_coordinate_and_nothing_else():
     assert b["STAIR"].points[0] == (a["STAIR"].points[0][0] + 1000, a["STAIR"].points[0][1] - 500)
     assert b["F0-R1"].point == (a["F0-R1"].point[0] + 1000, a["F0-R1"].point[1] - 500)
     assert b["F0-DI"] == a["F0-DI"] and b["L1"] == a["L1"]
+
+
+def _frame_plan():
+    return BuildPlan.model_validate({"ops": [
+        {"op": "level", "key": "L0", "name": "L0", "elevation_mm": 0},
+        {"op": "level", "key": "L1", "name": "L1", "elevation_mm": 3000},
+        {"op": "column", "key": "C1", "level": "L0", "top_level": "L1", "point": (0, 0), "type": "RCC Column 230x450"},
+        {"op": "column", "key": "C2", "level": "L0", "top_level": "L1", "point": (4000, 0), "type": "RCC Column 230x450"},
+        {"op": "beam", "key": "B1", "level": "L1", "start": (0, 0), "end": (4000, 0), "type": "RCC Beam 230x450"},
+    ]})
+
+
+FRAME_TYPES = TypeMap.from_dict({
+    "columns": {"RCC Column 230x450": {"family": "M_Concrete-Rectangular-Column", "type": "230 x 450mm"}},
+    "beams": {"RCC Beam 230x450": {"family": "M_Concrete-Rectangular Beam", "type": "230 x 450mm"}}})
+
+
+def test_frame_types_are_ensured_once_each_before_anything_is_built():
+    revit = FakeRevit()
+    plain = revit.call
+    revit.call = lambda command, params=None, **kw: (
+        revit.calls.append((command, params)) or {"action": "created", "source": "created"}
+        if command == "ensure_family_type" else plain(command, params, **kw))
+    result = Runner(revit, types=FRAME_TYPES).build(_frame_plan())
+    ensured = [p for c, p in revit.calls if c == "ensure_family_type"]
+    assert result.status == "built"
+    assert ensured == [
+        {"category": "structural_column", "family_name": "M_Concrete-Rectangular-Column", "type_name": "230 x 450mm",
+         "dimensions": {"b_mm": 230, "h_mm": 450}},
+        {"category": "structural_framing", "family_name": "M_Concrete-Rectangular Beam", "type_name": "230 x 450mm",
+         "dimensions": {"b_mm": 230, "h_mm": 450}}]
+    assert [c for c, _ in revit.calls][:2] == ["ensure_family_type", "ensure_family_type"]
+
+
+def test_a_frame_type_that_cannot_be_provided_stops_the_build_before_it_starts():
+    revit = FakeRevit()
+    plain = revit.call
+
+    def call(command, params=None, **kw):
+        if command == "ensure_family_type":
+            raise RevitError({"success": False, "error": "TEMPLATE_NOT_FOUND: no family template"})
+        return plain(command, params, **kw)
+    revit.call = call
+    result = Runner(revit, types=FRAME_TYPES).build(_frame_plan())
+    assert result.status == "failed" and result.failed_key == "C1" and result.batches_succeeded == 0
+    assert result.error_code == "TEMPLATE_NOT_FOUND" and revit.calls == []
+
+
+def test_an_older_add_in_without_ensure_family_type_still_builds():
+    revit = FakeRevit()
+    plain = revit.call
+
+    def call(command, params=None, **kw):
+        if command == "ensure_family_type":
+            raise RevitError({"success": False, "error": "UNKNOWN_COMMAND: ensure_family_type."})
+        return plain(command, params, **kw)
+    revit.call = call
+    assert Runner(revit, types=FRAME_TYPES).build(_frame_plan()).status == "built"

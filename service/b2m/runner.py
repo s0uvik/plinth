@@ -13,17 +13,23 @@ and compared with the plan.
 from __future__ import annotations
 
 import logging
+import re
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
-from b2m.plan import KEY_SEPARATOR, PHASE_OF, BuildPlan, Op, RailingOp
+from b2m.plan import KEY_SEPARATOR, PHASE_OF, BeamOp, BuildPlan, ColumnOp, Op, RailingOp
 from b2m.revit import commands
 from b2m.revit.client import RevitError, RevitTimeout
 from b2m.revit.types import TypeMap
 
 MAX_BATCH = 20
 BATCH_TIMEOUT_SECONDS = 300
+ENSURE_TIMEOUT_SECONDS = 600  # creating a family from its template can take a while
+
+# Logical frame types carry their section in the name ("RCC Column 230x450": b 230, h 450).
+SECTION = re.compile(r"(\d+)\s*[xX×]\s*(\d+)")
+ENSURE_CATEGORY = {"column": "structural_column", "beam": "structural_framing"}
 
 log = logging.getLogger(__name__)
 
@@ -68,6 +74,9 @@ class Runner:
         by_key = plan.by_key()
         batches = plan_batches(plan)
         result = BuildResult(status="built", batches_total=len(batches), batches_succeeded=0)
+        stopped = self._ensure_frame_types(plan, result)
+        if stopped is not None:
+            return stopped
         self.progress(0, len(batches))
         for index, batch in enumerate(batches):
             if batch[0].op in commands.DIRECT_OPS:
@@ -91,6 +100,34 @@ class Runner:
             result.batches_succeeded += 1
             self.progress(index + 1, len(batches))
         return result
+
+    def _ensure_frame_types(self, plan: BuildPlan, result: BuildResult) -> BuildResult | None:
+        """Before anything is built, make sure every column and beam type the plan uses exists in the project:
+        the add-in uses it, duplicates it to the section, loads the family from disk or creates it from Revit's
+        family template (ensure_family_type). A project without concrete frame families then still builds."""
+        wanted: dict[tuple[str, str, str], tuple[Op, tuple[int, int]]] = {}
+        for op in plan.ops:
+            if not isinstance(op, (ColumnOp, BeamOp)):
+                continue
+            mapped = (self.types.column if isinstance(op, ColumnOp) else self.types.beam)(op.type, op.family)
+            section = SECTION.search(op.type) or SECTION.search(mapped.type)
+            if mapped.family is None or section is None:
+                continue  # nothing to create it from; the build itself reports a missing type
+            wanted.setdefault((op.op, mapped.family, mapped.type), (op, (int(section.group(1)), int(section.group(2)))))
+        for (kind, family, type_name), (op, (b, h)) in wanted.items():
+            params = {"category": ENSURE_CATEGORY[kind], "family_name": family, "type_name": type_name,
+                      "dimensions": {"b_mm": b, "h_mm": h}}
+            try:
+                data = self.revit.call("ensure_family_type", params, timeout_seconds=ENSURE_TIMEOUT_SECONDS)
+            except RevitTimeout as e:
+                return self._stop(result, "unknown", e, op.key)
+            except RevitError as e:
+                if e.code == "UNKNOWN_COMMAND":
+                    log.warning("add-in has no ensure_family_type; building with the types already in the project")
+                    return None
+                return self._stop(result, "failed", e, op.key)
+            log.info("%s %s: %s (%s)", family, type_name, data.get("action"), data.get("source"))
+        return None
 
     def _direct(self, op: Op, by_key: dict[str, Op], result: BuildResult) -> BuildResult | None:
         """One op as its own command. Returns the stopped result on failure, else None."""
