@@ -46,6 +46,14 @@ python.org (tick "Add to PATH").
 If a size is missing, it adapts a **copy** of a close family. Only if nothing fits does it stop and ask whether to
 use another family or create one. Answer the question, then build again.
 
+**If the build stops on a question** (for example "2 loaded window families fit equally well"), click **Remove
+generated model** first, answer the question on the review page, then click **Build in Revit** again. Your answer is
+kept for the next build.
+
+**Check the assumed values before approving.** "Assume remaining" fills what the drawings leave open with typical
+values for the location (e.g. windows 900 sill, 2100 head). Where the office knows better (a ventilator 640 tall at
+1460 sill, a stair window), change that answer before you approve.
+
 **It will never** edit one of your existing types or families in place (it duplicates first), build without your
 approval, or delete anything it did not create.
 
@@ -74,6 +82,12 @@ When something fails, send the run folder `%LOCALAPPDATA%\B2M\runs\<run id>\` (e
 review page.
 
 ## Known limits
+
+- **Drawing set:** the template's view title wraps a long view name over its scale; grid heads of grids under
+  ~150 mm apart overlap. Title-block fields (project name, client, drawn by...) stay blank until answered on the
+  review page.
+- **Estimate:** stair railings are measured as Revit built them (inner and outer railing per stair, landing
+  included); an office that counts one railing per flight will see a difference to answer.
 
 - Proven on one G+4 RCC frame set (Bardhaman). Other offices draw differently; expect new questions.
 - Live-tested on Revit 2026 only.
