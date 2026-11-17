@@ -45,6 +45,7 @@ Copy-Item (Join-Path $root "NOTICE") (Join-Path $package "licenses\NOTICE")
 Copy-Item (Join-Path $root "third_party\rvt-mcp\LICENSE") (Join-Path $package "licenses\rvt-mcp-LICENSE")
 foreach ($file in "install.ps1", "uninstall.ps1", "standards.example.json") { Copy-Item (Join-Path $PSScriptRoot $file) $package }
 Copy-Item (Join-Path $root "README.md") $package
+Copy-Item (Join-Path $root "docs\quick-start.md") (Join-Path $package "QUICK-START.md")
 
 $zip = "$package.zip"
 if (Test-Path $zip) { Remove-Item $zip }
