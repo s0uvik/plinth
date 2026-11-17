@@ -4,7 +4,8 @@
 // separation lines must lie in the level's sketch plane); repeated or too-close points are an error
 // instead of being dropped silently; at most 1000 points; the sketch plane is the level's own; a
 // view_id must be a floor/area plan of the level given; without view_id the active plan is used only
-// when it is on the level, else the level's first floor plan, and the response names the view used.
+// when it is on the level, else the level's first floor plan, else (a level with no plan yet, as during a build)
+// a temporary floor plan deleted again in the same transaction; the response names the view used.
 
 using System;
 using System.Collections.Generic;
@@ -67,11 +68,13 @@ namespace B2M.Revit.Commands.Rooms
                     plan = new FilteredElementCollector(doc).OfClass(typeof(ViewPlan)).Cast<ViewPlan>()
                         .Where(v => !v.IsTemplate && v.ViewType == ViewType.FloorPlan && v.GenLevel != null && v.GenLevel.Id == level.Id)
                         .OrderBy(v => v.Name).FirstOrDefault();
-                if (plan == null)
-                    return CommandResult.Fail(level == null
-                        ? "NO_PLAN_VIEW: the active view is not a plan; pass view_id or level_name."
-                        : "NO_PLAN_VIEW: level '" + level.Name + "' has no floor plan; pass view_id.");
+                if (plan == null && level == null)
+                    return CommandResult.Fail("NO_PLAN_VIEW: the active view is not a plan; pass view_id or level_name.");
             }
+            // A level with no floor plan yet (a build makes its levels without views): the lines are drawn through a
+            // temporary floor plan of the level, deleted again in the same transaction; separation lines are model
+            // lines on the level's sketch plane and stay without it.
+            var temporaryView = plan == null;
             level = level ?? plan.GenLevel;
             if (level == null) return CommandResult.Fail("NO_LEVEL: view '" + plan.Name + "' has no associated level; pass level_name.");
 
@@ -92,15 +95,38 @@ namespace B2M.Revit.Commands.Rooms
                 tx.Start();
                 try
                 {
+                    if (temporaryView)
+                    {
+                        var planType = new FilteredElementCollector(doc).OfClass(typeof(ViewFamilyType)).Cast<ViewFamilyType>()
+                            .FirstOrDefault(t => t.ViewFamily == ViewFamily.FloorPlan);
+                        if (planType == null)
+                        {
+                            tx.RollBack();
+                            return CommandResult.Fail("NO_PLAN_VIEW: level '" + level.Name + "' has no floor plan and the project has no floor plan view type; pass view_id.");
+                        }
+                        plan = ViewPlan.Create(doc, planType.Id, level.Id);
+                    }
                     var sketchPlane = SketchPlane.Create(doc, level.Id);
                     var created = doc.Create.NewRoomBoundaryLines(sketchPlane, curves, plan);
                     var ids = new List<long>();
-                    foreach (ModelCurve curve in created) ids.Add(RevitCompat.GetId(curve.Id));
+                    var lines = new List<ModelCurve>();
+                    foreach (ModelCurve curve in created) { ids.Add(RevitCompat.GetId(curve.Id)); lines.Add(curve); }
+                    JObject viewInfo = new JObject { ["element_id"] = RevitCompat.GetId(plan.Id), ["name"] = plan.Name, ["view_type"] = plan.ViewType.ToString() };
+                    if (temporaryView)
+                    {
+                        doc.Delete(plan.Id);
+                        if (lines.Any(l => !l.IsValidObject))
+                        {
+                            tx.RollBack();
+                            return CommandResult.Fail("CREATE_FAILED: the separation lines went with the temporary floor plan of level '" + level.Name + "'; give the level a floor plan (view_id).");
+                        }
+                        viewInfo = new JObject { ["temporary"] = true, ["note"] = "drawn through a temporary floor plan of the level, deleted again" };
+                    }
                     if (tx.Commit() != TransactionStatus.Committed)
                         return CommandResult.Fail("NOT_COMMITTED: Revit rolled the transaction back; see failures.");
                     return CommandResult.Ok(new JObject
                     {
-                        ["view"] = new JObject { ["element_id"] = RevitCompat.GetId(plan.Id), ["name"] = plan.Name, ["view_type"] = plan.ViewType.ToString() },
+                        ["view"] = viewInfo,
                         ["level"] = RoomsHelpers.Ref(level),
                         ["curve_count"] = ids.Count,
                         ["separator_ids"] = new JArray(ids),
