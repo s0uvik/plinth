@@ -19,3 +19,6 @@ logs/
 # Distribution builds
 dist/
 service/build/
+
+# Claude Code local state (agent worktrees)
+.claude/
