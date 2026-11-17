@@ -241,6 +241,9 @@ def _num(value: Any) -> float | None:
 
 # ------------------------------------------------------------------------------------------------ recognised index
 
+SEPARATOR_JOIN_MM = 300.0  # how far Revit may lengthen a separation line's end into a wall
+
+
 class _Recognised:
     """Every recognised element by (sheet, id), with its kind, the sheet's registration and its evidence."""
 
@@ -281,6 +284,31 @@ class _Recognised:
 
     def xf(self, sheet: str) -> Callable[[Point], Point]:
         return transform(self.regs.get(sheet))
+
+    def walled_islands_m2(self, sheet: str, boundary: list[Point]) -> float:
+        """The footprint (walls and what they enclose) of walls standing wholly inside a room's drawn boundary and
+        joined into blocks, e.g. a duct on a roof terrace. A drawn boundary goes round them; Revit's room does not
+        include them. Single free-standing walls count only their own body."""
+        from shapely.geometry import LineString, Polygon
+        from shapely.ops import unary_union
+
+        p = self.plans.get(sheet)
+        if p is None or len(boundary) < 3:
+            return 0.0
+        room = Polygon(boundary)
+        if not room.is_valid:
+            return 0.0
+        bodies = []
+        for w in p.walls:
+            line = LineString([w.start, w.end])
+            if line.length and room.contains(line):
+                bodies.append(line.buffer(w.thickness_mm / 2, cap_style="flat", join_style="mitre"))
+        if not bodies:
+            return 0.0
+        mass = unary_union(bodies).buffer(1, join_style="mitre").buffer(-1, join_style="mitre")
+        blocks = mass.geoms if hasattr(mass, "geoms") else [mass]
+        filled = unary_union([Polygon(b.exterior) for b in blocks if b.geom_type == "Polygon"])
+        return filled.intersection(room).area / 1e6
 
     def rotation(self, sheet: str) -> float:
         reg = self.regs.get(sheet)
@@ -762,6 +790,8 @@ class _Comparer:
         if rec is None:
             return
         drawn = r.area_m2 if r.area_m2 is not None else (polygon_area_m2(r.boundary) if r.boundary else None)
+        if drawn is not None and r.boundary:
+            drawn = round(drawn - self.rec.walled_islands_m2(source.sheet, r.boundary), 4)
         if group is None and drawn is not None:
             self.area("room", "drawing_to_model", "area vs drawn boundary", drawn, data.get("area_m2"), **kw)
         else:
@@ -837,6 +867,23 @@ class _Comparer:
             self.corners("shaft", "drawing_to_plan", "outline corners", [self.rec.xf(source.sheet)(q) for q in e.outline],
                          points, key=op.key)
 
+    def separator_end(self, field: str, end: Point, other: Point, actual: Point | None, **kw) -> None:
+        """A separation line's end. Revit lengthens an end that lies in a wall along the line (it closes the room
+        the same way): moved only outward along the line, by no more than a thick wall, it is explained."""
+        if actual is not None:
+            length = _dist(other, end)
+            u = ((end[0] - other[0]) / length, (end[1] - other[1]) / length) if length else (0.0, 0.0)
+            v = (actual[0] - end[0], actual[1] - end[1])
+            along, side = v[0] * u[0] + v[1] * u[1], abs(-v[0] * u[1] + v[1] * u[0])
+            if side <= self.tol.position_mm and self.tol.position_mm < along <= SEPARATOR_JOIN_MM:
+                self.count("room_separator")
+                self.add("room_separator", "plan_to_model", field, end, actual, delta=round(along, 1),
+                         tolerance=self.tol.position_mm, unit="mm",
+                         reason=f"Revit lengthened the line {along:.1f} mm along itself into the wall it meets "
+                                "(not moved sideways): the room closes the same", **kw)
+                return
+        self.point("room_separator", "plan_to_model", field, end, actual, **kw)
+
     def op_room_separator(self, op) -> None:
         segments = list(zip(op.points, op.points[1:])) + ([(op.points[-1], op.points[0])] if op.close_loop else [])
         for i, (a, b) in enumerate(segments):
@@ -851,8 +898,8 @@ class _Comparer:
             if rec is None:
                 continue  # reported by presence (first segment) or below
             curve = rec.get("curve") or rec.get("location") or {}
-            self.point("room_separator", "plan_to_model", f"segment {i + 1} start", tuple(a), _xy(curve.get("start")), **kw)
-            self.point("room_separator", "plan_to_model", f"segment {i + 1} end", tuple(b), _xy(curve.get("end")), **kw)
+            self.separator_end(f"segment {i + 1} start", tuple(a), tuple(b), _xy(curve.get("start")), **kw)
+            self.separator_end(f"segment {i + 1} end", tuple(b), tuple(a), _xy(curve.get("end")), **kw)
             self.same("room_separator", "plan_to_model", "level", op.level, rec.get("level"), **kw)
 
     # -------------------------------------------------------------------------------------------- accounting

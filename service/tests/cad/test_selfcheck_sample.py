@@ -106,3 +106,20 @@ def test_a_shaft_outline_sent_as_one_flat_loop_reads_the_same(sample):
         rb[created[key]]["shaft"]["outline"] = rb[created[key]]["shaft"]["outline"][0]
     report = selfcheck.compare(result, building, created, rb, answers=answers)
     assert shafts and unexplained(report) == []
+
+
+def test_a_separation_line_lengthened_into_its_wall_is_explained_but_not_one_moved_sideways(sample):
+    """Live 2026-11-17: Revit lengthened kitchen separation lines 38.7 mm along themselves into the wall they meet."""
+    building, answers, result, created, readback = sample
+    sep = next(op for op in result.plan.ops if op.op == "room_separator")
+    (ax, ay), (bx, by) = sep.points[0], sep.points[1]
+    length = ((bx - ax) ** 2 + (by - ay) ** 2) ** 0.5
+    ux, uy = (ax - bx) / length, (ay - by) / length  # outward at the start
+    for shift, explained in (((ux * 38.7, uy * 38.7), True), ((-uy * 38.7, ux * 38.7), False)):
+        rb = copy.deepcopy(readback)
+        curve = rb[created[sep.key]].get("curve") or rb[created[sep.key]]["location"]
+        curve["start"]["x"] += shift[0]
+        curve["start"]["y"] += shift[1]
+        report = selfcheck.compare(result, building, created, rb, answers=answers)
+        d = next(d for d in report.differences if d.op_key == sep.key and d.field == "segment 1 start")
+        assert d.explained is explained

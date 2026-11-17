@@ -7,6 +7,7 @@ from typing import Any
 
 from shapely.geometry import Polygon
 
+from b2m.imported import selfcheck
 from b2m.cad.building import RecognisedBuilding
 from b2m.imported.to_plan import ImportPlan
 from b2m.plan import KEY_SEPARATOR, TYPE_OPS
@@ -36,6 +37,7 @@ def perfect_readback(result: ImportPlan, building: RecognisedBuilding, first_id:
     opening_types = {(op.category, op.name): op for op in plan.ops if op.op == "opening_type"}
     frames = {f.name: (f.b_mm, f.h_mm) for f in result.standards.columns + result.standards.beams}
     rooms = {(p.sheet, r.id): r for p in building.plans for r in p.rooms}
+    recognised = selfcheck._Recognised(building)
 
     def new(key: str, record: dict[str, Any]) -> int:
         nonlocal next_id
@@ -93,6 +95,8 @@ def perfect_readback(result: ImportPlan, building: RecognisedBuilding, first_id:
                 r = rooms.get((source.sheet, source.element))
                 area = r.area_m2 if r is not None and r.area_m2 is not None else (
                     Polygon(r.boundary).area / 1e6 if r is not None and r.boundary else MERGED_ROOM_AREA_M2)
+                if r is not None and r.boundary:  # Revit's room leaves out walled blocks inside it (a terrace's duct)
+                    area -= recognised.walled_islands_m2(source.sheet, r.boundary)
                 room = {"name": op.name, "number": op.number, "area_m2": round(area, 4), "level": op.level}
                 if op.flat:
                     room["department"] = op.flat
