@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Structural/ListRebarHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the bar diameter is read from RebarBarType.BarModelDiameter (Revit 2024+) instead of trying property
+// Modified for Plinth: the bar diameter is read from RebarBarType.BarModelDiameter (Revit 2024+) instead of trying property
 // names by reflection; host_id and view_id are checked (a wrong id was an empty list); the host filter runs in the
 // collector loop; each rebar adds its bar type name and shape; diameter via Mm.
 
@@ -8,10 +8,10 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Structural
+namespace Plinth.Revit.Commands.Structural
 {
     using View = Autodesk.Revit.DB.View;
 

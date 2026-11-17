@@ -1,4 +1,4 @@
-// New in B2M: the Revit-free decisions behind ensure_wall_type and ensure_floor_type. Drawings give walls and slabs by
+// New in Plinth: the Revit-free decisions behind ensure_wall_type and ensure_floor_type. Drawings give walls and slabs by
 // THICKNESS (250 mm outer wall, 125 mm inner wall, 150 mm slab), so the build needs a Basic Wall / Floor type with exactly
 // that total thickness, without ever editing an existing type (duplicate before edit, see SharedEditRule). The Revit side
 // (addin/src/Revit/Commands/Families/HostTypes.cs) reads the facts (candidate types, their layer stacks, function,
@@ -9,13 +9,13 @@
 // free name).
 //
 // HostTypeRule.Decide, in order (FIND, then ADAPT A COPY, then ASK):
-//   1. by name   - the requested name (name, else the default "B2M <t>mm Exterior|Interior" / "B2M <t>mm Slab"): a
+//   1. by name   - the requested name (name, else the default "Plinth <t>mm Exterior|Interior" / "Plinth <t>mm Slab"): a
 //                  candidate of that name is returned when it matches (matched_by "name"); one that differs in total
 //                  thickness, function, structural layer or layer stack is TYPE_DIMENSION_MISMATCH (never edited). A
 //                  default floor name held by a type of the other kind (foundation vs floor) moves to the alternate default
-//                  "B2M <t>mm Foundation Slab" / "B2M <t>mm Floor Slab"; an explicit name held by a non-candidate is
+//                  "Plinth <t>mm Foundation Slab" / "Plinth <t>mm Floor Slab"; an explicit name held by a non-candidate is
 //                  NAME_IN_USE.
-//   2. by spec   - any candidate that matches (matched_by "spec"): "B2M ..." names first, then by name; the others are
+//   2. by spec   - any candidate that matches (matched_by "spec"): "Plinth ..." names first, then by name; the others are
 //                  listed in other_matches.
 //   3. copy      - the base type: base_type_name when given (must be a candidate with a readable structure), else
 //                  BaseChoiceRule; the NEW type gets the requested name and a fresh compound structure (the base type is
@@ -43,7 +43,7 @@ using System.Globalization;
 using System.Linq;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Core.Families
+namespace Plinth.Revit.Core.Families
 {
     public enum HostKind
     {
@@ -138,7 +138,7 @@ namespace B2M.Revit.Core.Families
         /// <summary>The default name to use when DefaultName is held by a type of the other kind (floors only).</summary>
         public string AlternateDefaultName => Kind == HostKind.Wall
             ? null
-            : "B2M " + TypeMatchRule.Number(ThicknessMm) + "mm " + (Foundation ? "Foundation Slab" : "Floor Slab");
+            : "Plinth " + TypeMatchRule.Number(ThicknessMm) + "mm " + (Foundation ? "Foundation Slab" : "Floor Slab");
 
         public string Noun => Kind == HostKind.Wall ? "Basic Wall" : Foundation ? "foundation slab" : "floor";
     }
@@ -204,9 +204,9 @@ namespace B2M.Revit.Core.Families
         public static readonly string[] WallFunctions = { "exterior", "interior" };
 
         public static string WallDefaultName(double thicknessMm, string function) =>
-            "B2M " + TypeMatchRule.Number(thicknessMm) + "mm " + (string.Equals(function, "exterior", StringComparison.OrdinalIgnoreCase) ? "Exterior" : "Interior");
+            "Plinth " + TypeMatchRule.Number(thicknessMm) + "mm " + (string.Equals(function, "exterior", StringComparison.OrdinalIgnoreCase) ? "Exterior" : "Interior");
 
-        public static string FloorDefaultName(double thicknessMm) => "B2M " + TypeMatchRule.Number(thicknessMm) + "mm Slab";
+        public static string FloorDefaultName(double thicknessMm) => "Plinth " + TypeMatchRule.Number(thicknessMm) + "mm Slab";
 
         // ---- input ----------------------------------------------------------------------------------
 
@@ -425,7 +425,7 @@ namespace B2M.Revit.Core.Families
 
             // 2. by spec.
             var matches = Enumerable.Range(0, candidates.Count).Where(i => Matches(candidates[i], request))
-                .OrderBy(i => (candidates[i].Name ?? "").StartsWith("B2M ", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                .OrderBy(i => (candidates[i].Name ?? "").StartsWith("Plinth ", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
                 .ThenBy(i => candidates[i].Name, StringComparer.OrdinalIgnoreCase).ToList();
             if (matches.Count > 0)
             {
@@ -492,7 +492,7 @@ namespace B2M.Revit.Core.Families
                     ? "a curtain or stacked wall cannot be the base of a Basic Wall type"
                     : request.Foundation ? "a floor type cannot become a foundation slab type" : "a foundation slab type cannot become a floor type") + ")"
                 : "no " + request.Noun + " type is named '" + request.BaseTypeName + "'";
-            return HostTypeDecision.Refuse("BASE_TYPE_NOT_FOUND: " + why + ". Pass one of the listed types as base_type_name, or omit it to let B2M "
+            return HostTypeDecision.Refuse("BASE_TYPE_NOT_FOUND: " + why + ". Pass one of the listed types as base_type_name, or omit it to let Plinth "
                 + "choose. Nothing was changed.", Candidates(candidates, request));
         }
 

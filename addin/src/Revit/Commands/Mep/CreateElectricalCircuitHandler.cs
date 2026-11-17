@@ -1,4 +1,4 @@
-// New in B2M (Step 10, F5): puts electrical devices and fixtures (sockets, switches, lights, fans, AC units) on one
+// New in Plinth (Step 10, F5): puts electrical devices and fixtures (sockets, switches, lights, fans, AC units) on one
 // circuit (ElectricalSystem.Create) and, when a panel is given, assigns it (SelectPanel). Every element is checked first:
 // one without a free electrical connector of the circuit's type is an error naming it, and nothing is created.
 // One transaction: if Revit refuses the circuit or the panel (a voltage or distribution system mismatch), it all rolls back.
@@ -9,10 +9,10 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Electrical;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Mep
+namespace Plinth.Revit.Commands.Mep
 {
     public sealed class CreateElectricalCircuitHandler : IRevitCommand
     {
@@ -68,7 +68,7 @@ namespace B2M.Revit.Commands.Mep
                         + ", not electrical equipment.");
             }
 
-            using (var tx = new Transaction(doc, "B2M: Create circuit"))
+            using (var tx = new Transaction(doc, "Plinth: Create circuit"))
             {
                 tx.Start();
                 try

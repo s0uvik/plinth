@@ -1,16 +1,16 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Parameters/ListProjectParametersHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the shared-parameter GUID now comes from the SharedParameterElement (rvt-mcp cast the binding's
+// Modified for Plinth: the shared-parameter GUID now comes from the SharedParameterElement (rvt-mcp cast the binding's
 // definition to ExternalDefinition, which bindings never are, so guid was always null); categories add builtInCategory.
 
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Query
+namespace Plinth.Revit.Commands.Query
 {
     public sealed class ListProjectParametersHandler : IRevitCommand
     {

@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Rooms/CreateRoomHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M (PRD improvement): department (B2M stores the flat ID there) is set in the same
+// Modified for Plinth (PRD improvement): department (Plinth stores the flat ID there) is set in the same
 // call, replacing the planned set_room_data; level is required with valid options on a miss
 // (rvt-mcp took the first level); no floor plan view is needed; a room that ends up unenclosed is
 // refused; area and status are read back. Failures go through FailureScope like every command.
@@ -8,15 +8,15 @@
 using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Create
+namespace Plinth.Revit.Commands.Create
 {
     public sealed class CreateRoomHandler : IRevitCommand
     {
         public string Name => "create_room";
-        public string Description => "Place a room at a point in mm inside walls on a named level. Optional name, number and department (B2M: flat ID).";
+        public string Description => "Place a room at a point in mm inside walls on a named level. Optional name, number and department (Plinth: flat ID).";
         public string ParametersSchema => @"{""type"":""object"",""properties"":{
             ""x"":{""type"":""number""},""y"":{""type"":""number""},
             ""level"":{""type"":""string""},
@@ -33,7 +33,7 @@ namespace B2M.Revit.Commands.Create
             if (!Lookup.TryLevel(doc, p.Value<string>("level"), out var level, out var failure)) return failure;
 
             var point = new UV(Mm.ToFeet(p.Value<double>("x")), Mm.ToFeet(p.Value<double>("y")));
-            using (var tx = new Transaction(doc, "B2M: Create Room"))
+            using (var tx = new Transaction(doc, "Plinth: Create Room"))
             {
                 tx.Start();
                 try

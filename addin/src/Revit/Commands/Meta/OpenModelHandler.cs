@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Documents/OpenModelHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: opens only an absolute path the user confirmed (confirmed=true); errors name the file, never the
+// Modified for Plinth: opens only an absolute path the user confirmed (confirmed=true); errors name the file, never the
 // full path. A workshared central model, a file whose header cannot be read, or a workshared model from another Revit
 // year is refused instead of creating a new local copy (rvt-mcp's Create New Local, Revit.ini ProjectPath lookup and
 // local-file renaming are not ported; the user opens or creates the local in Revit). The worksets option is not ported.
@@ -12,10 +12,10 @@ using System.IO;
 using System.Text.RegularExpressions;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Meta
+namespace Plinth.Revit.Commands.Meta
 {
     public sealed class OpenModelHandler : IRevitCommand, IOpensDocument
     {
@@ -77,7 +77,7 @@ namespace B2M.Revit.Commands.Meta
             if (info.IsWorkshared)
             {
                 if (info.IsCentral || !info.IsLocal)
-                    return CommandResult.Fail("WORKSHARED_CENTRAL: '" + fileName + "' is a workshared central model. B2M never opens a central "
+                    return CommandResult.Fail("WORKSHARED_CENTRAL: '" + fileName + "' is a workshared central model. Plinth never opens a central "
                         + "directly; ask the user to create or open their local copy, then open that file. Nothing was opened.");
                 if (!string.IsNullOrEmpty(savedIn) && savedIn != hostYear)
                     return CommandResult.Fail("WORKSHARED_UPGRADE_NEEDS_USER: '" + fileName + "' is a workshared local saved in Revit " + savedIn

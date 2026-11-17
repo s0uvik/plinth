@@ -6,9 +6,9 @@ from pathlib import Path
 import ezdxf
 import pytest
 
-from b2m.cad import overlay, reader, sheet
-from b2m.cad.classify import Classification
-from b2m.cad.recognise import recognise_plan, recognise_plan_detailed
+from plinth.cad import overlay, reader, sheet
+from plinth.cad.classify import Classification
+from plinth.cad.recognise import recognise_plan, recognise_plan_detailed
 
 PLAN = Classification(role="floor_plan", storeys=[1])
 

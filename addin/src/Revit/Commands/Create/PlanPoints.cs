@@ -1,13 +1,13 @@
-// New in B2M: shared parsing for the snake_case create commands (create_stair, create_railing, create_roof),
+// New in Plinth: shared parsing for the snake_case create commands (create_stair, create_railing, create_roof),
 // which take plan points as [x, y] arrays in mm rather than the {x, y} objects of the ported commands.
 
 using System;
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Create
+namespace Plinth.Revit.Commands.Create
 {
     internal static class PlanPoints
     {

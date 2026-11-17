@@ -2,7 +2,7 @@
 
 import pytest
 
-from b2m.cad.rebar import parse
+from plinth.cad.rebar import parse
 
 
 @pytest.mark.parametrize("text, dia, spacing, count, legs, cover, role", [

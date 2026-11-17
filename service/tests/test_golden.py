@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from b2m.engine import generate
-from b2m.spec import BuildingSpec
+from plinth.engine import generate
+from plinth.spec import BuildingSpec
 from scripts.update_golden import plan_json
 from tests.engine.test_engine import assert_plan_sound
 

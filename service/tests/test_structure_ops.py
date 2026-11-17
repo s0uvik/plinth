@@ -7,11 +7,11 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from b2m.plan import BuildPlan, translate
-from b2m.revit import commands
-from b2m.revit.client import RevitError
-from b2m.revit.types import FamilyType, TypeMap
-from b2m.runner import Runner, plan_batches
+from plinth.plan import BuildPlan, translate
+from plinth.revit import commands
+from plinth.revit.client import RevitError
+from plinth.revit.types import FamilyType, TypeMap
+from plinth.runner import Runner, plan_batches
 
 LEVELS = [{"op": "level", "key": "L0", "name": "L0", "elevation_mm": 0},
           {"op": "level", "key": "L1", "name": "L1", "elevation_mm": 3000}]
@@ -202,7 +202,7 @@ def test_type_map_sections_for_structure_stairs_and_railings():
 
 
 def test_example_standards_file_maps_every_logical_type_the_engine_uses():
-    from b2m.engine import catalog, structure
+    from plinth.engine import catalog, structure
     example = Path(__file__).resolve().parents[2] / "installer" / "standards.example.json"
     types = TypeMap.from_dict(json.loads(example.read_text(encoding="utf-8")))
     assert set(catalog.WALL_THICKNESS) <= types.walls.keys()

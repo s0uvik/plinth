@@ -1,16 +1,16 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Links/GetLinkCoordinateSystemHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: snapshot and DTO code shared through LinksHelpers; lengths through Mm; a miss returns
+// Modified for Plinth: snapshot and DTO code shared through LinksHelpers; lengths through Mm; a miss returns
 // valid_links (Revit links) and valid_cad_links; CAD imports (not links) are refused with that reason.
 
 using System;
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Links
+namespace Plinth.Revit.Commands.Links
 {
     public sealed class GetLinkCoordinateSystemHandler : IRevitCommand
     {

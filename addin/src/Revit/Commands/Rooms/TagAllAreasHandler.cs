@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Rooms/TagAllAreasHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: follows tag_all_rooms: area plan misses list the valid area plans; tag_type_id
+// Modified for Plinth: follows tag_all_rooms: area plan misses list the valid area plans; tag_type_id
 // must be an area tag type; a project without an area tag family fails up front; when no tag could be
 // placed, nothing is kept and the call fails; already tagged areas are counted (rvt-mcp's
 // skipped_existing_count stayed 0 because they were filtered out first); placed areas only.
@@ -10,10 +10,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Rooms
+namespace Plinth.Revit.Commands.Rooms
 {
     public sealed class TagAllAreasHandler : IRevitCommand
     {
@@ -102,7 +102,7 @@ namespace B2M.Revit.Commands.Rooms
             var created = new List<long>();
             var failed = new JArray();
             var failedCount = 0;
-            using (var tx = new Transaction(doc, "B2M: Tag All Areas"))
+            using (var tx = new Transaction(doc, "Plinth: Tag All Areas"))
             {
                 tx.Start();
                 try

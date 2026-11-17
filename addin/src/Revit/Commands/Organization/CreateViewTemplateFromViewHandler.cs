@@ -1,19 +1,19 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Views/CreateViewTemplateFromViewHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: sourceViewId is required (rvt-mcp silently used the active view); setting IDs are
+// Modified for Plinth: sourceViewId is required (rvt-mcp silently used the active view); setting IDs are
 // checked against the new template's settings and a bad one lists the valid settings; duplicate setting
 // IDs are refused; the template name is checked and trimmed before the transaction; the transaction is
-// "B2M: ..." with a commit-status check.
+// "Plinth: ..." with a commit-status check.
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Organization
+namespace Plinth.Revit.Commands.Organization
 {
     using View = Autodesk.Revit.DB.View;
 
@@ -61,7 +61,7 @@ namespace B2M.Revit.Commands.Organization
                 finalName = templateName + " (" + suffix + ")";
             }
 
-            using (var tx = new Transaction(doc, "B2M: Create view template"))
+            using (var tx = new Transaction(doc, "Plinth: Create view template"))
             {
                 tx.Start();
                 try

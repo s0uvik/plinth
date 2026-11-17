@@ -1,4 +1,4 @@
-// New in B2M (PRD Step 9, T9): read_back_elements, the self-check's one read of a built model. For up to 5000 element ids it
+// New in Plinth (PRD Step 9, T9): read_back_elements, the self-check's one read of a built model. For up to 5000 element ids it
 // returns, per element, what the self-check compares with the build plan and the drawings, in mm, m² and degrees:
 // category, type, family, Type Mark, level, location (point and rotation, or curve end points), and per kind the facts that
 // kind is checked on - walls (width, base/top constraint and offsets, height), doors/windows (host, offset along the
@@ -17,12 +17,12 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Architecture;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Commands.Parameters;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Commands.Parameters;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Query
+namespace Plinth.Revit.Commands.Query
 {
     public sealed class ReadBackElementsHandler : IRevitCommand
     {

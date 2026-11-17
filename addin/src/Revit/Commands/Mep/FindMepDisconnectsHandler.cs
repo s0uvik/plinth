@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Mep/FindMepDisconnectsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: view_id replaces view_only (default the whole model; view_only=true meant the active view); limit
+// Modified for Plinth: view_id replaces view_only (default the whole model; view_only=true meant the active view); limit
 // outside 1..20000 is an error (rvt-mcp clamped it); open connectors report their stable connector_id beside the
 // ordinal (rvt-mcp gave only the ordinal, which connect_mep_elements cannot use); domain_filter=electrical also
 // matches cable tray and conduit connectors (rvt-mcp missed them); truncated replaces limit_hit;
@@ -10,10 +10,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Mep
+namespace Plinth.Revit.Commands.Mep
 {
     using View = Autodesk.Revit.DB.View;
 

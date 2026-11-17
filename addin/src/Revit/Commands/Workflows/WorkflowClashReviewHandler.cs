@@ -1,11 +1,11 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Workflows/WorkflowClashReviewHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the clash check runs locally (WorkflowsHelpers.DetectClashes, a compact copy of
+// Modified for Plinth: the clash check runs locally (WorkflowsHelpers.DetectClashes, a compact copy of
 // clash_detection) instead of calling the ClashDetectionHandler; max_pairs now caps the bounding-box candidate
 // pairs that get the solid test (rvt-mcp counted every A x B pair, so a modest model hit the cap before
 // overlapping pairs were reached) and each side is capped at 5000 elements; only solid-confirmed clashes are
 // reported; categories accept BuiltInCategory names and a miss lists the valid ones; view_id must be a view
-// (not a template); transactions are named "B2M: ..."; the review view is named "B2M Clash Review"; any Revit
+// (not a template); transactions are named "Plinth: ..."; the review view is named "Plinth Clash Review"; any Revit
 // warning rolls the whole group back (FailureScope).
 
 using System;
@@ -14,10 +14,10 @@ using System.Globalization;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Workflows
+namespace Plinth.Revit.Commands.Workflows
 {
     using View = Autodesk.Revit.DB.View;
 
@@ -108,10 +108,10 @@ namespace B2M.Revit.Commands.Workflows
             View targetView = null;
             var markerIds = new JArray();
             var hadError = false;
-            using (var group = new TransactionGroup(doc, "B2M: Workflow clash review"))
+            using (var group = new TransactionGroup(doc, "Plinth: Workflow clash review"))
             {
                 group.Start();
-                using (var tx = new Transaction(doc, "B2M: Clash review"))
+                using (var tx = new Transaction(doc, "Plinth: Clash review"))
                 {
                     tx.Start();
                     try
@@ -206,7 +206,7 @@ namespace B2M.Revit.Commands.Workflows
             if (type == null || type.ViewFamily != ViewFamily.ThreeDimensional)
                 throw new InvalidOperationException("the project has no 3D view type.");
             var view = View3D.CreateIsometric(doc, type.Id);
-            view.Name = WorkflowsHelpers.UniqueName(WorkflowsHelpers.ViewNames(doc), "B2M Clash Review");
+            view.Name = WorkflowsHelpers.UniqueName(WorkflowsHelpers.ViewNames(doc), "Plinth Clash Review");
             return view;
         }
 

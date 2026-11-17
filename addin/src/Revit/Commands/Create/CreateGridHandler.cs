@@ -1,16 +1,16 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Organization/CreateGridHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: duplicate names and zero-length lines fail before anything is created; the
+// Modified for Plinth: duplicate names and zero-length lines fail before anything is created; the
 // response reads the grid back.
 
 using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Create
+namespace Plinth.Revit.Commands.Create
 {
     public sealed class CreateGridHandler : IRevitCommand
     {
@@ -42,7 +42,7 @@ namespace B2M.Revit.Commands.Create
             if (start.DistanceTo(end) <= app.Application.ShortCurveTolerance)
                 return CommandResult.Fail("LINE_TOO_SHORT: start and end are closer than Revit's shortest allowed line.");
 
-            using (var tx = new Transaction(doc, "B2M: Create Grid"))
+            using (var tx = new Transaction(doc, "Plinth: Create Grid"))
             {
                 tx.Start();
                 try

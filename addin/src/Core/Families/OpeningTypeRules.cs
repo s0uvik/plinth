@@ -1,4 +1,4 @@
-// New in B2M: the Revit-free decisions behind ensure_family_type for doors and windows, and behind type_mark on any
+// New in Plinth: the Revit-free decisions behind ensure_family_type for doors and windows, and behind type_mark on any
 // category. Drawings name openings by MARK and SIZE (D = 900 x 2100, W1 = 1000 x 1200), so the build needs a type with
 // exactly that width/height and Type Mark, without ever editing an existing type (duplicate before edit, see
 // SharedEditRule). The Revit side (addin/src/Revit/Commands/Families/OpeningFamilies.cs) reads the facts (families,
@@ -29,7 +29,7 @@ using System.Globalization;
 using System.Linq;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Core.Families
+namespace Plinth.Revit.Core.Families
 {
     public enum OpeningKind
     {
@@ -166,7 +166,7 @@ namespace B2M.Revit.Core.Families
                 var type = types[index];
                 if (!SameSize(type.SizesMm, request.SizesMm)) return SizeMismatch(type, index, familyName, request, "use another type_name");
                 if (mark != null && !SameMark(type.Mark, mark))
-                    return MarkMismatch(type, index, familyName, request, "use another type_name, or omit type_name so B2M finds or makes a type "
+                    return MarkMismatch(type, index, familyName, request, "use another type_name, or omit type_name so Plinth finds or makes a type "
                         + "with this size and mark");
                 return new TypeDecision { Step = TypeStep.UseExisting, Index = index, TypeName = type.Name, MatchedBy = "name" };
             }

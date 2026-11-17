@@ -1,8 +1,8 @@
 """Section marks on plans (T4): labelled arrows joined by a cut line, tails removed, jogs kept."""
 
-from b2m.cad import marks
-from b2m.cad.annot import name_of
-from b2m.cad.sections import main
+from plinth.cad import marks
+from plinth.cad.annot import name_of
+from plinth.cad.sections import main
 from tests.cad import synthetic
 from tests.cad.conftest import SAMPLE_DXF
 

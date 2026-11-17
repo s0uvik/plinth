@@ -1,9 +1,9 @@
 using System;
 using System.IO;
 using System.Linq;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 
-namespace B2M.Revit.Commands.Export
+namespace Plinth.Revit.Commands.Export
 {
     /// <summary>
     /// Exact output paths for Revit exports. Revit names export files itself (it appends view names, or
@@ -57,7 +57,7 @@ namespace B2M.Revit.Commands.Export
         {
             var folder = Path.GetDirectoryName(target);
             Directory.CreateDirectory(folder);
-            var staging = Path.Combine(folder, ".b2m-staging-" + Guid.NewGuid().ToString("N"));
+            var staging = Path.Combine(folder, ".plinth-staging-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(staging);
             return staging;
         }

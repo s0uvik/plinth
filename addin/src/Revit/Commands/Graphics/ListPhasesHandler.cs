@@ -1,15 +1,15 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Documents/ListPhasesHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: moved to the graphics toolset next to set_view_phase and set_element_phase; read errors
+// Modified for Plinth: moved to the graphics toolset next to set_view_phase and set_element_phase; read errors
 // surface instead of being swallowed into a shorter list.
 
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Graphics
+namespace Plinth.Revit.Commands.Graphics
 {
     public sealed class ListPhasesHandler : IRevitCommand
     {

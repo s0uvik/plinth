@@ -1,4 +1,4 @@
-// New in B2M (Step 9 drawing set): grid heads outside the building in one drawing view.
+// New in Plinth (Step 9 drawing set): grid heads outside the building in one drawing view.
 // Grids are modelled as long as the source drew them, so a short grid (one that stops at an interior wall) shows its
 // bubble inside the plan, and a section shows the bubbles wherever the grids' model extents end. Here each grid's
 // view-specific (2D) extent in the given view is set: in a plan it runs across the building box and head_offset_mm
@@ -13,13 +13,13 @@ using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Core.Drawing;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Core.Drawing;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.View
+namespace Plinth.Revit.Commands.View
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     public sealed class SetGridHeadsHandler : IRevitCommand
@@ -73,7 +73,7 @@ namespace B2M.Revit.Commands.View
                 if (seen) failed++;
             }
 
-            using (var tx = new Transaction(doc, "B2M: Set grid heads"))
+            using (var tx = new Transaction(doc, "Plinth: Set grid heads"))
             {
                 tx.Start();
                 foreach (var id in ids.Distinct())

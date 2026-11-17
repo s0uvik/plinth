@@ -20,8 +20,8 @@ import pytest
 from shapely.geometry import Point, Polygon
 from shapely.ops import unary_union
 
-from b2m.fitout import furniture, mep, rooms, siting
-from b2m.fitout.mepcore import TEE_GAP_MM
+from plinth.fitout import furniture, mep, rooms, siting
+from plinth.fitout.mepcore import TEE_GAP_MM
 from tests.cad.conftest import SAMPLE
 from tests.fitout.conftest import box_walls, plan_of
 
@@ -404,8 +404,8 @@ def test_meters_and_common_board_by_the_ground_floor_stair(sample_answered):
 
 def _ctx(result, layout):
     """A layout context for the sample's plan (the stair geometry the clearance check reads)."""
-    from b2m.fitout import rules
-    from b2m.fitout.mepcore import Ctx
+    from plinth.fitout import rules
+    from plinth.fitout.mepcore import Ctx
     wb = rules.load(layout.rule_set)
     model = rooms.build(result.plan, wb)
     return Ctx(result.plan, model, furniture.solve(model, wb), wb, {}, mep.shaft_kinds_from_sources(result.sources))

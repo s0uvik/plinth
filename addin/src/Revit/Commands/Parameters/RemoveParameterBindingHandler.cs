@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Parameters/RemoveParameterBindingHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: misses list the project's bindings or the parameter's bound categories; a name match is exact
+// Modified for Plinth: misses list the project's bindings or the parameter's bound categories; a name match is exact
 // before case-insensitive; the original parameter group is kept when re-inserting (rvt-mcp fell back to Data on
 // error); the transaction is checked for Committed. dryRun still defaults to true, as in rvt-mcp.
 
@@ -9,10 +9,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Parameters
+namespace Plinth.Revit.Commands.Parameters
 {
     public sealed class RemoveParameterBindingHandler : IRevitCommand
     {
@@ -113,7 +113,7 @@ namespace B2M.Revit.Commands.Parameters
                 return CommandResult.Ok(result);
             }
 
-            using (var tx = new Transaction(doc, "B2M: Remove parameter binding"))
+            using (var tx = new Transaction(doc, "Plinth: Remove parameter binding"))
             {
                 tx.Start();
                 try

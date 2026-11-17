@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Mep/GetMepElementConnectorsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: each connector also reports its MEP system (system_id, system_name), which replaces the
+// Modified for Plinth: each connector also reports its MEP system (system_id, system_name), which replaces the
 // read-only report mode dropped from set_system_classification; flow is converted to litres per second
 // (rvt-mcp returned Revit's internal cubic feet per second); an element without connectors is an error
 // (rvt-mcp returned an empty list); connector type (End, Curve, Logical) is reported; IDs are numbers.
@@ -8,10 +8,10 @@
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Mep
+namespace Plinth.Revit.Commands.Mep
 {
     public sealed class GetMepElementConnectorsHandler : IRevitCommand
     {

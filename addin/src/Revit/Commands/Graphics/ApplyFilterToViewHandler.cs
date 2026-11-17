@@ -1,15 +1,15 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Graphics/ApplyFilterToViewHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: failures are errors with codes (rvt-mcp returned success with an error field); a missing
-// filter or view lists the valid ones; the transaction is named "B2M: ..." and rolled back only while open.
+// Modified for Plinth: failures are errors with codes (rvt-mcp returned success with an error field); a missing
+// filter or view lists the valid ones; the transaction is named "Plinth: ..." and rolled back only while open.
 
 using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Graphics
+namespace Plinth.Revit.Commands.Graphics
 {
     public sealed class ApplyFilterToViewHandler : IRevitCommand
     {
@@ -32,7 +32,7 @@ namespace B2M.Revit.Commands.Graphics
             if (!GraphicsHelpers.RequireOverrides(view, out failure)) return failure;
             var visible = p.Value<bool?>("visible") ?? true;
 
-            using (var tx = new Transaction(doc, "B2M: Apply View Filter"))
+            using (var tx = new Transaction(doc, "Plinth: Apply View Filter"))
             {
                 tx.Start();
                 try

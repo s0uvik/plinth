@@ -1,17 +1,17 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Links/UnloadLinkHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: rvt-mcp passed a null callback, which silently discards unsaved shared-coordinate
-// changes in the link; B2M refuses when the link has such changes unless unsaved_positions is "save"
+// Modified for Plinth: rvt-mcp passed a null callback, which silently discards unsaved shared-coordinate
+// changes in the link; Plinth refuses when the link has such changes unless unsaved_positions is "save"
 // (writes them into the linked .rvt first) or "discard". Misses return valid_links. Still runs outside
 // any transaction, as Revit requires.
 
 using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Links
+namespace Plinth.Revit.Commands.Links
 {
     public sealed class UnloadLinkHandler : IRevitCommand
     {

@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Infrastructure/SchemaValidator.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: unknown fields are rejected with the list of valid ones (a typo such as "startx"
+// Modified for Plinth: unknown fields are rejected with the list of valid ones (a typo such as "startx"
 // used to be ignored silently); enums are checked for numbers too; malformed schemas fail closed.
 
 using System;
@@ -9,7 +9,7 @@ using System.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Core.Execution
+namespace Plinth.Revit.Core.Execution
 {
     public sealed class SchemaValidationResult
     {

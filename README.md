@@ -1,4 +1,4 @@
-# B2M Brief-to-Model
+# Plinth
 
 Turns a written brief for a G+3/G+4 apartment block into a native Revit model. See
 [`PRD Revit Brief-to-Model.md`](PRD%20Revit%20Brief-to-Model.md) for the product plan. It also turns an office's DWG
@@ -11,9 +11,9 @@ drawing set into a Revit model, drawing set and estimate (Step 9); a BIM enginee
 | --- | --- |
 | `addin/src/Core` | Add-in code with no Revit dependency: transports, token, discovery, request lifecycle, schema checks, batch logic |
 | `addin/src/Revit` | Revit-side bridge (`Bridge/`) and commands (`Commands/<toolset>/`) |
-| `addin/B2M.Revit.R24` … `R27` | One project per Revit year, all compiling the shared source |
+| `addin/Plinth.Revit.R24` … `R27` | One project per Revit year, all compiling the shared source |
 | `addin/tests` | Core tests, run on .NET 8 and .NET Framework 4.8 |
-| `service/b2m/revit` | Python client: discovery, pipe/TCP connection, `RevitClient` |
+| `service/plinth/revit` | Python client: discovery, pipe/TCP connection, `RevitClient` |
 | `service/scripts` | Gate scripts run against a live Revit |
 
 Much of the add-in is derived from [rvt-mcp](https://github.com/bimwright/rvt-mcp) (Apache-2.0); see `NOTICE`.
@@ -24,16 +24,16 @@ Needs the .NET 10 SDK (builds every year, including .NET Framework 4.8 and .NET 
 
 ```sh
 cd addin
-dotnet build B2M.Revit.sln -c Release          # all four years + tests
-dotnet test tests/B2M.Revit.Core.Tests          # core tests on .NET 8 and 4.8
-dotnet build B2M.Revit.R26 -c Release -p:Deploy=true   # install into Revit 2026 for this user
+dotnet build Plinth.Revit.sln -c Release          # all four years + tests
+dotnet test tests/Plinth.Revit.Core.Tests          # core tests on .NET 8 and 4.8
+dotnet build Plinth.Revit.R26 -c Release -p:Deploy=true   # install into Revit 2026 for this user
 ```
 
-Deploy copies `B2M.Revit.addin` and `B2M\` into `%APPDATA%\Autodesk\Revit\Addins\<year>\`. Restart Revit to
+Deploy copies `Plinth.Revit.addin` and `Plinth\` into `%APPDATA%\Autodesk\Revit\Addins\<year>\`. Restart Revit to
 load it. To remove it, delete those two entries.
 
-At startup the add-in writes `%LOCALAPPDATA%\B2M\discovery\revit-<year>-<pid>.json` (pipe name or port,
-session token) and logs to `%LOCALAPPDATA%\B2M\logs\addin-<date>.log`.
+At startup the add-in writes `%LOCALAPPDATA%\Plinth\discovery\revit-<year>-<pid>.json` (pipe name or port,
+session token) and logs to `%LOCALAPPDATA%\Plinth\logs\addin-<date>.log`.
 
 ### Protocol
 
@@ -54,14 +54,14 @@ One JSON object per line each way over the named pipe (Revit 2025+) or loopback 
 ## Packaging and install (Step 6)
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File installer\build.ps1        # dist\B2M-<version>\ and .zip
+powershell -ExecutionPolicy Bypass -File installer\build.ps1        # dist\Plinth-<version>\ and .zip
 # on a user's PC, from the unzipped package, with Revit closed:
 powershell -ExecutionPolicy Bypass -File install.ps1                # add-in for each installed Revit 2024-2027 + service
 powershell -ExecutionPolicy Bypass -File uninstall.ps1 [-Purge]
 ```
 
-The install is per user (no admin). It needs Python 3.12 for the service and puts it in `%LOCALAPPDATA%\B2M`
-with `start-b2m.cmd`. `standards.example.json` shows how to map the logical types to a firm's own. The B2M
+The install is per user (no admin). It needs Python 3.12 for the service and puts it in `%LOCALAPPDATA%\Plinth`
+with `start-plinth.cmd`. `standards.example.json` shows how to map the logical types to a firm's own. The Plinth
 project template and family pack (PRD) still need to be made in Revit 2024 and added to the package.
 
 ## Service
@@ -94,7 +94,7 @@ or submitting a spec; defaults it applies are listed for review. It needs `ANTHR
 - Claude Desktop: add to `claude_desktop_config.json` (the service must be running):
 
   ```json
-  {"mcpServers": {"b2m": {"command": "C:\\...\\plinth\\service\\.venv\\Scripts\\python.exe", "args": ["-m", "b2m.mcp_server"]}}}
+  {"mcpServers": {"plinth": {"command": "C:\\...\\plinth\\service\\.venv\\Scripts\\python.exe", "args": ["-m", "plinth.mcp_server"]}}}
   ```
 
 - Gate (calls Claude, small cost): `.venv\Scripts\python scripts\step3_gate.py`
@@ -102,20 +102,20 @@ or submitting a spec; defaults it applies are listed for review. It needs `ANTHR
 ### Local API
 
 ```sh
-.venv\Scripts\python -m b2m.api      # http://127.0.0.1:8765
+.venv\Scripts\python -m plinth.api      # http://127.0.0.1:8765
 ```
 
 `POST /builds {"plan": ..., "document_title": "..."}` starts a build and returns a `run_id`;
 `GET /runs/{id}` shows progress (`batches`), created ids, read-back and errors;
 `POST /runs/{id}/remove` deletes exactly what that run created. Runs are kept in
-`%LOCALAPPDATA%\B2M\runs\<run_id>\` (plan, run record, every tool call).
+`%LOCALAPPDATA%\Plinth\runs\<run_id>\` (plan, run record, every tool call).
 
 ### Layout engine (Step 2)
 
-`b2m.spec` validates a building spec (PRD format); `b2m.engine.generate(spec)` returns a build plan and a
+`plinth.spec` validates a building spec (PRD format); `plinth.engine.generate(spec)` returns a build plan and a
 report, or a `LayoutError` saying why nothing fits.
 
-- Envelope: plot minus setbacks from `b2m/rules/kolkata_setbacks.yaml`. **The setback values are
+- Envelope: plot minus setbacks from `plinth/rules/kolkata_setbacks.yaml`. **The setback values are
   provisional placeholders** (`verified: false`) until Step 4 transcribes the official KMC rules.
 - Templates: T2 (two flats), T3 (two front flats plus one full-depth flat), T4 (four flats), each around a
   stair-and-lobby column with the stair at the front and an optional lift at the rear.
@@ -124,8 +124,8 @@ report, or a `LayoutError` saying why nothing fits.
 - Walls are derived from the boundaries between spaces, so they cannot overlap; doors and windows stay
   clear of wall ends and junctions; every floor is validated before a plan is emitted.
 - The engine names logical types (`Brick 230`, `RCC 150`, `Door 900x2100`...). A project not made from the
-  B2M template needs `%LOCALAPPDATA%\B2M\standards.json` mapping them to its own types (see
-  `b2m/revit/types.py`).
+  Plinth template needs `%LOCALAPPDATA%\Plinth\standards.json` mapping them to its own types (see
+  `plinth/revit/types.py`).
 
 ```sh
 .venv\Scripts\python scripts\render_floor.py tests\golden\specs\14-t4-2bhk-stilt-g4-lift.json plan.png
@@ -140,8 +140,8 @@ its stored plan.
 Revit must be closed while deploying a new add-in build (Revit locks the loaded DLL).
 
 ```sh
-set B2M_LIVE=1
-set B2M_TITLE=<scratch project title>
+set PLINTH_LIVE=1
+set PLINTH_TITLE=<scratch project title>
 .venv\Scripts\python -m pytest tests/live -v
 .venv\Scripts\python scripts\step1_gate.py --title "<scratch project title>"
 .venv\Scripts\python scripts\step2_gate.py --title "<scratch project title>" [--types standards.json]

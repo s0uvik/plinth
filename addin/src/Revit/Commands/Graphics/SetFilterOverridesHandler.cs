@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Graphics/SetFilterOverridesHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: failures are errors with codes (rvt-mcp returned success with an error field); at least one
+// Modified for Plinth: failures are errors with codes (rvt-mcp returned success with an error field); at least one
 // override is required; the solid fill pattern is found by IsSolidFill and its absence is an error; the
 // response reads back which settings the filter now overrides.
 
@@ -8,10 +8,10 @@ using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Graphics
+namespace Plinth.Revit.Commands.Graphics
 {
     public sealed class SetFilterOverridesHandler : IRevitCommand
     {
@@ -36,7 +36,7 @@ namespace B2M.Revit.Commands.Graphics
                     + "'; apply it first with apply_filter_to_view.");
             if (!GraphicsHelpers.TryOverrides(doc, p, out var actions, out var set, out failure)) return failure;
 
-            using (var tx = new Transaction(doc, "B2M: Set Filter Overrides"))
+            using (var tx = new Transaction(doc, "Plinth: Set Filter Overrides"))
             {
                 tx.Start();
                 try

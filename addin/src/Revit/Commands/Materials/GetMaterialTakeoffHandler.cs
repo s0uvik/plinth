@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Materials/GetMaterialTakeoffHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: read-only (rvt-mcp listed it as a write because of an "output: file" option that its handler
+// Modified for Plinth: read-only (rvt-mcp listed it as a write because of an "output: file" option that its handler
 // never used; that option is dropped); category_filter also takes built-in names such as OST_Walls and narrows the
 // collector; areas and volumes use Revit's unit conversion; categories carry builtInCategory; materials are
 // ordered by name.
@@ -10,10 +10,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Materials
+namespace Plinth.Revit.Commands.Materials
 {
     public sealed class GetMaterialTakeoffHandler : IRevitCommand
     {

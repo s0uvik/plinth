@@ -1,16 +1,16 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Rooms/ListAreasHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: unknown level or area scheme names are errors listing the valid ones (rvt-mcp
+// Modified for Plinth: unknown level or area scheme names are errors listing the valid ones (rvt-mcp
 // returned an empty list); the status counts cover the filtered areas, as list_rooms does; mm via Mm.
 
 using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Rooms
+namespace Plinth.Revit.Commands.Rooms
 {
     public sealed class ListAreasHandler : IRevitCommand
     {

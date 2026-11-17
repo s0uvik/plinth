@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Export/BatchExportSheetsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: one file per sheet named file_name_prefix + "number - name", each exported through a
+// Modified for Plinth: one file per sheet named file_name_prefix + "number - name", each exported through a
 // staging folder and moved into place; every target is checked before anything is exported, so an existing
 // file is replaced only with overwrite (rvt-mcp exported straight into the folder and reported files by
 // timestamp); output_folder is created when missing; DWG sheets are merged into one file each (no viewport
@@ -12,10 +12,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Export
+namespace Plinth.Revit.Commands.Export
 {
     using View = Autodesk.Revit.DB.View;
 

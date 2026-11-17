@@ -8,8 +8,8 @@ import math
 
 from shapely.geometry import LineString, Polygon
 
-from b2m.cad.building import Evidence, Room, Wall
-from b2m.imported import split_space
+from plinth.cad.building import Evidence, Room, Wall
+from plinth.imported import split_space
 
 
 def stub_space(width: float, depth: float, stub_x: float, stub_end_y: float, t: float = 200) -> list[tuple]:

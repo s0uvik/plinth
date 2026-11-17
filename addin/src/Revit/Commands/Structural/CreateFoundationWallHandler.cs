@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Structural/CreateFoundationWallHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the wall foundation type (foundation_type_id or foundation_type_name) is required and a miss lists
+// Modified for Plinth: the wall foundation type (foundation_type_id or foundation_type_name) is required and a miss lists
 // the options (rvt-mcp used the first type); a wall that already has a wall foundation is refused; errors are "CODE: message".
 
 using System;
@@ -8,10 +8,10 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Structural
+namespace Plinth.Revit.Commands.Structural
 {
     public sealed class CreateFoundationWallHandler : IRevitCommand
     {
@@ -39,7 +39,7 @@ namespace B2M.Revit.Commands.Structural
                 return CommandResult.Fail("ALREADY_HAS_FOUNDATION: wall " + RevitCompat.GetId(wall.Id) + " already has wall foundation "
                     + RevitCompat.GetId(existing.Id) + ".");
 
-            using (var tx = new Transaction(doc, "B2M: Create Wall Foundation"))
+            using (var tx = new Transaction(doc, "Plinth: Create Wall Foundation"))
             {
                 tx.Start();
                 try

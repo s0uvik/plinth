@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Elements/ShowElementInViewHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: ReadOnly (activating a view, selecting and zooming are UI state; nothing in the model
+// Modified for Plinth: ReadOnly (activating a view, selecting and zooming are UI state; nothing in the model
 // changes); ids that are not elements are an error listing them (rvt-mcp dropped them silently); an unknown
 // or template view_id is an error (rvt-mcp skipped the activation silently); view activation refuses while a
 // transaction is open; the result reports the active view after the zoom.
@@ -10,12 +10,12 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.View
+namespace Plinth.Revit.Commands.View
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     public sealed class ShowElementInViewHandler : IRevitCommand

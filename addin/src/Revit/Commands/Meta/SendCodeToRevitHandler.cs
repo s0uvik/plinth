@@ -1,18 +1,18 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Runtime/SendCodeToRevitHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: refused unless developer mode is on (read per call from %LOCALAPPDATA%\B2M\addin-settings.json);
+// Modified for Plinth: refused unless developer mode is on (read per call from %LOCALAPPDATA%\Plinth\addin-settings.json);
 // every call, allowed or refused, is appended to logs\code-execution.jsonl with the full code and outcome; the
-// code runs inside one "B2M: send_code" transaction through the shared ToolBaker.CodeRunner. The script protocol,
+// code runs inside one "Plinth: send_code" transaction through the shared ToolBaker.CodeRunner. The script protocol,
 // enhanced options, modules, journaling, telemetry, history and receipts are not ported. Still refused inside
 // batch_execute by BatchExecutor.
 
 using System;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Commands.ToolBaker;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Commands.ToolBaker;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Meta
+namespace Plinth.Revit.Commands.Meta
 {
     public sealed class SendCodeToRevitHandler : IRevitCommand
     {
@@ -38,7 +38,7 @@ namespace B2M.Revit.Commands.Meta
                 DeveloperMode.Log(app.Application.VersionNumber, Guid.NewGuid().ToString("N"), Name, null, code, "rejected_invalid_params");
                 return CommandResult.Fail("INVALID_PARAMS: code must be 1 to " + MaxCodeChars + " characters. Nothing ran.");
             }
-            return CodeRunner.AuditedRun(app, Name, null, code, new JObject(), "B2M: send_code");
+            return CodeRunner.AuditedRun(app, Name, null, code, new JObject(), "Plinth: send_code");
         }
     }
 }

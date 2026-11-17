@@ -6,8 +6,8 @@ from collections import Counter
 
 import pytest
 
-from b2m.cad import answers, assumptions, pipeline, plan_bridge, questions, readiness
-from b2m.cad.project import ImportStore, LocationRequired
+from plinth.cad import answers, assumptions, pipeline, plan_bridge, questions, readiness
+from plinth.cad.project import ImportStore, LocationRequired
 from tests.cad.conftest import SAMPLE_DXF
 
 TYPICAL, GROUND, ROOF = "2.PLAN 1st to 4th.dxf", "1.GROUND FLOOR PLAN.dxf", "3.ROOF PLAN.dxf"

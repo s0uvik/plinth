@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Mep/ListMepSystemsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: a limit outside 1..10000 is an error (rvt-mcp clamped it); truncated is reported;
+// Modified for Plinth: a limit outside 1..10000 is an error (rvt-mcp clamped it); truncated is reported;
 // is_well_connected is null for electrical systems (rvt-mcp reported true); IDs are numbers; errors are "CODE: message".
 
 using System;
@@ -11,10 +11,10 @@ using Autodesk.Revit.DB.Electrical;
 using Autodesk.Revit.DB.Mechanical;
 using Autodesk.Revit.DB.Plumbing;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Mep
+namespace Plinth.Revit.Commands.Mep
 {
     public sealed class ListMepSystemsHandler : IRevitCommand
     {

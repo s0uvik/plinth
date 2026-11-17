@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Rooms/ComputeRoomFinishesHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: read-only (it only reads; rvt-mcp listed it as a write); the unused "output"
+// Modified for Plinth: read-only (it only reads; rvt-mcp listed it as a write); the unused "output"
 // option is dropped; an unknown level is an error listing the valid ones (rvt-mcp returned an empty
 // result); room_ids and level_name are exclusive; boundary elements are merged per element with their
 // total length in mm (rvt-mcp listed every segment) and capped at 100 per room; default limit 500
@@ -13,10 +13,10 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Architecture;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Rooms
+namespace Plinth.Revit.Commands.Rooms
 {
     public sealed class ComputeRoomFinishesHandler : IRevitCommand
     {

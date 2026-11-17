@@ -1,17 +1,17 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Links/ImportCadToViewHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: view_id is required (rvt-mcp fell back to the active view) and must not be a template;
-// the path must be absolute (drive or UNC) and exist; only that file is read; transaction named "B2M: ...",
+// Modified for Plinth: view_id is required (rvt-mcp fell back to the active view) and must not be a template;
+// the path must be absolute (drive or UNC) and exist; only that file is read; transaction named "Plinth: ...",
 // rolled back only while open; unit gains centimeter/decimeter; the result reads the created instance back.
 
 using System;
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Links
+namespace Plinth.Revit.Commands.Links
 {
     using View = Autodesk.Revit.DB.View;
 
@@ -62,7 +62,7 @@ namespace B2M.Revit.Commands.Links
             };
 
             ElementId createdId;
-            using (var tx = new Transaction(doc, link ? "B2M: Link CAD" : "B2M: Import CAD"))
+            using (var tx = new Transaction(doc, link ? "Plinth: Link CAD" : "Plinth: Import CAD"))
             {
                 tx.Start();
                 try

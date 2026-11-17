@@ -2,12 +2,12 @@
 
 import pytest
 
-from b2m.engine import LayoutError, generate, structure
-from b2m.engine.floors import build_floor
-from b2m.engine.geometry import Rect
-from b2m.engine.site import envelope
-from b2m.engine.stair import design_stair, stair_core
-from b2m.engine.templates import plan_plate
+from plinth.engine import LayoutError, generate, structure
+from plinth.engine.floors import build_floor
+from plinth.engine.geometry import Rect
+from plinth.engine.site import envelope
+from plinth.engine.stair import design_stair, stair_core
+from plinth.engine.templates import plan_plate
 from tests.engine.test_engine import make
 
 
@@ -115,10 +115,10 @@ def test_chajjas_shade_every_outside_opening_from_the_lintel_outwards():
 
 
 def test_chajjas_that_would_touch_merge_into_one():
-    from b2m.engine.catalog import OpeningType
-    from b2m.engine.floors import BuiltFloor
-    from b2m.engine.geometry import Edge, Wall
-    from b2m.engine.openings import PlacedOpening
+    from plinth.engine.catalog import OpeningType
+    from plinth.engine.floors import BuiltFloor
+    from plinth.engine.geometry import Edge, Wall
+    from plinth.engine.openings import PlacedOpening
     window = OpeningType("W", 1200, 1200, 900)
     floor = BuiltFloor(1, None, [Edge("y", 0, 0, 10000, None, ("a", 0))], [Wall("y", 0, 0, 10000, "Brick 230", 230)], {},
                        windows=[PlacedOpening("window", window, 0, 2000, 2000, ("a", None)),

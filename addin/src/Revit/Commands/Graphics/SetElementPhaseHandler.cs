@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Organization/SetElementPhaseHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: moved to the graphics toolset next to the other phase tools; all or nothing (rvt-mcp ran
+// Modified for Plinth: moved to the graphics toolset next to the other phase tools; all or nothing (rvt-mcp ran
 // one sub-transaction per element and committed what worked): missing elements and elements without an
 // editable phase parameter fail before the transaction, and any Revit refusal or warning (for example
 // demolished before created) rolls back the whole call through FailureScope; at most 5000 ids; id and name for
@@ -11,10 +11,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Graphics
+namespace Plinth.Revit.Commands.Graphics
 {
     public sealed class SetElementPhaseHandler : IRevitCommand
     {
@@ -79,7 +79,7 @@ namespace B2M.Revit.Commands.Graphics
                 return CommandResult.Fail("PHASE_NOT_EDITABLE: " + refused.Count + " element(s) have no editable phase parameter; nothing changed.",
                     new JObject { ["elements"] = new JArray(refused.Take(GraphicsHelpers.MaxReported)) });
 
-            using (var tx = new Transaction(doc, "B2M: Set Element Phase"))
+            using (var tx = new Transaction(doc, "Plinth: Set Element Phase"))
             {
                 tx.Start();
                 var current = ElementId.InvalidElementId;

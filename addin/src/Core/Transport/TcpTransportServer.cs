@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Transport/TcpTransportServer.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: per-connection logic moved to ConnectionSession; discovery via DiscoveryPublisher;
+// Modified for Plinth: per-connection logic moved to ConnectionSession; discovery via DiscoveryPublisher;
 // the LAN-bind opt-in is removed, so the listener always binds 127.0.0.1.
 
 using System;
@@ -9,9 +9,9 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
-using B2M.Revit.Core.Security;
+using Plinth.Revit.Core.Security;
 
-namespace B2M.Revit.Core.Transport
+namespace Plinth.Revit.Core.Transport
 {
     /// <summary>Loopback TCP server used by the Revit 2024 build. One client at a time.</summary>
     public sealed class TcpTransportServer : ITransportServer
@@ -54,7 +54,7 @@ namespace B2M.Revit.Core.Transport
                     _token = SessionToken.Generate();
                     _publisher.Publish(Kind, null, Port, _token);
                     _running = true;
-                    _listenThread = new Thread(ListenLoop) { IsBackground = true, Name = "B2M.TcpTransportServer" };
+                    _listenThread = new Thread(ListenLoop) { IsBackground = true, Name = "Plinth.TcpTransportServer" };
                     _listenThread.Start();
                     _log("Listening on 127.0.0.1:" + Port);
                 }

@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Sheets/DuplicateSheetHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: one Transaction instead of a TransactionGroup wrapping one Transaction (same atomicity,
+// Modified for Plinth: one Transaction instead of a TransactionGroup wrapping one Transaction (same atomicity,
 // and nests cleanly inside batch_execute's group); source sheet through Lookup.TrySheet (a miss lists the
 // valid sheets; one of source_sheet_id / source_sheet_number is required, not both); the new title block is
 // moved to the source title block's position, and viewports keep their viewport type and rotation (rvt-mcp
@@ -12,12 +12,12 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Sheets
+namespace Plinth.Revit.Commands.Sheets
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     public sealed class DuplicateSheetHandler : IRevitCommand
@@ -75,7 +75,7 @@ namespace B2M.Revit.Commands.Sheets
                 warnings.Add("The source sheet has " + sourceTitleBlocks.Count + " title blocks; only the first was copied.");
 
             ViewSheet sheet;
-            using (var tx = new Transaction(doc, "B2M: Duplicate Sheet"))
+            using (var tx = new Transaction(doc, "Plinth: Duplicate Sheet"))
             {
                 tx.Start();
                 try

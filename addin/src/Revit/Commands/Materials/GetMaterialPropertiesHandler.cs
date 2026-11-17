@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Materials/GetMaterialPropertiesHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: misses list the valid materials; identity fields are read from built-in parameters only
+// Modified for Plinth: misses list the valid materials; identity fields are read from built-in parameters only
 // (URL from ALL_MODEL_URL instead of a name lookup that fails in non-English Revit); parameter values use the
 // shared read rules (lengths in mm through Mm, areas m2, volumes m3, angles degrees).
 
@@ -8,11 +8,11 @@ using System;
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Commands.Parameters;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Commands.Parameters;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Materials
+namespace Plinth.Revit.Commands.Materials
 {
     public sealed class GetMaterialPropertiesHandler : IRevitCommand
     {

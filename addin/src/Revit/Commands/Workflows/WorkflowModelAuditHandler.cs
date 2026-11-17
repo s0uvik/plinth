@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Workflows/WorkflowModelAuditHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: statistics come from analyze_model_statistics and warnings from get_model_warnings_summary
+// Modified for Plinth: statistics come from analyze_model_statistics and warnings from get_model_warnings_summary
 // (both called in-process; rvt-mcp counted only limit_per_section elements for the statistics); the
 // warning risk class is still derived from the description text and Revit's own severity is reported next to
 // it; family instances are counted from a FamilyInstance collector instead of every element; categories carry
@@ -11,12 +11,12 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Commands.Lint;
-using B2M.Revit.Commands.Query;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Commands.Lint;
+using Plinth.Revit.Commands.Query;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Workflows
+namespace Plinth.Revit.Commands.Workflows
 {
     using View = Autodesk.Revit.DB.View;
 

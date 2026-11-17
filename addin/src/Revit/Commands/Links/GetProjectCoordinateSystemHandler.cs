@@ -1,14 +1,14 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Documents/GetProjectCoordinateSystemHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the snapshot builder moved to LinksHelpers.CoordinateSystem (shared with the link and
+// Modified for Plinth: the snapshot builder moved to LinksHelpers.CoordinateSystem (shared with the link and
 // coordinate-writing commands); lengths through Mm; weather station dropped from the site block.
 
 using System.Collections.Generic;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Links
+namespace Plinth.Revit.Commands.Links
 {
     public sealed class GetProjectCoordinateSystemHandler : IRevitCommand
     {

@@ -1,16 +1,16 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Parameters/GetElementParametersHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: "value" is in wire units (length mm, area m2, volume m3, angle degrees) with "unit", and the raw
+// Modified for Plinth: "value" is in wire units (length mm, area m2, volume m3, angle degrees) with "unit", and the raw
 // internal double is kept as internalValue; adds isShared/guid; parameters are sorted by name; nameFilter narrows the
 // list; at most 200 elements per call.
 
 using System;
 using System.Linq;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Query
+namespace Plinth.Revit.Commands.Query
 {
     public sealed class GetElementParametersHandler : IRevitCommand
     {

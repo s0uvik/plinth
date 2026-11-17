@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Views/SetViewCropHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: bounds are model coordinates in mm projected into the crop box's own frame (rvt-mcp
+// Modified for Plinth: bounds are model coordinates in mm projected into the crop box's own frame (rvt-mcp
 // wrote them as crop-local values with no transform, which misplaced the crop on sections, elevations and
 // rotated plans, and defaulted any missing coordinate to 0); bounds needs all four x/y values, z is optional;
 // the view depth (crop-local Z, the far clip) is never changed; bounds and fit_element_ids together are an
@@ -12,12 +12,12 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.View
+namespace Plinth.Revit.Commands.View
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     public sealed class SetViewCropHandler : IRevitCommand
@@ -72,7 +72,7 @@ namespace B2M.Revit.Commands.View
             if (fitIds != null && !TryFit(doc, view, fitIds, Mm.ToFeet(padding), out min, out max, out failure)) return failure;
             var newBox = min == null ? null : ViewHelpers.CropToModelBox(current, min, max);
 
-            using (var tx = new Transaction(doc, "B2M: Set View Crop"))
+            using (var tx = new Transaction(doc, "Plinth: Set View Crop"))
             {
                 tx.Start();
                 try

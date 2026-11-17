@@ -1,11 +1,11 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Schedules/ScheduleSortInput.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: namespace only.
+// Modified for Plinth: namespace only.
 
 using System;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Schedule
+namespace Plinth.Revit.Commands.Schedule
 {
     internal static class ScheduleSortInput
     {

@@ -1,15 +1,15 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Documents/GetModelWarningsSummaryHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: elementIds limits the summary to warnings that involve those elements, so a run can
+// Modified for Plinth: elementIds limits the summary to warnings that involve those elements, so a run can
 // check only what it built; bounds are enforced by the schema checker and here.
 
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Lint
+namespace Plinth.Revit.Commands.Lint
 {
     public sealed class GetModelWarningsSummaryHandler : IRevitCommand
     {

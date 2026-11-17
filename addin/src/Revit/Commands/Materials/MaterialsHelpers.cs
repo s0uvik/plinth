@@ -1,16 +1,16 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp), the material lookup and color checks
 // repeated in src/shared/Handlers/Materials/*.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: one lookup whose misses carry the valid materials; passing both id and name is refused;
+// Modified for Plinth: one lookup whose misses carry the valid materials; passing both id and name is refused;
 // colour is one {red, green, blue} object; property-set names are checked before Revit throws on a duplicate.
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Materials
+namespace Plinth.Revit.Commands.Materials
 {
     internal static class MaterialsHelpers
     {

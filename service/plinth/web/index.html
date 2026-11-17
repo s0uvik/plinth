@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plinth Brief to Model</title>
+<style>
+  :root {
+    --grey-50: hsl(210 20% 98%); --grey-100: hsl(210 18% 95%); --grey-200: hsl(210 16% 89%);
+    --grey-400: hsl(210 10% 62%); --grey-600: hsl(210 10% 40%); --grey-800: hsl(210 18% 18%);
+    --blue-50: hsl(214 90% 96%); --blue-600: hsl(214 75% 45%); --blue-700: hsl(216 75% 38%);
+    --green-50: hsl(145 60% 95%); --green-700: hsl(145 63% 26%);
+    --amber-50: hsl(42 95% 94%); --amber-800: hsl(32 80% 28%);
+    --red-50: hsl(0 85% 96%); --red-700: hsl(0 65% 40%);
+    --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px;
+    --t-sm: 13px; --t-base: 15px; --t-lg: 18px; --t-xl: 24px;
+    --radius: 6px;
+    --shadow-1: 0 1px 2px hsl(210 20% 20% / .08), 0 1px 3px hsl(210 20% 20% / .06);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--grey-100); color: var(--grey-800);
+         font: var(--t-base)/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { max-width: 1120px; margin: 0 auto; padding: var(--s6) var(--s5) var(--s4); }
+  h1 { font-size: var(--t-xl); line-height: 1.2; margin: 0; letter-spacing: -0.01em; }
+  header p { margin: var(--s1) 0 0; color: var(--grey-600); }
+  main { max-width: 1120px; margin: 0 auto; padding: 0 var(--s5) var(--s7);
+         display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: var(--s5); align-items: start; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  section { background: white; border-radius: var(--radius); box-shadow: var(--shadow-1); padding: var(--s5); }
+  section + section { margin-top: var(--s5); }
+  h2 { font-size: var(--t-lg); line-height: 1.3; margin: 0 0 var(--s3); }
+  h3 { font-size: var(--t-sm); font-weight: 600; text-transform: uppercase; letter-spacing: .05em;
+       color: var(--grey-600); margin: var(--s5) 0 var(--s2); }
+  textarea, input[type=text] { width: 100%; font: inherit; color: inherit; padding: var(--s2) var(--s3);
+       border: 1px solid var(--grey-200); border-radius: var(--radius); background: var(--grey-50); }
+  textarea:focus, input:focus { outline: 2px solid var(--blue-600); outline-offset: 1px; background: white; }
+  textarea#brief { min-height: 160px; resize: vertical; }
+  textarea#spec { min-height: 260px; font: var(--t-sm)/1.5 ui-monospace, Consolas, monospace; }
+  label { display: block; font-weight: 600; margin-bottom: var(--s1); }
+  .field + .field { margin-top: var(--s4); }
+  .hint { color: var(--grey-600); font-size: var(--t-sm); margin: var(--s1) 0 0; }
+  .actions { display: flex; gap: var(--s3); align-items: center; margin-top: var(--s4); flex-wrap: wrap; }
+  button { font: inherit; font-weight: 600; border-radius: var(--radius); padding: var(--s2) var(--s4); cursor: pointer;
+           border: 1px solid transparent; }
+  button.primary { background: var(--blue-600); color: white; }
+  button.primary:hover { background: var(--blue-700); }
+  button.secondary { background: var(--blue-50); color: var(--blue-700); }
+  button.link { background: none; color: var(--grey-600); padding: var(--s2) 0; text-decoration: underline; }
+  button:disabled { opacity: .5; cursor: progress; }
+  ul.plain { list-style: none; padding: 0; margin: 0; }
+  ul.plain li { padding: var(--s2) 0; border-top: 1px solid var(--grey-100); }
+  ul.plain li:first-child { border-top: 0; }
+  .muted { color: var(--grey-600); }
+  .small { font-size: var(--t-sm); }
+  .flats { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  .flats th { text-align: left; font-size: var(--t-sm); color: var(--grey-600); font-weight: 600; padding: var(--s1) 0; }
+  .flats td { padding: var(--s1) 0; border-top: 1px solid var(--grey-100); }
+  .flats .num { text-align: right; }
+  .facts { display: flex; flex-wrap: wrap; gap: var(--s5); margin-top: var(--s2); }
+  .facts div strong { display: block; font-size: var(--t-lg); }
+  .facts div span { font-size: var(--t-sm); color: var(--grey-600); }
+  .note { padding: var(--s3) var(--s4); border-radius: var(--radius); border-left: 4px solid; margin-top: var(--s3); }
+  .note.warn { background: var(--amber-50); color: var(--amber-800); border-color: var(--amber-800); }
+  .note.error { background: var(--red-50); color: var(--red-700); border-color: var(--red-700); }
+  .note.ok { background: var(--green-50); color: var(--green-700); border-color: var(--green-700); }
+  .bar { height: 8px; background: var(--grey-100); border-radius: 4px; overflow: hidden; margin: var(--s2) 0; }
+  .bar div { height: 100%; background: var(--blue-600); width: 0; transition: width .3s; }
+  .hidden { display: none; }
+  details summary { cursor: pointer; color: var(--grey-600); margin-top: var(--s4); }
+  .empty { color: var(--grey-600); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Brief to model</h1>
+  <p>Describe a G+3 or G+4 apartment block. Check the assumptions, then build it in Revit.
+     Have the office's CAD drawings instead? <a href="/import">Import drawings</a>.</p>
+</header>
+<main>
+  <div>
+    <section>
+      <h2>Brief</h2>
+      <textarea id="brief" placeholder="G+3 with stilt parking on a 15 x 25 m plot facing a 9 m road. Two 2BHKs per floor, about 55 m² each."></textarea>
+      <div class="actions">
+        <button class="primary" id="read">Read brief</button>
+        <span class="muted small" id="read-status"></span>
+      </div>
+    </section>
+
+    <section id="questions" class="hidden">
+      <h2>A few questions first</h2>
+      <div id="question-list"></div>
+      <div class="actions"><button class="primary" id="send-answers">Send answers</button></div>
+    </section>
+
+    <section id="plan" class="hidden">
+      <h2>What will be built</h2>
+      <div id="layout"></div>
+      <h3>Assumed because the brief did not say</h3>
+      <ul class="plain" id="defaults"></ul>
+      <details>
+        <summary>Edit the spec</summary>
+        <textarea id="spec"></textarea>
+        <div class="actions"><button class="secondary" id="update">Update preview</button></div>
+      </details>
+      <div class="field" style="margin-top: var(--s5)">
+        <label for="title">Revit document</label>
+        <input type="text" id="title" placeholder="Title of the open project, e.g. scratch-01">
+        <p class="hint">Nothing is built unless this document is the one open in Revit.</p>
+      </div>
+      <label class="hidden small" id="override-row" style="font-weight:400; margin-top: var(--s4)">
+        <input type="checkbox" id="override"> Build anyway, despite the hard compliance failures above
+      </label>
+      <div class="actions"><button class="primary" id="build">Build in Revit</button></div>
+    </section>
+  </div>
+
+  <aside>
+    <section id="result">
+      <h2>Result</h2>
+      <div id="result-body"><p class="empty">Builds appear here, with progress per batch.</p></div>
+    </section>
+  </aside>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let briefId = null, runId = null, poll = null;
+
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) k === "class" ? node.className = v : node.setAttribute(k, v);
+  for (const c of children) node.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  return node;
+}
+
+async function call(path, body) {
+  const res = await fetch(path, body === undefined ? {} : {
+    method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const d = data.detail;
+    throw new Error(Array.isArray(d?.errors) ? d.errors.join("\n") : typeof d === "string" ? d : `Request failed (${res.status})`);
+  }
+  return data;
+}
+
+async function busy(button, status, work) {
+  button.disabled = true;
+  if (status) status.textContent = "Working…";
+  try { await work(); if (status) status.textContent = ""; }
+  catch (e) { if (status) status.textContent = ""; showError(e.message); }
+  finally { button.disabled = false; }
+}
+
+function showError(message) {
+  const body = $("result-body");
+  body.replaceChildren(el("div", {class: "note error"}, message));
+}
+
+function showBrief(data) {
+  briefId = data.brief_id;
+  $("questions").classList.toggle("hidden", data.kind !== "questions");
+  $("plan").classList.toggle("hidden", data.kind !== "spec");
+  if (data.kind === "questions") {
+    $("question-list").replaceChildren(...data.questions.map((q, i) => el("div", {class: "field"},
+      el("label", {for: `q${i}`}, q.question),
+      Object.assign(el("input", {type: "text", id: `q${i}`, "data-field": q.field})))));
+  } else if (data.kind === "spec") {
+    $("defaults").replaceChildren(...(data.defaults.length ? data.defaults.map(d =>
+      el("li", {}, el("strong", {}, `${d.field} ${d.value}`), el("div", {class: "muted small"}, d.reason)))
+      : [el("li", {class: "muted"}, "Nothing: the brief covered everything.")]),
+      ...data.assumptions.map(a => el("li", {}, a)));
+    $("spec").value = JSON.stringify(data.spec, null, 2);
+    showLayout(data.layout);
+  } else {
+    showError(data.errors.join("\n"));
+  }
+}
+
+function showLayout(layout) {
+  const box = $("layout");
+  if (!layout.ok) { box.replaceChildren(el("div", {class: "note error"}, layout.error)); return; }
+  const facts = el("div", {class: "facts"},
+    el("div", {}, el("strong", {}, layout.template), el("span", {}, "template")),
+    el("div", {}, el("strong", {}, `${layout.levels.length - 2}`), el("span", {}, "upper floors")),
+    el("div", {}, el("strong", {}, `${(layout.height_mm / 1000).toFixed(1)} m`), el("span", {}, "height")),
+    el("div", {}, el("strong", {}, `${Math.round(layout.ground_coverage * 100)}%`), el("span", {}, "ground coverage")),
+    el("div", {}, el("strong", {}, layout.far.toFixed(2)), el("span", {}, "FAR")));
+  const table = el("table", {class: "flats"},
+    el("tr", {}, el("th", {}, "Flat"), el("th", {}, "Type"), el("th", {class: "num"}, "Carpet"), el("th", {class: "num"}, "Target")),
+    ...layout.flats_per_floor.map(f => el("tr", {},
+      el("td", {}, f.letter), el("td", {}, f.type),
+      el("td", {class: "num"}, `${f.carpet_m2.toFixed(1)} m²`), el("td", {class: "num muted"}, `${f.target_carpet_m2.toFixed(0)} m²`))));
+  const notes = layout.notes.map(n => el("div", {class: "note warn small"}, n));
+  box.replaceChildren(facts, el("h3", {}, "Flats on each floor"), table, ...notes, ...checksView(layout.checks));
+  $("override-row").classList.toggle("hidden", !(layout.checks && layout.checks.summary.hard_fail));
+  $("override").checked = false;
+}
+
+function checksView(checks) {
+  if (!checks) return [];
+  const s = checks.summary;
+  const provisional = checks.rule_sets.filter(r => !r.verified).map(r => r.name);
+  const fails = checks.findings.filter(f => f.status === "fail");
+  const head = el("div", {class: `note ${s.hard_fail ? "error" : s.soft_fail ? "warn" : "ok"}`},
+    `${s.hard_fail} hard and ${s.soft_fail} soft compliance failures; ${s.passed} checks passed.`);
+  const list = el("ul", {class: "plain small"}, ...fails.map(f => el("li", {},
+    el("strong", {}, `${f.severity === "hard" ? "" : "(soft) "}${f.title}`), ` — ${f.subject}: ${f.measured}, required ${f.required}`,
+    el("div", {class: "muted"}, `${f.rule_set}: ${f.clause}`))));
+  const warn = provisional.length ? [el("div", {class: "note warn small"},
+    `Rule values for ${provisional.join(" and ")} are provisional and not yet checked against the official texts.`)] : [];
+  return [el("h3", {}, "Compliance (advisory)"), head, ...warn, list];
+}
+
+$("read").onclick = () => busy($("read"), $("read-status"), async () => {
+  showBrief(await call("/briefs", {brief: $("brief").value}));
+});
+
+$("send-answers").onclick = () => busy($("send-answers"), null, async () => {
+  const answers = {};
+  document.querySelectorAll("#question-list input").forEach(i => answers[i.dataset.field] = i.value);
+  showBrief(await call(`/briefs/${briefId}/answers`, {answers}));
+});
+
+$("update").onclick = () => busy($("update"), null, async () => {
+  let spec;
+  try { spec = JSON.parse($("spec").value); } catch { throw new Error("The spec is not valid JSON."); }
+  const data = await call("/preview", {spec});
+  $("spec").value = JSON.stringify(data.spec, null, 2);
+  showLayout(data.layout);
+});
+
+// families: {allow_family_create, family_folders} once the user has answered a "family not found" question.
+async function startBuild(families = {}) {
+  if (!$("title").value.trim()) throw new Error("Enter the title of the Revit document to build in.");
+  const data = await call("/builds/from-spec", {spec: JSON.parse($("spec").value), document_title: $("title").value.trim(),
+                                                brief_id: briefId, override: $("override").checked, ...families});
+  runId = data.run_id;
+  clearInterval(poll);
+  poll = setInterval(refreshRun, 1000);
+  refreshRun();
+}
+
+$("build").onclick = () => busy($("build"), null, () => startBuild());
+
+async function refreshRun() {
+  let run;
+  try { run = await call(`/runs/${runId}`); } catch (e) { return; }
+  const body = $("result-body");
+  const parts = [el("p", {class: "muted small"}, `Run ${run.run_id}`)];
+  const b = run.batches;
+  if (b) {
+    parts.push(el("div", {}, `Batch ${b.succeeded} of ${b.total}`),
+               el("div", {class: "bar"}, Object.assign(el("div"), {style: `width:${b.total ? 100 * b.succeeded / b.total : 0}%`})));
+  }
+  const status = {queued: "Waiting for Revit", building: "Building", built: "Built", built_with_issues: "Built, with issues",
+                  failed: "Failed", needs_input: "Needs your answer", unknown: "A batch is still running in Revit", removing: "Removing", removed: "Removed"}[run.status] || run.status;
+  parts.push(el("h3", {}, status));
+  if (run.readback) {
+    const r = run.readback;
+    parts.push(el("div", {class: `note ${r.ok ? "ok" : "warn"}`},
+      `${r.elements} elements, ${r.warnings_total} Revit warnings` + (r.mismatches.length ? `, ${r.mismatches.length} count mismatches` : "")));
+  }
+  if (run.error) parts.push(el("div", {class: "note error small"}, run.hint ? el("strong", {}, run.hint) : "",
+    el("div", {}, run.error + (run.failed_key ? ` (at ${run.failed_key})` : ""))));
+  if (run.status === "needs_input" && run.question) {
+    const q = run.question;
+    const box = el("div", {class: "note warn small"}, el("strong", {}, q.text));
+    if (q.candidates && q.candidates.length)
+      box.append(el("div", {}, "Closest families found: " + q.candidates.map(c => c.family_name || c.file_name || c).join(", ")));
+    if (q.searched && q.searched.length) box.append(el("div", {class: "muted"}, "Searched: " + q.searched.join("; ")));
+    const folder = Object.assign(el("input", {type: "text", placeholder: "Folder with your .rfa families, e.g. D:\\Office\\Families"}),
+                                 {style: "width:100%; margin-top: var(--s2)"});
+    const useFolder = el("button", {}, "Search this folder and build");
+    useFolder.onclick = () => busy(useFolder, null, () => {
+      if (!folder.value.trim()) throw new Error("Enter the folder that holds your family files.");
+      return startBuild({family_folders: [folder.value.trim()]});
+    });
+    const actions = el("div", {class: "actions"}, useFolder);
+    if (q.can_create !== false) {
+      const create = el("button", {class: "primary"}, "Yes, create it and build");
+      create.onclick = () => busy(create, null, () => startBuild({allow_family_create: true}));
+      actions.prepend(create);
+    }
+    box.append(folder, actions);
+    parts.push(box);
+  }
+  if (run.checks && !run.checks.error) parts.push(el("div", {class: `note ${run.checks.hard_fail ? "error" : "ok"} small`},
+    `After build: ${run.checks.hard_fail} hard and ${run.checks.soft_fail} soft compliance failures.`));
+  if (["built", "built_with_issues"].includes(run.status) && !(run.drawings && run.drawings.sheets)) {
+    const make = el("button", {class: "primary"}, "Make drawing set");
+    make.onclick = () => busy(make, null, async () => { await call(`/runs/${runId}/drawings`, {}); refreshRun(); });
+    parts.push(el("div", {class: "actions"}, make));
+  }
+  if (run.activity === "drawings") parts.push(el("p", {class: "muted small"}, "Making the drawing set in Revit…"));
+  if (run.drawings && run.drawings.error) parts.push(el("div", {class: "note error small"}, run.drawings.hint || "", el("div", {}, run.drawings.error)));
+  if (run.drawings && run.drawings.sheets) {
+    parts.push(Object.assign(el("img", {src: `/runs/${runId}/3d.png`, alt: "3D view of the generated model"}),
+      {style: "width:100%; border-radius: var(--radius); margin-top: var(--s3)"}));
+  }
+  const links = [["set", "Drawing set (PDF)"], ["report_before", "Compliance before build"], ["report", "Compliance after build"]]
+    .map(([n, label]) => Object.assign(el("a", {href: `/runs/${runId}/${n}.pdf`, target: "_blank"}, label), {className: "small"}));
+  parts.push(el("div", {class: "actions"}, ...links));
+  if (run.created && Object.keys(run.created).length && !["removed", "removing", "building", "queued"].includes(run.status)) {
+    const remove = el("button", {class: "secondary"}, "Remove generated model");
+    remove.onclick = () => busy(remove, null, async () => { await call(`/runs/${runId}/remove`, {}); refreshRun(); });
+    parts.push(el("div", {class: "actions"}, remove));
+  }
+  body.replaceChildren(...parts);
+  if (!["queued", "building", "removing"].includes(run.status)) clearInterval(poll);
+}
+</script>
+</body>
+</html>

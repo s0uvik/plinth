@@ -1,20 +1,20 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Workflows/WorkflowViewCleanupHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the candidate caps count candidates (rvt-mcp's unused-view loop counted before filtering, so
+// Modified for Plinth: the candidate caps count candidates (rvt-mcp's unused-view loop counted before filtering, so
 // the truncation flag was unreliable); views that are dependent views, have dependents, or are open in Revit
 // (rvt-mcp: only the active view) are protected; title block revision schedules are skipped;
 // the deleted-id list is capped at 1000 with a total (doc.Delete also returns dependent elements); the delete
-// transaction is "B2M: ..." and any Revit warning rolls it back (FailureScope).
+// transaction is "Plinth: ..." and any Revit warning rolls it back (FailureScope).
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Workflows
+namespace Plinth.Revit.Commands.Workflows
 {
     using View = Autodesk.Revit.DB.View;
 
@@ -106,7 +106,7 @@ namespace B2M.Revit.Commands.Workflows
                     WorkflowsHelpers.Rollback("Transaction", false, dryRun ? "Dry run; no transaction opened." : "No safe candidates to delete.")));
             }
 
-            using (var tx = new Transaction(doc, "B2M: Workflow view cleanup"))
+            using (var tx = new Transaction(doc, "Plinth: Workflow view cleanup"))
             {
                 tx.Start();
                 try

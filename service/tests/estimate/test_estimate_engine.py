@@ -9,10 +9,10 @@ import openpyxl
 import pytest
 from pydantic import ValidationError
 
-from b2m.estimate import (DrawingObservation, Opening, ProjectInfo, Quantities, Railing, Storey, build_estimate,
+from plinth.estimate import (DrawingObservation, Opening, ProjectInfo, Quantities, Railing, Storey, build_estimate,
                           compare_workbooks, crosscheck, load_rules, write_xlsx)
-from b2m.estimate.engine import ordinal, roman
-from b2m.estimate.ruleset import ExpressionError, Rules, evaluate
+from plinth.estimate.engine import ordinal, roman
+from plinth.estimate.ruleset import ExpressionError, Rules, evaluate
 
 
 def project(typical: int = 2) -> ProjectInfo:

@@ -1,4 +1,4 @@
-// New in B2M (Step 10, F5): create_mep_run draws a pipe, duct, conduit or cable tray along a polyline of 3D points and
+// New in Plinth (Step 10, F5): create_mep_run draws a pipe, duct, conduit or cable tray along a polyline of 3D points and
 // puts an elbow at every bend. This is the Revit-free part: checking the points, dropping points that lie on a straight
 // line (no fitting is needed there, so the two pieces become one segment) and listing each bend with its angle.
 
@@ -6,7 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 
-namespace B2M.Revit.Core.Mep
+namespace Plinth.Revit.Core.Mep
 {
     public static class RunPath
     {

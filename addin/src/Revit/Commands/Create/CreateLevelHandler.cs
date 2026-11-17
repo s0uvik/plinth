@@ -1,16 +1,16 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Organization/CreateLevelHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: a duplicate name fails before anything is created, with the existing level's id;
+// Modified for Plinth: a duplicate name fails before anything is created, with the existing level's id;
 // units go through Units; the transaction result is checked as before.
 
 using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Create
+namespace Plinth.Revit.Commands.Create
 {
     public sealed class CreateLevelHandler : IRevitCommand
     {
@@ -38,7 +38,7 @@ namespace B2M.Revit.Commands.Create
                         new { existingLevelId = RevitCompat.GetId(existing.Id) });
             }
 
-            using (var tx = new Transaction(doc, "B2M: Create Level"))
+            using (var tx = new Transaction(doc, "Plinth: Create Level"))
             {
                 tx.Start();
                 try

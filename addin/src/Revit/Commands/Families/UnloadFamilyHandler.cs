@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Families/UnloadFamilyHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: refusals are errors ("CODE: message") instead of success with unloaded=false; family_id is an
+// Modified for Plinth: refusals are errors ("CODE: message") instead of success with unloaded=false; family_id is an
 // integer; a miss lists the valid families; the "IsEditable == false means system family" guard is dropped (a Family
 // element is never a system family, and some loadable families are not editable); everything Revit deletes along
 // with the family is counted from Document.Delete instead of being assumed.
@@ -10,10 +10,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Families
+namespace Plinth.Revit.Commands.Families
 {
     public sealed class UnloadFamilyHandler : IRevitCommand
     {
@@ -68,7 +68,7 @@ namespace B2M.Revit.Commands.Families
             }
 
             var deleted = new HashSet<long>();
-            using (var tx = new Transaction(doc, "B2M: Unload family"))
+            using (var tx = new Transaction(doc, "Plinth: Unload family"))
             {
                 tx.Start();
                 try

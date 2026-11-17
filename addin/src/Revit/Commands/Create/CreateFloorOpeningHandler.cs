@@ -1,13 +1,13 @@
 using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Create
+namespace Plinth.Revit.Commands.Create
 {
     /// <summary>
-    /// New in B2M (rvt-mcp has no opening tool). Cuts a hole from an outline of {x, y} points in mm:
+    /// New in Plinth (rvt-mcp has no opening tool). Cuts a hole from an outline of {x, y} points in mm:
     /// with floorId, through that one floor; with baseLevel and topLevel, a shaft through every floor
     /// between them, which is how the stair core is cut.
     /// </summary>
@@ -60,7 +60,7 @@ namespace B2M.Revit.Commands.Create
             }
             if (!Outline.TryCurveArray((JArray)p["points"], z, app.Application.ShortCurveTolerance, out var profile, out failure)) return failure;
 
-            using (var tx = new Transaction(doc, isShaft ? "B2M: Create Shaft Opening" : "B2M: Create Floor Opening"))
+            using (var tx = new Transaction(doc, isShaft ? "Plinth: Create Shaft Opening" : "Plinth: Create Floor Opening"))
             {
                 tx.Start();
                 try

@@ -1,22 +1,22 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp), the private helpers repeated in
 // src/shared/Handlers/Annotations/*.cs (EnsureViewCanHostAnnotation, ResolveCategory, GetTaggedElementIds),
 // commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: one shared copy; a view id goes through Lookup.TryView; a category is matched by its exact
+// Modified for Plinth: one shared copy; a view id goes through Lookup.TryView; a category is matched by its exact
 // name or BuiltInCategory name only (rvt-mcp also matched any OST_ name ending with the input) and a miss lists
 // close matches; tagged ids come from GetTaggedLocalElementIds (Revit 2024+, no reflection); view-plane points
-// in plan views are model X/Y in mm, as everywhere else in B2M.
+// in plan views are model X/Y in mm, as everywhere else in Plinth.
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Architecture;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Annotation
+namespace Plinth.Revit.Commands.Annotation
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     internal static class AnnotationHelpers

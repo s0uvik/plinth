@@ -2,7 +2,7 @@
 // files src/shared/Infrastructure/Responses/ResponsePaging.cs and the parameter helpers of
 // src/shared/Handlers/Sheets/GetTitleblockParametersHandler.cs and SetTitleblockParametersHandler.cs, commit b44ee0b.
 // Licensed under the Apache License, Version 2.0.
-// Modified for B2M: paging errors use "CODE: message"; unit conversion compares SpecTypeId values instead of
+// Modified for Plinth: paging errors use "CODE: message"; unit conversion compares SpecTypeId values instead of
 // matching type-id strings and sends lengths through Mm; a value of the wrong JSON type is an error instead
 // of being parsed from its text; title block lookup on a sheet reports how many there are.
 
@@ -10,10 +10,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Sheets
+namespace Plinth.Revit.Commands.Sheets
 {
     /// <summary>Paging, title block and parameter helpers shared by the sheet toolset (and analyze_sheet_layout).</summary>
     internal static class SheetsHelpers

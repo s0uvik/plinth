@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Graphics/SetCategoryVisibilityHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: all or nothing (rvt-mcp hid what it could and listed the rest): every name must resolve and
+// Modified for Plinth: all or nothing (rvt-mcp hid what it could and listed the rest): every name must resolve and
 // be hideable in the view before the transaction opens, else the error lists the categories that are; names may
 // be built-in names such as OST_Walls (language independent); at most 500 names; failures are errors with codes.
 
@@ -8,10 +8,10 @@ using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Graphics
+namespace Plinth.Revit.Commands.Graphics
 {
     public sealed class SetCategoryVisibilityHandler : IRevitCommand
     {
@@ -49,7 +49,7 @@ namespace B2M.Revit.Commands.Graphics
             if (!GraphicsHelpers.TryCategories(doc, names, hideable, "cannot be hidden or shown in view '" + view.Name + "'",
                     options, out var categories, out failure)) return failure;
 
-            using (var tx = new Transaction(doc, hidden ? "B2M: Hide Categories" : "B2M: Show Categories"))
+            using (var tx = new Transaction(doc, hidden ? "Plinth: Hide Categories" : "Plinth: Show Categories"))
             {
                 tx.Start();
                 try

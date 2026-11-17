@@ -1,10 +1,10 @@
 from fastapi.testclient import TestClient
 
-from b2m.api import create_app
-from b2m.builds import BuildService
-from b2m.examples import two_storey_house
-from b2m.revit.types import TypeMap
-from b2m.runs import RunStore
+from plinth.api import create_app
+from plinth.builds import BuildService
+from plinth.examples import two_storey_house
+from plinth.revit.types import TypeMap
+from plinth.runs import RunStore
 from tests.test_plan_and_runner import HOUSE, FakeRevit, _stats_for
 
 
@@ -101,7 +101,7 @@ def test_api_starts_builds_and_reports_runs(tmp_path):
 
 def test_brief_questions_answers_preview_and_build_through_the_api(tmp_path, monkeypatch):
     from tests.test_brief_agent import GOOD, FakeClaude, reply, tool
-    monkeypatch.setenv("B2M_HOME", str(tmp_path))
+    monkeypatch.setenv("PLINTH_HOME", str(tmp_path))
     claude = FakeClaude(
         reply(tool("ask_user", {"questions": [{"field": "plot_depth_mm", "question": "How deep is the plot?"}]}, id="a1")),
         reply(tool("submit_spec", GOOD, id="s1")))
@@ -122,8 +122,8 @@ def test_brief_questions_answers_preview_and_build_through_the_api(tmp_path, mon
     shallow = api.post("/preview", json={"spec": {**second["spec"], "units": [{"type": "3BHK", "per_floor": 4}]}}).json()
     assert shallow["layout"]["ok"] is False and "depth" in shallow["layout"]["error"]
 
-    from b2m.engine import generate
-    from b2m.spec import BuildingSpec
+    from plinth.engine import generate
+    from plinth.spec import BuildingSpec
     plan = generate(BuildingSpec.model_validate(second["spec"])).plan
     FakeClient._created = {op.key: 0 for op in plan.ops}
     FakeClient._plan = plan

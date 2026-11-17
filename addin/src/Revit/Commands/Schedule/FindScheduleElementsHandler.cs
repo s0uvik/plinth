@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Schedules/FindScheduleElementsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: schedule misses list the valid schedules; parameter values convert through ScheduleHelpers
+// Modified for Plinth: schedule misses list the valid schedules; parameter values convert through ScheduleHelpers
 // (length mm via Mm, area m2, volume m3, angle degrees through UnitUtils; rvt-mcp also treated pipe/duct/bar
 // sizes as lengths, kept here) and print with the invariant culture; builtInCategory is added per element.
 
@@ -9,10 +9,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Schedule
+namespace Plinth.Revit.Commands.Schedule
 {
     public sealed class FindScheduleElementsHandler : IRevitCommand
     {

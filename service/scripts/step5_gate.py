@@ -16,14 +16,14 @@ from pathlib import Path
 
 from pypdf import PdfReader
 
-from b2m import logs
-from b2m.builds import BuildService
-from b2m.drawings import build_drawing_set
-from b2m.engine import generate
-from b2m.plan import BuildPlan, translate
-from b2m.revit.types import TypeMap
-from b2m.runs import RunStore
-from b2m.spec import BuildingSpec
+from plinth import logs
+from plinth.builds import BuildService
+from plinth.drawings import build_drawing_set
+from plinth.engine import generate
+from plinth.plan import BuildPlan, translate
+from plinth.revit.types import TypeMap
+from plinth.runs import RunStore
+from plinth.spec import BuildingSpec
 
 SPEC = Path(__file__).resolve().parent.parent / "tests" / "golden" / "specs" / "01-t2-2bhk-stilt-g3.json"
 

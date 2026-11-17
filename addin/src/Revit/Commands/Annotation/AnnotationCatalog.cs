@@ -1,6 +1,6 @@
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 
-namespace B2M.Revit.Commands.Annotation
+namespace Plinth.Revit.Commands.Annotation
 {
     /// <summary>Registers the annotation toolset's commands ported in Step 8 (the earlier ones are in CommandCatalog) and the Step 9 drawing commands.</summary>
     internal static class AnnotationCatalog

@@ -1,8 +1,8 @@
 """Command tests against a live Revit (PRD: Testing, command tests). Every add-in command the build
 flow uses is called at least once on a SCRATCH project, far from existing geometry, and cleaned up.
 
-    set B2M_LIVE=1
-    set B2M_TITLE=<scratch project title>
+    set PLINTH_LIVE=1
+    set PLINTH_TITLE=<scratch project title>
     .venv\\Scripts\\python -m pytest tests/live -v
 """
 
@@ -13,12 +13,12 @@ import time
 
 import pytest
 
-from b2m.revit import RevitClient, RevitError
-from b2m.revit.commands import REQUIRED_COMMANDS
+from plinth.revit import RevitClient, RevitError
+from plinth.revit.commands import REQUIRED_COMMANDS
 
 pytestmark = pytest.mark.skipif(
-    not (os.environ.get("B2M_LIVE") == "1" and os.environ.get("B2M_TITLE")),
-    reason="needs B2M_LIVE=1 and B2M_TITLE=<scratch project title>",
+    not (os.environ.get("PLINTH_LIVE") == "1" and os.environ.get("PLINTH_TITLE")),
+    reason="needs PLINTH_LIVE=1 and PLINTH_TITLE=<scratch project title>",
 )
 
 OX, OY = -200000.0, -200000.0  # Far from anything already in the project.
@@ -29,7 +29,7 @@ def revit():
     with RevitClient.connect(required_commands=REQUIRED_COMMANDS + ["list_levels", "list_grids", "list_rooms",
                                                                     "get_room_boundaries", "auto_create_rooms_from_walls",
                                                                     "get_available_family_types"]) as client:
-        client.confirm_document(os.environ["B2M_TITLE"])
+        client.confirm_document(os.environ["PLINTH_TITLE"])
         yield client
 
 
@@ -62,7 +62,7 @@ def first_type(revit, category):
 def test_view_info_carries_document_target(revit):
     response = revit.request("get_current_view_info")
     assert response["data"]["viewName"]
-    assert response["_target"]["document_title"] == os.environ["B2M_TITLE"]
+    assert response["_target"]["document_title"] == os.environ["PLINTH_TITLE"]
 
 
 def test_levels_and_grids_round_trip(revit, box):

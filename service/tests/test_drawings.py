@@ -5,9 +5,9 @@ from pathlib import Path
 from pypdf import PdfReader
 from reportlab.pdfgen import canvas
 
-from b2m.drawings import build_drawing_set
-from b2m.engine import generate
-from b2m.spec import BuildingSpec
+from plinth.drawings import build_drawing_set
+from plinth.engine import generate
+from plinth.spec import BuildingSpec
 
 SPEC = Path(__file__).parent / "golden" / "specs" / "01-t2-2bhk-stilt-g3.json"
 FRAME = {"min_x": 0, "min_y": 0, "max_x": 840, "max_y": 594, "width": 840, "height": 594, "center_x": 420, "center_y": 297}
@@ -75,9 +75,9 @@ def test_drawing_set_for_a_g3_block(tmp_path):
 def test_drawings_endpoint_needs_a_built_run(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
 
-    from b2m.api import create_app
+    from plinth.api import create_app
     from tests.test_service import FakeClient, make_service
-    monkeypatch.setenv("B2M_HOME", str(tmp_path))
+    monkeypatch.setenv("PLINTH_HOME", str(tmp_path))
     service = make_service(tmp_path, FakeClient())
     api = TestClient(create_app(service, brief_client=lambda: None))
     run = service.store.create()

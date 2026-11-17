@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Rooms/CreateRoomSeparatorHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: points are {x, y} in mm and lie on the level (the per-point z is dropped: room
+// Modified for Plinth: points are {x, y} in mm and lie on the level (the per-point z is dropped: room
 // separation lines must lie in the level's sketch plane); repeated or too-close points are an error
 // instead of being dropped silently; at most 1000 points; the sketch plane is the level's own; a
 // view_id must be a floor/area plan of the level given; without view_id the active plan is used only
@@ -12,10 +12,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Rooms
+namespace Plinth.Revit.Commands.Rooms
 {
     public sealed class CreateRoomSeparatorHandler : IRevitCommand
     {
@@ -90,7 +90,7 @@ namespace B2M.Revit.Commands.Rooms
                 lengthFeet += line.Length;
             }
 
-            using (var tx = new Transaction(doc, "B2M: Create Room Separator"))
+            using (var tx = new Transaction(doc, "Plinth: Create Room Separator"))
             {
                 tx.Start();
                 try

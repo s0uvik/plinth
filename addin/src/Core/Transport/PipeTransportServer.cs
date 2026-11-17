@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Transport/PipeTransportServer.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: per-connection logic moved to ConnectionSession; discovery via DiscoveryPublisher;
+// Modified for Plinth: per-connection logic moved to ConnectionSession; discovery via DiscoveryPublisher;
 // on .NET 8+ the pipe is created with CurrentUserOnly so only the same Windows user can connect.
 
 using System;
@@ -10,9 +10,9 @@ using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
-using B2M.Revit.Core.Security;
+using Plinth.Revit.Core.Security;
 
-namespace B2M.Revit.Core.Transport
+namespace Plinth.Revit.Core.Transport
 {
     /// <summary>Named-pipe server for Revit 2025 and later. One client at a time.</summary>
     public sealed class PipeTransportServer : ITransportServer
@@ -39,7 +39,7 @@ namespace B2M.Revit.Core.Transport
             _publisher = publisher ?? throw new ArgumentNullException(nameof(publisher));
             _log = log ?? (_ => { });
             using (var process = Process.GetCurrentProcess())
-                _pipeName = pipeName ?? "B2M.Revit." + process.Id;
+                _pipeName = pipeName ?? "Plinth.Revit." + process.Id;
         }
 
         public string Kind => "pipe";
@@ -59,7 +59,7 @@ namespace B2M.Revit.Core.Transport
                     _token = SessionToken.Generate();
                     _publisher.Publish(Kind, _pipeName, null, _token);
                     _running = true;
-                    _listenThread = new Thread(ListenLoop) { IsBackground = true, Name = "B2M.PipeTransportServer" };
+                    _listenThread = new Thread(ListenLoop) { IsBackground = true, Name = "Plinth.PipeTransportServer" };
                     _listenThread.Start();
                     _log("Listening on pipe " + _pipeName);
                 }

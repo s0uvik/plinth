@@ -1,7 +1,7 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp), files
 // src/shared/Handlers/Parameters/SetElementParameterValuesHandler.cs and SetTypeParameterValuesHandler.cs, commit b44ee0b.
 // Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the two handlers share one setter (ModifyHelpers.TrySet); doubles are read in the parameter's unit
+// Modified for Plinth: the two handlers share one setter (ModifyHelpers.TrySet); doubles are read in the parameter's unit
 // (length mm, area m2, volume m3, angle degrees; rvt-mcp read area in mm2 and volume in mm3); a name that matches two
 // parameters is an error instead of taking the first; old and new values are reported in the same units; elements that
 // fail are listed with failedCount, which makes batch_execute roll the batch back; at most 1000 IDs per list.
@@ -14,10 +14,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Modify
+namespace Plinth.Revit.Commands.Modify
 {
     public sealed class SetElementParameterValuesHandler : IRevitCommand
     {

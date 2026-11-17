@@ -1,4 +1,4 @@
-// New in B2M: rvt-mcp cannot author families. FamilyFactory builds a parametric rectangular concrete family from
+// New in Plinth: rvt-mcp cannot author families. FamilyFactory builds a parametric rectangular concrete family from
 // Revit's own family template, for ensure_family_type when no family of the asked name or a related one exists anywhere
 // and the caller passed allow_create: true (the user agreed). A recipe also names the related families FamilyAdapter
 // may adapt and the words find_family_files' category filter looks for.
@@ -24,12 +24,12 @@ using System.IO;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
-using B2M.Revit.Bridge;
-using B2M.Revit.Core.Logging;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Core.Logging;
 using Newtonsoft.Json.Linq;
 using RevitApplication = Autodesk.Revit.ApplicationServices.Application;
 
-namespace B2M.Revit.Commands.Families
+namespace Plinth.Revit.Commands.Families
 {
     /// <summary>A failure while building a family document, naming the step that failed.</summary>
     internal sealed class FamilyBuildException : Exception
@@ -364,7 +364,7 @@ namespace B2M.Revit.Commands.Families
     {
         public const string MaterialParameterName = "Structural Material";
         public const string BoxMaterialParameterName = "Material";
-        public const string BoxDefaultMaterial = "B2M Fit-out";
+        public const string BoxDefaultMaterial = "Plinth Fit-out";
 
         /// <summary>
         /// Creates a box family (BoxRecipe) from the template, saves it to savePath (never overwriting) and closes it.
@@ -385,7 +385,7 @@ namespace B2M.Revit.Commands.Families
                 int removed;
                 BoxGeometry built;
                 FamilyParameter pw, pd, ph;
-                using (var tx = new Transaction(doc, "B2M: Build box family"))
+                using (var tx = new Transaction(doc, "Plinth: Build box family"))
                 {
                     FamilyBuilder.Step("start the family transaction", () => tx.Start());
                     if (family.FamilyCategory == null || family.FamilyCategory.BuiltInCategory != category)
@@ -458,7 +458,7 @@ namespace B2M.Revit.Commands.Families
             const string step = "flex check";
             var doc = fb.Doc;
             double w2 = w + Mm.ToFeet(50), d2 = d + Mm.ToFeet(80), h2 = h + Mm.ToFeet(100);
-            using (var tx = new Transaction(doc, "B2M: Flex check"))
+            using (var tx = new Transaction(doc, "Plinth: Flex check"))
             {
                 try
                 {
@@ -505,7 +505,7 @@ namespace B2M.Revit.Commands.Families
                 string materialType;
                 BuiltGeometry built;
                 FamilyParameter pb, ph;
-                using (var tx = new Transaction(doc, "B2M: Build family"))
+                using (var tx = new Transaction(doc, "Plinth: Build family"))
                 {
                     FamilyBuilder.Step("start the family transaction", () => tx.Start());
                     materialType = FamilyBuilder.Step("set the structural material type to concrete", () => fb.SetConcrete());
@@ -558,7 +558,7 @@ namespace B2M.Revit.Commands.Families
             var datumName = built.StretchDatum.Name;
             bool stretchVerified;
             string stretchNote = null;
-            using (var tx = new Transaction(doc, "B2M: Flex check"))
+            using (var tx = new Transaction(doc, "Plinth: Flex check"))
             {
                 try
                 {

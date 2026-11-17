@@ -1,17 +1,17 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/ToolBaker/ListBakedToolsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: reads the JSON-file registry under %LOCALAPPDATA%\B2M\baked-tools instead of SQLite; usage stats,
+// Modified for Plinth: reads the JSON-file registry under %LOCALAPPDATA%\Plinth\baked-tools instead of SQLite; usage stats,
 // lifecycle, compat maps and paging cursors are gone (a plain limit remains); unusable files are listed with the reason;
 // reports whether developer mode is on, since run_baked_tool needs it. Works without developer mode.
 
 using System;
 using System.Linq;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Commands.Meta;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Commands.Meta;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.ToolBaker
+namespace Plinth.Revit.Commands.ToolBaker
 {
     public sealed class ListBakedToolsHandler : IRevitCommand
     {

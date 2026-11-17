@@ -2,7 +2,7 @@
 // src/shared/Handlers/Schedules/ScheduleElementIdFilter.cs and the schedule lookup, unit, filter-operator and
 // combined-parameter code repeated in src/shared/Handlers/Schedules/*Handler.cs, commit b44ee0b.
 // Licensed under the Apache License, Version 2.0.
-// Modified for B2M: one copy of what rvt-mcp repeated per handler. Schedule misses list the valid schedules
+// Modified for Plinth: one copy of what rvt-mcp repeated per handler. Schedule misses list the valid schedules
 // and a name shared by several schedules lists them; units go through Mm and UnitUtils (length mm, area m2,
 // volume m3, angle degrees); combined parameters use the public TableCellCombinedParameterData API instead
 // of reflection (Truncated/NumberOfCharacters do not exist in the 2024-2027 API and are not offered);
@@ -13,10 +13,10 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Autodesk.Revit.DB;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Schedule
+namespace Plinth.Revit.Commands.Schedule
 {
     internal static class ScheduleHelpers
     {

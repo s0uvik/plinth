@@ -1,7 +1,7 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp), files
 // src/shared/Handlers/Documents/ListRecentModelsHandler.cs and src/shared/Documents/RecentFileList.cs, commit b44ee0b.
 // Licensed under the Apache License, Version 2.0.
-// Modified for B2M: Revit.ini is found through Application.CurrentUsersDataFolderPath (rvt-mcp built the path from the
+// Modified for Plinth: Revit.ini is found through Application.CurrentUsersDataFolderPath (rvt-mcp built the path from the
 // plugin's year); the parser lives in this file; the file is opened read-only and shared so Revit can keep writing it.
 
 using System;
@@ -9,10 +9,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Meta
+namespace Plinth.Revit.Commands.Meta
 {
     public sealed class ListRecentModelsHandler : IRevitCommand
     {

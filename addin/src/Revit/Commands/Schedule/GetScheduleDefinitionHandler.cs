@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Schedules/GetScheduleDefinitionHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: field kinds come from ScheduleField.FieldType (rvt-mcp reflected for a HasFormula property
+// Modified for Plinth: field kinds come from ScheduleField.FieldType (rvt-mcp reflected for a HasFormula property
 // that the 2024-2027 API does not have, so formula fields were reported as parameter fields); formula text is
 // not readable through the Revit API and is not reported; columnWidth is the sheet column width in mm
 // (rvt-mcp reflected for a nonexistent ColumnWidth and always returned 0); isTotal is derived from
@@ -12,10 +12,10 @@ using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Schedule
+namespace Plinth.Revit.Commands.Schedule
 {
     public sealed class GetScheduleDefinitionHandler : IRevitCommand
     {

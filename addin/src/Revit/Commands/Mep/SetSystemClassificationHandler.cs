@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Mep/SetSystemClassificationHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: system_id is required and the command always writes, so ReadOnly is false; rvt-mcp's read-only
+// Modified for Plinth: system_id is required and the command always writes, so ReadOnly is false; rvt-mcp's read-only
 // report mode (no system_id) is dropped because one command cannot be both, and get_mep_element_connectors now
 // reports each connector's system instead; element_ids is capped at 500; when nothing is added the transaction is
 // rolled back (and it is a failure when every element failed); the per-element results are kept; IDs are numbers.
@@ -12,10 +12,10 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Mechanical;
 using Autodesk.Revit.DB.Plumbing;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Mep
+namespace Plinth.Revit.Commands.Mep
 {
     public sealed class SetSystemClassificationHandler : IRevitCommand
     {
@@ -64,7 +64,7 @@ namespace B2M.Revit.Commands.Mep
             var added = new List<long>();
             var alreadyMember = new List<long>();
             var failed = new List<object>();
-            using (var tx = new Transaction(doc, "B2M: Set System Classification"))
+            using (var tx = new Transaction(doc, "Plinth: Set System Classification"))
             {
                 tx.Start();
                 try

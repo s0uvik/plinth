@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Structural/GetStructuralLoadsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: loads are read through the PointLoad/LineLoad/AreaLoad API instead of LOAD_FORCE_* parameters (which
+// Modified for Plinth: loads are read through the PointLoad/LineLoad/AreaLoad API instead of LOAD_FORCE_* parameters (which
 // line and area loads do not carry) and converted from Revit's internal units to kN, kN/m, kN/m2 and kN*m (rvt-mcp
 // returned raw internal values); line loads report both ends, area loads their three corner vectors; truncated is
 // true only when loads were left out (rvt-mcp also set it when exactly limit loads existed); element_id is checked.
@@ -10,10 +10,10 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Structural
+namespace Plinth.Revit.Commands.Structural
 {
     public sealed class GetStructuralLoadsHandler : IRevitCommand
     {

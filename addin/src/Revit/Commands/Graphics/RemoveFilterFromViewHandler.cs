@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Graphics/RemoveFilterFromViewHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: failures are errors with codes (rvt-mcp returned success with an error field), checked
+// Modified for Plinth: failures are errors with codes (rvt-mcp returned success with an error field), checked
 // before the transaction opens; the response lists the views that still use the filter when it was kept.
 
 using System;
@@ -8,10 +8,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Graphics
+namespace Plinth.Revit.Commands.Graphics
 {
     using View = Autodesk.Revit.DB.View;
 
@@ -48,7 +48,7 @@ namespace B2M.Revit.Commands.Graphics
 
             var filterId = filter.Id;
             var filterName = filter.Name;
-            using (var tx = new Transaction(doc, "B2M: Remove View Filter"))
+            using (var tx = new Transaction(doc, "Plinth: Remove View Filter"))
             {
                 tx.Start();
                 try

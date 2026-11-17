@@ -1,7 +1,7 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // files src/shared/Handlers/Views/ViewPresentationSupport.cs and src/shared/Handlers/Views/ViewOrientationMath.cs,
 // commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: view lookup returns "CODE: message" failures with the valid views (a name that matches
+// Modified for Plinth: view lookup returns "CODE: message" failures with the valid views (a name that matches
 // several views is an error, rvt-mcp took the first); mm conversion goes through Mm; the camera-restore
 // debug log is dropped; the model-to-crop-frame projection used by set_view_crop is new.
 
@@ -10,12 +10,12 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.View
+namespace Plinth.Revit.Commands.View
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     /// <summary>View lookup and camera arithmetic shared by the view toolset.</summary>

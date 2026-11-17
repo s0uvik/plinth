@@ -1,16 +1,16 @@
 import json
 import os
 
-from b2m.revit.discovery import find_targets, parse
+from plinth.revit.discovery import find_targets, parse
 
 VALID = {
     "schema_version": 1,
-    "product": "b2m-revit",
+    "product": "plinth-revit",
     "addin_version": "0.1.0",
     "revit_year": 2026,
     "pid": 1234,
     "transport": "pipe",
-    "pipe_name": "B2M.Revit.1234",
+    "pipe_name": "Plinth.Revit.1234",
     "port": None,
     "auth_token": "secret",
 }
@@ -18,7 +18,7 @@ VALID = {
 
 def test_parse_valid_pipe_file(tmp_path):
     target = parse(tmp_path / "f.json", json.dumps(VALID))
-    assert target.pipe_name == "B2M.Revit.1234"
+    assert target.pipe_name == "Plinth.Revit.1234"
     assert target.token == "secret"
     assert target.target_id == "revit-2026-1234"
 

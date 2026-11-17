@@ -1,9 +1,9 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // files src/shared/Security/DiscoveryPublisher.cs and src/shared/Security/AuthToken.cs, commit b44ee0b.
 // Licensed under the Apache License, Version 2.0.
-// Modified for B2M: one discovery file per Revit process only (the shared per-year "legacy"
+// Modified for Plinth: one discovery file per Revit process only (the shared per-year "legacy"
 // file, its handover logic and the cross-process mutex are gone); files live under
-// %LOCALAPPDATA%\B2M\discovery; stale files of dead processes are removed on publish;
+// %LOCALAPPDATA%\Plinth\discovery; stale files of dead processes are removed on publish;
 // the file records the add-in version.
 
 using System;
@@ -17,7 +17,7 @@ using System.Threading;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Core.Security
+namespace Plinth.Revit.Core.Security
 {
     /// <summary>
     /// Writes the discovery file a client reads to find this Revit process: transport,
@@ -64,7 +64,7 @@ namespace B2M.Revit.Core.Security
                 var json = new JObject
                 {
                     ["schema_version"] = SchemaVersion,
-                    ["product"] = "b2m-revit",
+                    ["product"] = "plinth-revit",
                     ["addin_version"] = _addinVersion,
                     ["revit_year"] = int.TryParse(_year, out var y) ? new JValue(y) : JValue.CreateNull(),
                     ["pid"] = _pid,

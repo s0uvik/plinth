@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Structural/CreateStructuralBeamHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: level (by name) and framing type (type_id, or type_name + family_name) are required and a miss lists
+// Modified for Plinth: level (by name) and framing type (type_id, or type_name + family_name) are required and a miss lists
 // the options (rvt-mcp used the first framing type and the lowest level); start_z/end_z default to the level elevation
 // (rvt-mcp used 0); usage "joist" dropped (rvt-mcp silently created a beam); lines shorter than Revit allows are refused;
 // the response reads the placed curve back.
@@ -9,10 +9,10 @@ using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Structural
+namespace Plinth.Revit.Commands.Structural
 {
     public sealed class CreateStructuralBeamHandler : IRevitCommand
     {
@@ -52,7 +52,7 @@ namespace B2M.Revit.Commands.Structural
             var usage = p.Value<string>("usage") ?? "beam";
             var structuralType = usage == "brace" ? StructuralType.Brace : StructuralType.Beam;
 
-            using (var tx = new Transaction(doc, "B2M: Create Structural " + (usage == "brace" ? "Brace" : "Beam")))
+            using (var tx = new Transaction(doc, "Plinth: Create Structural " + (usage == "brace" ? "Brace" : "Beam")))
             {
                 tx.Start();
                 try

@@ -1,7 +1,7 @@
 [project]
-name = "b2m"
+name = "plinth"
 version = "0.1.0"
-description = "B2M Brief-to-Model service: talks to the B2M.Revit add-in"
+description = "Plinth service: talks to the Plinth.Revit add-in"
 requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.9",
@@ -25,12 +25,12 @@ requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["b2m*"]
+include = ["plinth*"]
 
 [tool.setuptools.package-data]
-b2m = ["rules/*.yaml", "web/*.html", "estimate/rules/*.yaml", "cad/assumptions/profiles/*.yaml",
+plinth = ["rules/*.yaml", "web/*.html", "estimate/rules/*.yaml", "cad/assumptions/profiles/*.yaml",
         "fitout/rulesets/*/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["live: needs a running Revit with the B2M add-in and an open scratch project (set B2M_LIVE=1)"]
+markers = ["live: needs a running Revit with the Plinth add-in and an open scratch project (set PLINTH_LIVE=1)"]

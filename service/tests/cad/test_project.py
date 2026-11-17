@@ -5,7 +5,7 @@ import json
 import ezdxf
 import pytest
 
-from b2m.cad import convert, inspect, project
+from plinth.cad import convert, inspect, project
 from tests.cad.conftest import SAMPLE_DXF
 
 EXPECTED_ROLES = {
@@ -37,7 +37,7 @@ def test_every_sample_sheet_is_classified_from_its_title(sample_project):
 
 
 def test_project_file_round_trip(monkeypatch, tmp_path):
-    monkeypatch.setenv("B2M_HOME", str(tmp_path))
+    monkeypatch.setenv("PLINTH_HOME", str(tmp_path))
     store = project.ImportStore()
     files = [SAMPLE_DXF / "3.ROOF PLAN.dxf", SAMPLE_DXF / "9.TIE BEAM LAYOUT(GROUND FLOOR).dxf"]
     created = store.create(files)

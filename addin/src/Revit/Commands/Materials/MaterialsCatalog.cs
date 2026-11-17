@@ -1,6 +1,6 @@
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 
-namespace B2M.Revit.Commands.Materials
+namespace Plinth.Revit.Commands.Materials
 {
     /// <summary>Registers the materials toolset's commands ported in Step 8 (the earlier ones are in CommandCatalog).</summary>
     internal static class MaterialsCatalog

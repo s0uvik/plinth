@@ -1,17 +1,17 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp), helpers repeated across the files
 // src/shared/Handlers/Structural/*.cs (ResolveSymbol, ResolveLevel, ResolveBarType, ResolveShape), commit b44ee0b.
 // Licensed under the Apache License, Version 2.0.
-// Modified for B2M: gathered into one class; every lookup needs an explicit choice and a miss returns the valid
+// Modified for Plinth: gathered into one class; every lookup needs an explicit choice and a miss returns the valid
 // options (rvt-mcp used the first symbol, level, bar type or shape found); levels go through Lookup.TryLevel.
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Structural
+namespace Plinth.Revit.Commands.Structural
 {
     internal static class StructuralHelpers
     {

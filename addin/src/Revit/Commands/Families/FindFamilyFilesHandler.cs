@@ -1,14 +1,14 @@
-// New in B2M: lists .rfa family files on disk whose name contains some text, searching the caller's folders, B2M's
+// New in Plinth: lists .rfa family files on disk whose name contains some text, searching the caller's folders, Plinth's
 // family folder and every language folder of the running Revit year's content library (the same roots and scan
 // bounds ensure_family_type uses). An optional category filter is a quick file-name heuristic only (the file or
 // its folder names a word such as "column" or "beam"); no file is opened. Read-only; needs no open document.
 
 using System.Linq;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Families
+namespace Plinth.Revit.Commands.Families
 {
     public sealed class FindFamilyFilesHandler : IRevitCommand
     {
@@ -18,7 +18,7 @@ namespace B2M.Revit.Commands.Families
         public string Name => "find_family_files";
         public string Description =>
             "Find .rfa family files whose file name contains name_contains (case-insensitive; may be empty when category is given). "
-            + "Searches search_folders (absolute) first, then %LOCALAPPDATA%\\B2M\\families, then the Revit content library of this "
+            + "Searches search_folders (absolute) first, then %LOCALAPPDATA%\\Plinth\\families, then the Revit content library of this "
             + "Revit year (all languages), at most " + FamilyFileSearch.MaxEntriesPerRoot + " entries per folder. category "
             + "(structural_column, structural_framing) keeps files whose name or folder suggests it; files are not opened. "
             + "Returns [{family_name, file_name, folder}] and truncated.";

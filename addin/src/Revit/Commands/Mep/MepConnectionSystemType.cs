@@ -1,11 +1,11 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Mep/MepConnectionSystemType.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: namespace only.
+// Modified for Plinth: namespace only.
 
 using System;
 using Autodesk.Revit.DB;
 
-namespace B2M.Revit.Commands.Mep
+namespace Plinth.Revit.Commands.Mep
 {
     internal static class MepConnectionSystemType
     {

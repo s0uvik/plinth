@@ -2,11 +2,11 @@ import json
 
 import pytest
 
-from b2m.cad import reader, sheet, structure
-from b2m.cad.recognise import recognise_plan
-from b2m.fitout import rules
-from b2m.imported import to_plan
-from b2m.plan import BuildPlan
+from plinth.cad import reader, sheet, structure
+from plinth.cad.recognise import recognise_plan
+from plinth.fitout import rules
+from plinth.imported import to_plan
+from plinth.plan import BuildPlan
 from tests.cad.conftest import SAMPLE, SAMPLE_DXF
 
 

@@ -1,15 +1,15 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Sheets/CreatePlaceholderSheetHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: failures are errors rather than a success with created=false; a taken sheet number is
+// Modified for Plinth: failures are errors rather than a success with created=false; a taken sheet number is
 // an error carrying the existing sheet's id; the camelCase aliases are gone (the schema rejects them).
 
 using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Sheets
+namespace Plinth.Revit.Commands.Sheets
 {
     public sealed class CreatePlaceholderSheetHandler : IRevitCommand
     {
@@ -35,7 +35,7 @@ namespace B2M.Revit.Commands.Sheets
                 return CommandResult.Fail("SHEET_NUMBER_IN_USE: sheet number '" + existing.SheetNumber + "' already exists.",
                     new { existingSheetId = RevitCompat.GetId(existing.Id) });
 
-            using (var tx = new Transaction(doc, "B2M: Create Placeholder Sheet"))
+            using (var tx = new Transaction(doc, "Plinth: Create Placeholder Sheet"))
             {
                 tx.Start();
                 try

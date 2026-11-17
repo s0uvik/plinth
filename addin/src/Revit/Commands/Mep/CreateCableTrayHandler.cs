@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Mep/CreateCableTrayHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: level (by name) and cable tray type (by id or name) are required and a miss lists the options
+// Modified for Plinth: level (by name) and cable tray type (by id or name) are required and a miss lists the options
 // (rvt-mcp used the first CableTrayType and the level nearest start_z); a width or height the type cannot take
 // rolls back instead of being ignored; hand-written param checks replaced by the schema; errors are "CODE: message".
 
@@ -8,10 +8,10 @@ using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Electrical;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Mep
+namespace Plinth.Revit.Commands.Mep
 {
     public sealed class CreateCableTrayHandler : IRevitCommand
     {
@@ -40,7 +40,7 @@ namespace B2M.Revit.Commands.Mep
             var width = p.Value<double?>("width");
             var height = p.Value<double?>("height");
 
-            using (var tx = new Transaction(doc, "B2M: Create Cable Tray"))
+            using (var tx = new Transaction(doc, "Plinth: Create Cable Tray"))
             {
                 tx.Start();
                 try

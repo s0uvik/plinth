@@ -1,7 +1,7 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // files src/shared/Infrastructure/SafeFailuresPreprocessor.cs and src/shared/Failures/FailurePolicy.cs, commit b44ee0b.
 // Licensed under the Apache License, Version 2.0.
-// Modified for B2M: one application-level FailuresProcessing handler applies the default rvt-mcp policy
+// Modified for Plinth: one application-level FailuresProcessing handler applies the default rvt-mcp policy
 // (any warning or error rolls the transaction back) while a request runs, and records every message
 // for the response and log. rvt-mcp's failure ledger, rules, grants and dialog adapters are not ported
 // here; they come with the failure-record tools.
@@ -12,7 +12,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Events;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Bridge
+namespace Plinth.Revit.Bridge
 {
     /// <summary>
     /// Active while one request runs on Revit's main thread. Any Revit warning or error raised by

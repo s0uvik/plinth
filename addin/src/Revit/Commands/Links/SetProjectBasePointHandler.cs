@@ -1,19 +1,19 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Documents/SetProjectBasePointHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: point_kind is required; fields carry their unit (east_west_mm ... angle_to_true_north_deg);
+// Modified for Plinth: point_kind is required; fields carry their unit (east_west_mm ... angle_to_true_north_deg);
 // an omitted field keeps its current value (rvt-mcp silently reset elevation and angle to 0); an angle for the
 // survey point is an error instead of being ignored; the whole coordinate system is returned before and after
 // with a "changes" list and summary; a partial apply is a NOT_FULLY_APPLIED error that says the model changed;
-// transaction "B2M: ..." rolled back only while open.
+// transaction "Plinth: ..." rolled back only while open.
 
 using System;
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Links
+namespace Plinth.Revit.Commands.Links
 {
     public sealed class SetProjectBasePointHandler : IRevitCommand
     {
@@ -101,7 +101,7 @@ namespace B2M.Revit.Commands.Links
                 });
 
             var before = LinksHelpers.CoordinateSystem(doc, warnings);
-            using (var tx = new Transaction(doc, "B2M: Set " + kind.Replace('_', ' ')))
+            using (var tx = new Transaction(doc, "Plinth: Set " + kind.Replace('_', ' ')))
             {
                 tx.Start();
                 try

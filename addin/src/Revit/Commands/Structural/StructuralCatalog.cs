@@ -1,6 +1,6 @@
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 
-namespace B2M.Revit.Commands.Structural
+namespace Plinth.Revit.Commands.Structural
 {
     /// <summary>Registers the structural toolset's commands ported in Step 8 (the earlier ones are in CommandCatalog).</summary>
     internal static class StructuralCatalog

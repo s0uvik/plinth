@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Families/ReplaceFamilyTypeHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: ids are integers; replacing a type with itself is refused; view_id must name a view (no silent
+// Modified for Plinth: ids are integers; replacing a type with itself is refused; view_id must name a view (no silent
 // active-view fallback when it is wrong); instances that refuse the type are reported as failedCount so batch_execute
 // rolls a partial replacement back (rvt-mcp listed them under "errors"); categories are compared by id.
 
@@ -9,10 +9,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Families
+namespace Plinth.Revit.Commands.Families
 {
     public sealed class ReplaceFamilyTypeHandler : IRevitCommand
     {
@@ -91,7 +91,7 @@ namespace B2M.Revit.Commands.Families
 
             var changed = new List<long>();
             var failed = new JArray();
-            using (var tx = new Transaction(doc, "B2M: Replace type"))
+            using (var tx = new Transaction(doc, "Plinth: Replace type"))
             {
                 tx.Start();
                 try

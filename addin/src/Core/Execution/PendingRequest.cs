@@ -1,7 +1,7 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // files src/shared/Infrastructure/Execution/PendingRequestLifecycle.cs and RequestWait.cs, commit b44ee0b.
 // Licensed under the Apache License, Version 2.0.
-// Modified for B2M: one small request object replaces the lifecycle table; script, dialog-wait,
+// Modified for Plinth: one small request object replaces the lifecycle table; script, dialog-wait,
 // modal-host and operation-receipt states are gone. The queued/running/cancelled states and the
 // 60 s default / 900 s maximum wait are kept.
 
@@ -9,7 +9,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace B2M.Revit.Core.Execution
+namespace Plinth.Revit.Core.Execution
 {
     /// <summary>
     /// One request travelling from a transport thread to Revit's main thread. A request that

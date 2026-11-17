@@ -9,8 +9,8 @@ import json
 import sys
 from pathlib import Path
 
-from b2m.engine import generate
-from b2m.spec import BuildingSpec
+from plinth.engine import generate
+from plinth.spec import BuildingSpec
 
 GOLDEN = Path(__file__).resolve().parent.parent / "tests" / "golden"
 

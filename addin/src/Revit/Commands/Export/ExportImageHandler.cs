@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Export/ExportImageHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: written to the exact path asked for (output_path, or output_folder + file_name, extension
+// Modified for Plinth: written to the exact path asked for (output_path, or output_folder + file_name, extension
 // from image_format) through a staging folder instead of diffing the target folder for the file Revit named;
 // an existing file is replaced only with overwrite; output_folder is created when missing; pixel_size is
 // range-checked; a failed export is a coded failure instead of success:true with exported:false.
@@ -10,10 +10,10 @@ using System;
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Export
+namespace Plinth.Revit.Commands.Export
 {
     public sealed class ExportImageHandler : IRevitCommand
     {

@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Mep/CreatePipeHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: level (by name) and pipe type (by id or name) are required; without a system type the pipe
+// Modified for Plinth: level (by name) and pipe type (by id or name) are required; without a system type the pipe
 // must inherit one from an open piping connector at the start, otherwise it is an error listing the piping
 // system types (rvt-mcp fell back to the first PipeType, the first PipingSystemType and the nearest level);
 // the start-connector search only looks at elements whose bounding box is near the start point (rvt-mcp scanned
@@ -13,10 +13,10 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Plumbing;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Mep
+namespace Plinth.Revit.Commands.Mep
 {
     public sealed class CreatePipeHandler : IRevitCommand
     {
@@ -94,7 +94,7 @@ namespace B2M.Revit.Commands.Mep
                         + " mm). Omit diameter to inherit it, or add a transition.");
             }
 
-            using (var tx = new Transaction(doc, "B2M: Create Pipe"))
+            using (var tx = new Transaction(doc, "Plinth: Create Pipe"))
             {
                 tx.Start();
                 try

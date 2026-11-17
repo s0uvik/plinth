@@ -11,9 +11,9 @@ import json
 import pytest
 from shapely.geometry import LineString, Point, Polygon
 
-from b2m.cad import structure
-from b2m.cad.recognise import recognise_plan
-from b2m.imported import split_space, to_plan
+from plinth.cad import structure
+from plinth.cad.recognise import recognise_plan
+from plinth.imported import split_space, to_plan
 from tests.cad.conftest import SAMPLE
 
 TYPICAL, GROUND, TIE = "2.PLAN 1st to 4th.dxf", "1.GROUND FLOOR PLAN.dxf", "9.TIE BEAM LAYOUT(GROUND FLOOR).dxf"
@@ -89,9 +89,9 @@ def test_with_answers_the_plan(building, answers):
     d1 = next(o for o in result.standards.doors if o.name == "D1")
     assert (d1.width_mm, d1.height_mm, d1.widths_drawn) == (800, 2100, {"800": 17, "900": 4})
     ground = ops[f"{GROUND}-outline-0"]
-    assert ground.type == "B2M 225mm PCC 150 + BFS 75"  # the floor build-up from the sections, as layers
+    assert ground.type == "Plinth 225mm PCC 150 + BFS 75"  # the floor build-up from the sections, as layers
     raft = ops["8.Foundation Details.dxf-F1-foundation"]
-    assert (raft.level, raft.type) == ("Foundation", "B2M 500mm Foundation Slab")
+    assert (raft.level, raft.type) == ("Foundation", "Plinth 500mm Foundation Slab")
     assert ops[f"{TIE}-B1-0"].type == "RCC Beam 250x450"
     # every op of a recognised element points back at it
     assert all(src.sheet and src.element for key, src in result.sources.items()

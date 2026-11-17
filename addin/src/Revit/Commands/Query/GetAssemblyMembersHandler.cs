@@ -1,15 +1,15 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Organization/GetAssemblyMembersHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: members keep ID order across pages (rvt-mcp re-sorted each page by category and name, so pages
+// Modified for Plinth: members keep ID order across pages (rvt-mcp re-sorted each page by category and name, so pages
 // were not a stable order); WorksetId read without the 2026-removed ElementId.IntegerValue; errors carry codes.
 
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Query
+namespace Plinth.Revit.Commands.Query
 {
     public sealed class GetAssemblyMembersHandler : IRevitCommand
     {

@@ -1,6 +1,6 @@
 using System;
 
-namespace B2M.Revit.Bridge
+namespace Plinth.Revit.Bridge
 {
     /// <summary>
     /// The add-in speaks millimetres on the wire; Revit's internal unit is the foot.

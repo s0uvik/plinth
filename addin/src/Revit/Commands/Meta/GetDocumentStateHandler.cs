@@ -1,17 +1,17 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Documents/GetDocumentStateHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: reports identity (title, file name only, never the full path), family/workshared/cloud/read-only/
+// Modified for Plinth: reports identity (title, file name only, never the full path), family/workshared/cloud/read-only/
 // modified state and the Revit year. Checkpoints, backups, file-version GUIDs, disk space and the document-mode
-// policy are not ported (no checkpoint tools in B2M). The document_id token is in the envelope's _target.
+// policy are not ported (no checkpoint tools in Plinth). The document_id token is in the envelope's _target.
 
 using System;
 using System.IO;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Meta
+namespace Plinth.Revit.Commands.Meta
 {
     public sealed class GetDocumentStateHandler : IRevitCommand
     {

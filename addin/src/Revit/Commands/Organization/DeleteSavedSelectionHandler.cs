@@ -1,7 +1,7 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Organization/DeleteSavedSelectionHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: dryRun still defaults to true; a miss or an ambiguous name lists the valid selections;
-// the elements in the selection are never deleted, only the saved selection; "B2M: ..." transaction with
+// Modified for Plinth: dryRun still defaults to true; a miss or an ambiguous name lists the valid selections;
+// the elements in the selection are never deleted, only the saved selection; "Plinth: ..." transaction with
 // a commit-status check.
 
 using System;
@@ -9,10 +9,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Organization
+namespace Plinth.Revit.Commands.Organization
 {
     public sealed class DeleteSavedSelectionHandler : IRevitCommand
     {
@@ -42,7 +42,7 @@ namespace B2M.Revit.Commands.Organization
             var deleted = new List<long>();
             if (!dryRun)
             {
-                using (var tx = new Transaction(doc, "B2M: Delete saved selection"))
+                using (var tx = new Transaction(doc, "Plinth: Delete saved selection"))
                 {
                     tx.Start();
                     try

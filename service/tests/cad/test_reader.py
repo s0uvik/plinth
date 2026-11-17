@@ -6,7 +6,7 @@ from collections import Counter
 import ezdxf
 import pytest
 
-from b2m.cad import reader
+from plinth.cad import reader
 from tests.cad.conftest import SAMPLE_DXF
 
 

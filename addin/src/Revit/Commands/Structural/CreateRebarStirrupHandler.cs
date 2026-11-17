@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Structural/CreateRebarStirrupHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: bar type (bar_type_id or bar_type_name) and rebar shape (shape_id or shape_name) are required and a
+// Modified for Plinth: bar type (bar_type_id or bar_type_name) and rebar shape (shape_id or shape_name) are required and a
 // miss lists the options (rvt-mcp used the first bar type and the first shape); the host is checked with
 // RebarHostData.IsValidHost; a zero direction vector is an error (rvt-mcp silently used world X or Y); origin field
 // names shortened to origin_x/y/z.
@@ -9,10 +9,10 @@ using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Structural
+namespace Plinth.Revit.Commands.Structural
 {
     public sealed class CreateRebarStirrupHandler : IRevitCommand
     {
@@ -58,7 +58,7 @@ namespace B2M.Revit.Commands.Structural
                     "rebar shape", "shape_id", "shape_name", out var shape, out failure)) return failure;
 
             var origin = new XYZ(Mm.ToFeet(p.Value<double>("origin_x")), Mm.ToFeet(p.Value<double>("origin_y")), Mm.ToFeet(p.Value<double>("origin_z")));
-            using (var tx = new Transaction(doc, "B2M: Create Rebar Stirrup"))
+            using (var tx = new Transaction(doc, "Plinth: Create Rebar Stirrup"))
             {
                 tx.Start();
                 try

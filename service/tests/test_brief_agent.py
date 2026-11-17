@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from b2m.brief.agent import MODEL, BriefFailed, BriefSession, Questions, SpecReady, check_submission
+from plinth.brief.agent import MODEL, BriefFailed, BriefSession, Questions, SpecReady, check_submission
 
 GOOD = {
     "plot_width_mm": 15000, "plot_depth_mm": 25000, "road_width_mm": 9000, "ground": "stilt_parking",
@@ -37,7 +37,7 @@ class FakeClaude:
 
 @pytest.fixture(autouse=True)
 def home(tmp_path, monkeypatch):
-    monkeypatch.setenv("B2M_HOME", str(tmp_path))
+    monkeypatch.setenv("PLINTH_HOME", str(tmp_path))
     return tmp_path
 
 
@@ -119,8 +119,8 @@ def test_gate_briefs_are_well_formed_and_their_expected_specs_lay_out():
 
     import yaml
 
-    from b2m.engine import generate
-    from b2m.spec import BuildingSpec
+    from plinth.engine import generate
+    from plinth.spec import BuildingSpec
 
     briefs = yaml.safe_load((Path(__file__).parent / "briefs" / "briefs.yaml").read_text(encoding="utf-8"))
     assert len(briefs) == 20 and len({b["id"] for b in briefs}) == 20
@@ -142,7 +142,7 @@ def test_structure_sunshades_and_parapet_pass_through_and_default_when_left_out(
     assert (spec.standards.structure, spec.standards.chajja_mm, spec.standards.roof_parapet_mm) == ("load_bearing", 0, 1200)
     spec, errors = check_submission(GOOD)
     assert errors == [] and spec.standards.structure == "rcc_frame" and spec.standards.chajja_mm == 600
-    from b2m.brief.agent import SYSTEM, TOOLS
+    from plinth.brief.agent import SYSTEM, TOOLS
     schema = TOOLS[0]["input_schema"]
     assert {"structure", "chajja_mm", "roof_parapet_mm"} <= set(schema["required"]) == set(schema["properties"])
     assert "roof_parapet_mm" in SYSTEM and "chajja_mm" in SYSTEM

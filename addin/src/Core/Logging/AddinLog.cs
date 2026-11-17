@@ -4,10 +4,10 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 
-namespace B2M.Revit.Core.Logging
+namespace Plinth.Revit.Core.Logging
 {
     /// <summary>
-    /// The add-in's single log. One file per day in the shared B2M log folder; every line
+    /// The add-in's single log. One file per day in the shared Plinth log folder; every line
     /// carries the Revit year and process ID so service and add-in logs can be read together.
     /// Logging never throws into the caller.
     /// </summary>
@@ -29,10 +29,10 @@ namespace B2M.Revit.Core.Logging
                 var now = DateTime.UtcNow;
                 var line = string.Format(CultureInfo.InvariantCulture, "{0:yyyy-MM-ddTHH:mm:ss.fffZ} [{1} pid {2}] [{3}] {4}",
                     now, _revitYear, ProcessId, category, message);
-                var path = Path.Combine(B2MPaths.Logs, "addin-" + now.ToString("yyyyMMdd", CultureInfo.InvariantCulture) + ".log");
+                var path = Path.Combine(PlinthPaths.Logs, "addin-" + now.ToString("yyyyMMdd", CultureInfo.InvariantCulture) + ".log");
                 lock (Gate)
                 {
-                    Directory.CreateDirectory(B2MPaths.Logs);
+                    Directory.CreateDirectory(PlinthPaths.Logs);
                     File.AppendAllText(path, line + Environment.NewLine, new UTF8Encoding(false));
                 }
             }

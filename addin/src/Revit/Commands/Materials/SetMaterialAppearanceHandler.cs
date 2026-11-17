@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Materials/SetMaterialAppearanceHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: a pattern id of -1 clears that pattern; a wrong pattern id lists the valid fill patterns of
+// Modified for Plinth: a pattern id of -1 clears that pattern; a wrong pattern id lists the valid fill patterns of
 // the right kind (cut patterns must be drafting patterns); the response reads the material back.
 // Duplicate before edit (TypeEditGuard): a material is shared, so it is changed only with duplicate_as (a copy named
 // so gets the change; nothing else moves onto it) or confirm_edit_all (= its best-effort user count); otherwise
@@ -11,10 +11,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Materials
+namespace Plinth.Revit.Commands.Materials
 {
     public sealed class SetMaterialAppearanceHandler : IRevitCommand
     {
@@ -87,7 +87,7 @@ namespace B2M.Revit.Commands.Materials
 
             if (!TypeEditGuard.TryPlan(doc, p, new[] { new SharedEdit(mat) }, out var plan, out failure)) return failure;
 
-            using (var tx = new Transaction(doc, "B2M: Set material appearance"))
+            using (var tx = new Transaction(doc, "Plinth: Set material appearance"))
             {
                 tx.Start();
                 try

@@ -1,4 +1,4 @@
-// New in B2M (Step 10, F1): Revit 2026 installs no local family library, so fit-out families and MEP system types come
+// New in Plinth (Step 10, F1): Revit 2026 installs no local family library, so fit-out families and MEP system types come
 // from the project templates Revit installs under %PROGRAMDATA%\Autodesk\RVT <year>\Templates (one folder per content
 // language, a few loose .rte files at the top). Listing them is plain file work, kept here so it can be unit-tested.
 
@@ -7,7 +7,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
-namespace B2M.Revit.Core.Families
+namespace Plinth.Revit.Core.Families
 {
     public static class TemplateFiles
     {

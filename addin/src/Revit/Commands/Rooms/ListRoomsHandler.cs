@@ -1,7 +1,7 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Rooms/ListRoomsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: filters run before the boundary calculation (rvt-mcp computed every room's
-// boundary first, the slow part); a department filter (B2M flat ID); unknown level or phase names
+// Modified for Plinth: filters run before the boundary calculation (rvt-mcp computed every room's
+// boundary first, the slow part); a department filter (Plinth flat ID); unknown level or phase names
 // are errors; the status counts cover the filtered rooms.
 
 using System;
@@ -10,10 +10,10 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Architecture;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Rooms
+namespace Plinth.Revit.Commands.Rooms
 {
     public sealed class ListRoomsHandler : IRevitCommand
     {

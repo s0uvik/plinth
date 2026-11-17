@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Materials/AssignMaterialToElementHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: without parameter_name the element must have exactly one writable material parameter (or the
+// Modified for Plinth: without parameter_name the element must have exactly one writable material parameter (or the
 // structural material parameter); rvt-mcp took the first ElementId parameter whose English name contained
 // "Material", which is a silent guess. Misses list the element's writable material parameters. Parameter.Set's
 // result is checked. Layer mode follows the shared duplicate-before-edit rule (TypeEditGuard): duplicate_as copies each
@@ -14,11 +14,11 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Core.Safety;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Core.Safety;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Materials
+namespace Plinth.Revit.Commands.Materials
 {
     public sealed class AssignMaterialToElementHandler : IRevitCommand
     {
@@ -106,7 +106,7 @@ namespace B2M.Revit.Commands.Materials
             }
 
             var results = new JArray();
-            using (var tx = new Transaction(doc, "B2M: Assign material"))
+            using (var tx = new Transaction(doc, "Plinth: Assign material"))
             {
                 tx.Start();
                 try

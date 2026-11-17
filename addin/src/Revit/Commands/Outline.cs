@@ -1,9 +1,9 @@
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands
+namespace Plinth.Revit.Commands
 {
     /// <summary>Turns a JSON list of {x, y} points in mm into a closed, horizontal outline.</summary>
     internal static class Outline

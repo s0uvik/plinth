@@ -1,20 +1,20 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/ToolBaker/RunBakedToolHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: refused unless developer mode is on; every call, allowed or refused, is appended to
+// Modified for Plinth: refused unless developer mode is on; every call, allowed or refused, is appended to
 // logs\code-execution.jsonl with the tool name, its code and the outcome; the tool's C# is read from its JSON file and
-// compiled on each call by the same CodeRunner as send_code_to_revit, inside one "B2M: baked tool <name>" transaction;
+// compiled on each call by the same CodeRunner as send_code_to_revit, inside one "Plinth: baked tool <name>" transaction;
 // params are checked against the tool's schema by SchemaValidator first. The dispatcher-registered baked commands,
 // authorizer, usage recording, compat warnings and output=file are not ported. Still refused inside batch_execute.
 
 using System;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Commands.Meta;
-using B2M.Revit.Core.Execution;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Commands.Meta;
+using Plinth.Revit.Core.Execution;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.ToolBaker
+namespace Plinth.Revit.Commands.ToolBaker
 {
     public sealed class RunBakedToolHandler : IRevitCommand
     {
@@ -56,7 +56,7 @@ namespace B2M.Revit.Commands.ToolBaker
                 return CommandResult.Fail(rejection + " Nothing ran.");
             }
 
-            var result = CodeRunner.AuditedRun(app, Name, name, tool.Code, args, "B2M: baked tool " + name);
+            var result = CodeRunner.AuditedRun(app, Name, name, tool.Code, args, "Plinth: baked tool " + name);
             if (!result.Success) return result;
             return CommandResult.Ok(new JObject
             {

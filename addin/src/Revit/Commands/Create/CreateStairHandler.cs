@@ -1,4 +1,4 @@
-// New in B2M (PRD "New tools"): rvt-mcp cannot make stairs. create_stair builds a component stair from 1 to 4
+// New in Plinth (PRD "New tools"): rvt-mcp cannot make stairs. create_stair builds a component stair from 1 to 4
 // straight runs inside a StairsEditScope, joining consecutive runs with Revit's automatic landings.
 // Each run is given by its first-riser point on the centreline, a direction and a riser count; the add-in works out
 // the run's length from the riser count and the tread depth and returns where each run really ends. The stair
@@ -14,10 +14,10 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Architecture;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Create
+namespace Plinth.Revit.Commands.Create
 {
     public sealed class CreateStairHandler : IRevitCommand
     {
@@ -178,7 +178,7 @@ namespace B2M.Revit.Commands.Create
         private static CommandResult Build(Document doc, Level baseLevel, Level topLevel, StairsType stairsType, List<RunSpec> runs,
             int totalRisers, double riser, double tread, double width, double baseOffset, double baseZ)
         {
-            using (var scope = new StairsEditScope(doc, "B2M: Create Stair"))
+            using (var scope = new StairsEditScope(doc, "Plinth: Create Stair"))
             {
                 if (!scope.IsPermitted)
                     return CommandResult.Fail("STAIRS_EDIT_NOT_PERMITTED: Revit cannot start stair editing now (a transaction or another edit "
@@ -242,7 +242,7 @@ namespace B2M.Revit.Commands.Create
             int totalRisers, double riser, double tread, double width, double baseOffset, double baseZ,
             List<ElementId> runIds, List<ElementId> landingIds)
         {
-            using (var tx = new Transaction(doc, "B2M: Stair runs"))
+            using (var tx = new Transaction(doc, "Plinth: Stair runs"))
             {
                 tx.Start();
                 try

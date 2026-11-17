@@ -1,4 +1,4 @@
-// New in B2M: Revit-side helpers shared by the drawing-set annotation commands (auto_dimension_plan,
+// New in Plinth: Revit-side helpers shared by the drawing-set annotation commands (auto_dimension_plan,
 // auto_dimension_section, label_rooms, spot_level). The Revit-free halves (chain building, skyline, text formats)
 // are in addin/src/Core/Drawing.
 //   - one Transaction per created item inside the command's TransactionGroup, so a Revit warning on one dimension
@@ -11,13 +11,13 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
-using B2M.Revit.Bridge;
-using B2M.Revit.Core.Drawing;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Core.Drawing;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Annotation
+namespace Plinth.Revit.Commands.Annotation
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     internal static class DrawingSupport
@@ -179,7 +179,7 @@ namespace B2M.Revit.Commands.Annotation
         /// <summary>
         /// Before any transaction. text_type_name given: that type, as is (its size is reported, not changed).
         /// Otherwise a text type whose size is sizeMm (the project default first), else a plan to duplicate the
-        /// project default as "B2M &lt;size&gt;mm" (made unique) and set the copy's size.
+        /// project default as "Plinth &lt;size&gt;mm" (made unique) and set the copy's size.
         /// </summary>
         public static bool TryPlanTextType(Document doc, double sizeMm, string typeName, out TextTypePlan plan, out CommandResult failure)
         {

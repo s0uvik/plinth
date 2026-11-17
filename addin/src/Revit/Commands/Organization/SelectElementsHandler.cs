@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Elements/SelectElementsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: ReadOnly is true by decision: the command only changes the user's selection in the Revit
+// Modified for Plinth: ReadOnly is true by decision: the command only changes the user's selection in the Revit
 // UI (Selection.SetElementIds), opens no transaction, and changes no document or file, so it needs no
 // confirmed document. Missing explicit IDs fail with the missing list as data and nothing selected;
 // duplicates are collapsed; at most 5000 IDs; a saved-selection miss lists the valid selections; a zoom
@@ -10,10 +10,10 @@ using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Organization
+namespace Plinth.Revit.Commands.Organization
 {
     public sealed class SelectElementsHandler : IRevitCommand
     {

@@ -1,20 +1,20 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // files src/shared/Handlers/Mep/CreateAirTerminalHandler.cs and src/shared/Handlers/Mep/CreateLightingFixtureHandler.cs,
 // commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the two near-identical handlers share this placement routine; level is required by name and
+// Modified for Plinth: the two near-identical handlers share this placement routine; level is required by name and
 // the type is chosen by type_id or type_name (+ family_name), a miss listing the options (rvt-mcp took type_id only
 // and used the level nearest z); a type of the wrong category is an error (rvt-mcp returned success with
 // created=false for air terminals); unsupported placement types are refused; the host Revit assigned is checked.
-// Modified for B2M Step 10 (F5): placement goes through FamilyPlacer, so face-based fixtures sit on a ceiling's bottom
+// Modified for Plinth Step 10 (F5): placement goes through FamilyPlacer, so face-based fixtures sit on a ceiling's bottom
 // face or a wall's chosen side face, or with no ceiling at an offset (facing down); rotation and offset; created_ids.
 
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Commands.Create;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Commands.Create;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Mep
+namespace Plinth.Revit.Commands.Mep
 {
     internal static class MepFixturePlacement
     {

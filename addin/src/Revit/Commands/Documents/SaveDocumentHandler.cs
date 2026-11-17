@@ -1,7 +1,7 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp), files
 // src/shared/Handlers/Documents/SaveDocumentHandler.cs, DocumentLifecycleSupport.cs (Prepare, Save, SaveAsNew) and
 // src/shared/Documents/DocumentSavePolicy.cs and SaveAsPathPolicy.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the same safety checks (cloud, central, template, changed on disk, format upgrade, read-only file,
+// Modified for Plinth: the same safety checks (cloud, central, template, changed on disk, format upgrade, read-only file,
 // save-as only for documents without a file and never over an existing file) in one handler; the backup-limit registry
 // that re-saved models with 20 backups is not ported, so a normal save keeps the model's own backup setting;
 // FailureControl.ThrowIfStopped is replaced by re-reading the save count; family documents may save as .rfa.
@@ -10,10 +10,10 @@ using System;
 using System.IO;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Documents
+namespace Plinth.Revit.Commands.Documents
 {
     public sealed class SaveDocumentHandler : IRevitCommand
     {

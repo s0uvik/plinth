@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Views/SetViewOrientationHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: view lookup through ViewHelpers (a shared name is an error with the options); B2M error
+// Modified for Plinth: view lookup through ViewHelpers (a shared name is an error with the options); Plinth error
 // codes; rvt-mcp's SavedViewOrientationRefresh (Idling/DocumentChanged hooks that re-sync Revit's temporary
 // camera after Undo/Redo of a saved orientation) is not ported, so after an Undo the open window may keep
 // showing the new camera until the view is reopened; the saved orientation itself is undone correctly.
@@ -9,12 +9,12 @@ using System;
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.View
+namespace Plinth.Revit.Commands.View
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     public sealed class SetViewOrientationHandler : IRevitCommand
@@ -65,7 +65,7 @@ namespace B2M.Revit.Commands.View
             var notes = new List<string>();
             var before = view.GetOrientation();
 
-            using (var tx = new Transaction(doc, "B2M: Set View Orientation"))
+            using (var tx = new Transaction(doc, "Plinth: Set View Orientation"))
             {
                 tx.Start();
                 try

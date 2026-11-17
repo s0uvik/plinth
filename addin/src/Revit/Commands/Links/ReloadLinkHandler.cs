@@ -1,16 +1,16 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Links/ReloadLinkHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: Reload discards unsaved shared-coordinate changes in the link, which rvt-mcp did
-// silently; B2M refuses then unless unsaved_positions is "save" (SavePositions into the linked .rvt first)
+// Modified for Plinth: Reload discards unsaved shared-coordinate changes in the link, which rvt-mcp did
+// silently; Plinth refuses then unless unsaved_positions is "save" (SavePositions into the linked .rvt first)
 // or "discard". The load result is reported; misses return valid_links. Runs outside any transaction.
 
 using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Links
+namespace Plinth.Revit.Commands.Links
 {
     public sealed class ReloadLinkHandler : IRevitCommand
     {

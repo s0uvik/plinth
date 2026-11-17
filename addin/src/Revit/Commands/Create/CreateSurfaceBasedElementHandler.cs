@@ -1,20 +1,20 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Elements/CreateSurfaceBasedElementHandler.cs, commit b44ee0b.
 // Licensed under the Apache License, Version 2.0.
-// Modified for B2M: level is required and an unknown level or type is an error with the valid
+// Modified for Plinth: level is required and an unknown level or type is an error with the valid
 // options (rvt-mcp fell back to the first level and the first type); typeName as well as typeId;
 // the outline sits at the level's elevation; degenerate edges are rejected; area is read back.
-// New in B2M: optional heightOffset (mm) sets Height Offset From Level on the floor or ceiling, for chajjas
+// New in Plinth: optional heightOffset (mm) sets Height Offset From Level on the floor or ceiling, for chajjas
 // (window sunshades) and false ceilings; without it the element keeps Revit's default offset as before.
 
 using System;
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Create
+namespace Plinth.Revit.Commands.Create
 {
     public sealed class CreateSurfaceBasedElementHandler : IRevitCommand
     {
@@ -59,7 +59,7 @@ namespace B2M.Revit.Commands.Create
                 type = ceilingType;
             }
 
-            using (var tx = new Transaction(doc, "B2M: Create " + elementType))
+            using (var tx = new Transaction(doc, "Plinth: Create " + elementType))
             {
                 tx.Start();
                 try

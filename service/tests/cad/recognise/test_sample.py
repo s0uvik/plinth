@@ -11,8 +11,8 @@ from collections import Counter
 
 import pytest
 
-from b2m.cad import classify
-from b2m.cad.recognise import recognise_plan_detailed
+from plinth.cad import classify
+from plinth.cad.recognise import recognise_plan_detailed
 
 
 @pytest.fixture(scope="module")
@@ -143,7 +143,7 @@ def test_hidden_dynamic_block_states_are_marked_invisible(sample_sheets):
 
 
 def test_cli_prints_counts_and_writes_svg(tmp_path, capsys):
-    from b2m.cad.recognise.__main__ import main
+    from plinth.cad.recognise.__main__ import main
     from tests.cad.conftest import SAMPLE_DXF
     assert main([str(SAMPLE_DXF / "2.PLAN 1st to 4th.dxf"), str(SAMPLE_DXF / "6.SECTION- AA.dxf"),
                  "--svg", str(tmp_path), "--json", str(tmp_path)]) == 0

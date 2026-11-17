@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Organization/CreateGroupFromElementsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: a name already used by a group type fails before anything is created (rvt-mcp let Revit throw
+// Modified for Plinth: a name already used by a group type fails before anything is created (rvt-mcp let Revit throw
 // mid-transaction); elements that are already in a group, are types, or are views are refused up front with their IDs;
 // missing IDs are returned as data; the response reads the group back after commit.
 
@@ -8,10 +8,10 @@ using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Create
+namespace Plinth.Revit.Commands.Create
 {
     public sealed class CreateGroupFromElementsHandler : IRevitCommand
     {
@@ -51,7 +51,7 @@ namespace B2M.Revit.Commands.Create
             }
 
             Group group;
-            using (var tx = new Transaction(doc, "B2M: Create group from elements"))
+            using (var tx = new Transaction(doc, "Plinth: Create group from elements"))
             {
                 tx.Start();
                 try

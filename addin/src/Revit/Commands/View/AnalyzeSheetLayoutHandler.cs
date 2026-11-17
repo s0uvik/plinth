@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Sheets/AnalyzeSheetLayoutHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: sheet resolution through Lookup.TrySheet (a miss lists the valid sheets; placeholder
+// Modified for Plinth: sheet resolution through Lookup.TrySheet (a miss lists the valid sheets; placeholder
 // sheets are refused; passing both sheetId and sheetNumber is an error); mm through Mm; every title block on
 // the sheet is reported with its family name and its position (rvt-mcp reported only the first one's type
 // name and size); viewports also report their box min/max on the sheet; paging through SheetsHelpers.
@@ -8,13 +8,13 @@
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Commands.Sheets;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Commands.Sheets;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.View
+namespace Plinth.Revit.Commands.View
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     public sealed class AnalyzeSheetLayoutHandler : IRevitCommand

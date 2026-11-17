@@ -1,6 +1,6 @@
-// New in B2M (Step 10, fit-out, 2026-11-17): create_box_family. Families are found, adapted (a copy) and only created
+// New in Plinth (Step 10, fit-out, 2026-11-17): create_box_family. Families are found, adapted (a copy) and only created
 // with the user's OK; when the user answers that a fit-out item gets a plain box (their bed set fitted no bedroom),
-// B2M makes one: FamilyFactory.CreateBox builds it from Revit's metric template for the category (Metric Furniture for
+// Plinth makes one: FamilyFactory.CreateBox builds it from Revit's metric template for the category (Metric Furniture for
 // furniture), or from Metric Generic Model with the category set when the category's template is missing, saves it to a
 // temporary folder and it is loaded into the project as a NEW family, in one transaction. A family of that name already
 // in the project is never overwritten nor edited: it is returned as already_there (nothing created). created_ids lists
@@ -15,11 +15,11 @@ using System.IO;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Core.Families;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Core.Families;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Families
+namespace Plinth.Revit.Commands.Families
 {
     public sealed class CreateBoxFamilyHandler : IRevitCommand
     {
@@ -30,18 +30,18 @@ namespace B2M.Revit.Commands.Families
             "Create a plain box family for a fit-out item (only when the user agreed: families are found, adapted, and created only "
             + "with the user's OK) and load it into the project as a NEW family: one extrusion width_mm x depth_mm x height_mm with "
             + "type parameters Width, Depth, Height and Material, origin at the middle of its back edge (back on +Y, front facing -Y), "
-            + "base at the level, one type (type_name, default '<w> x <d> x <h>mm (B2M)'). category: a built-in category (default "
+            + "base at the level, one type (type_name, default '<w> x <d> x <h>mm (Plinth)'). category: a built-in category (default "
             + "OST_Furniture); the category's metric template is used (Metric Furniture...), else Metric Generic Model with the "
             + "category set. A family named family_name already in the project is never overwritten: action already_there with its "
             + "family_id and type (created_ids empty). action created: family_id, type_id and created_ids (the family, its type and "
             + "anything the load added, e.g. its material) so a run can remove them. dry_run decides and changes nothing. Call directly, "
             + "not inside batch_execute.";
         public string ParametersSchema => @"{""type"":""object"",""properties"":{
-            ""family_name"":{""type"":""string"",""description"":""the new family's name, e.g. B2M Bed (also a file name)""},
-            ""type_name"":{""type"":""string"",""description"":""default '<w> x <d> x <h>mm (B2M)'""},
+            ""family_name"":{""type"":""string"",""description"":""the new family's name, e.g. Plinth Bed (also a file name)""},
+            ""type_name"":{""type"":""string"",""description"":""default '<w> x <d> x <h>mm (Plinth)'""},
             ""category"":{""type"":""string"",""description"":""built-in category, default OST_Furniture""},
             ""width_mm"":{""type"":""number""},""depth_mm"":{""type"":""number""},""height_mm"":{""type"":""number""},
-            ""material_name"":{""type"":""string"",""description"":""the Material parameter's material (default B2M Fit-out)""},
+            ""material_name"":{""type"":""string"",""description"":""the Material parameter's material (default Plinth Fit-out)""},
             ""template_path"":{""type"":""string"",""description"":""an .rft to use instead of the installed metric template""},
             ""dry_run"":{""type"":""boolean""}},""required"":[""family_name"",""width_mm"",""depth_mm"",""height_mm""]}";
         public bool ReadOnly => false;
@@ -97,7 +97,7 @@ namespace B2M.Revit.Commands.Families
             if (doc.IsReadOnly) return CommandResult.Fail("READ_ONLY_DOCUMENT: the document cannot be changed.");
             if (doc.IsModifiable) return CommandResult.Fail("TRANSACTION_OPEN: another transaction is open; call create_box_family on its own.");
 
-            var folder = Path.Combine(Path.GetTempPath(), "B2M", "box-families", Guid.NewGuid().ToString("N"));
+            var folder = Path.Combine(Path.GetTempPath(), "Plinth", "box-families", Guid.NewGuid().ToString("N"));
             var savePath = Path.Combine(folder, name + ".rfa");
             try
             {
@@ -201,7 +201,7 @@ namespace B2M.Revit.Commands.Families
         private static CommandResult Load(Document doc, string path, string name, string typeName, BuiltInCategory category, JObject result)
         {
             const string unchanged = " Nothing was changed in the project.";
-            using (var tx = new Transaction(doc, "B2M: Load box family " + name))
+            using (var tx = new Transaction(doc, "Plinth: Load box family " + name))
             {
                 tx.Start();
                 try

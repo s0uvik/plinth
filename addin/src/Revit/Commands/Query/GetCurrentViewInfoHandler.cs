@@ -1,13 +1,13 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Views/GetCurrentViewHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: namespace and command interface only. B2M clients use it as the
+// Modified for Plinth: namespace and command interface only. Plinth clients use it as the
 // document-confirm probe: its response carries _target.document_id.
 
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Query
+namespace Plinth.Revit.Commands.Query
 {
     public sealed class GetCurrentViewInfoHandler : IRevitCommand
     {

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>Plinth</Name>
+    <Assembly>Plinth\Plinth.Revit.dll</Assembly>
+    <FullClassName>Plinth.Revit.App</FullClassName>
+    <AddInId>{7c1d2a4e-5b3f-4e8a-9d61-2f0b8c4e6a17}</AddInId>
+    <VendorId>Plinth</VendorId>
+    <VendorDescription>Plinth</VendorDescription>
+  </AddIn>
+</RevitAddIns>

@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Mep/DetectSystemElementsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the connector walk is capped (max_traversal, default 5000, hard 20000) and reports
+// Modified for Plinth: the connector walk is capped (max_traversal, default 5000, hard 20000) and reports
 // traversal_truncated (rvt-mcp walked without bound); elements are grouped by every built-in category met
 // (OST_PipeCurves, OST_DuctCurves, OST_CableTray...) instead of only four piping buckets; errors are "CODE: message".
 
@@ -8,10 +8,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Mep
+namespace Plinth.Revit.Commands.Mep
 {
     public sealed class DetectSystemElementsHandler : IRevitCommand
     {

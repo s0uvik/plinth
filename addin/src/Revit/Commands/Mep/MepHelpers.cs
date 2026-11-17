@@ -1,7 +1,7 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp), helpers repeated across the files
 // src/shared/Handlers/Mep/*.cs (GetConnectorManager, ResolveSystem, AllSystems, DomainOf, connector lookup), commit b44ee0b.
 // Licensed under the Apache License, Version 2.0.
-// Modified for B2M: gathered into one class; type and system lookups require an explicit choice and a miss
+// Modified for Plinth: gathered into one class; type and system lookups require an explicit choice and a miss
 // returns the valid options (rvt-mcp used the first type or level found); millimetres via Mm.
 
 using System;
@@ -11,10 +11,10 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Electrical;
 using Autodesk.Revit.DB.Mechanical;
 using Autodesk.Revit.DB.Plumbing;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Mep
+namespace Plinth.Revit.Commands.Mep
 {
     internal static class MepHelpers
     {

@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Parameters/CreateProjectParameterHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: implemented. rvt-mcp's handler always failed because Revit's public API cannot create a
+// Modified for Plinth: implemented. rvt-mcp's handler always failed because Revit's public API cannot create a
 // non-shared project parameter. This one uses the standard route: a definition with a new GUID is written to a
 // temporary shared parameter file under %TEMP%, bound to the categories, and the file is deleted afterwards. Revit's
 // configured shared parameter file setting is switched only for the call and always restored; the user's own shared
@@ -13,10 +13,10 @@ using System.IO;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Parameters
+namespace Plinth.Revit.Commands.Parameters
 {
     public sealed class CreateProjectParameterHandler : IRevitCommand
     {
@@ -57,15 +57,15 @@ namespace B2M.Revit.Commands.Parameters
                 return CommandResult.Fail("NAME_IN_USE: the project already has a parameter named '" + clash.Key.Name + "'.",
                     new JObject { ["guid"] = ParametersHelpers.SharedGuidOf(doc, clash.Key)?.ToString("d") });
 
-            var tempPath = Path.Combine(Path.GetTempPath(), "b2m-project-parameter-" + Guid.NewGuid().ToString("N") + ".txt");
+            var tempPath = Path.Combine(Path.GetTempPath(), "plinth-project-parameter-" + Guid.NewGuid().ToString("N") + ".txt");
             Guid guid;
             try
             {
                 if (!ParametersHelpers.SharedParameterFile.TryOpen(app.Application, tempPath, true, out var file, out _, out failure)) return failure;
                 using (file)
-                using (var tx = new Transaction(doc, "B2M: Create project parameter"))
+                using (var tx = new Transaction(doc, "Plinth: Create project parameter"))
                 {
-                    var definition = (ExternalDefinition)file.File.Groups.Create("B2M").Definitions.Create(
+                    var definition = (ExternalDefinition)file.File.Groups.Create("Plinth").Definitions.Create(
                         new ExternalDefinitionCreationOptions(name, spec) { Description = p.Value<string>("description") ?? "" });
                     guid = definition.GUID;
                     tx.Start();

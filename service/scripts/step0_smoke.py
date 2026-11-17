@@ -17,7 +17,7 @@ import argparse
 import sys
 import time
 
-from b2m.revit import RevitClient, RevitError
+from plinth.revit import RevitClient, RevitError
 
 REQUIRED = ["get_current_view_info", "create_level", "create_line_based_element", "batch_execute"]
 
@@ -32,7 +32,7 @@ def main() -> int:
     args = parser.parse_args()
 
     stamp = time.strftime("%H%M%S")
-    lower, upper = f"B2M Smoke {stamp} A", f"B2M Smoke {stamp} B"
+    lower, upper = f"Plinth Smoke {stamp} A", f"Plinth Smoke {stamp} B"
 
     with RevitClient.connect(required_commands=REQUIRED) as revit:
         step("1. health")
@@ -89,7 +89,7 @@ def main() -> int:
         assert len(data["results"]) == 6 and not data["rolledBack"]
 
     step("5. undo check (manual)")
-    print(f"In Revit press Ctrl+Z ONCE. The undo entry is 'B2M: Batch'; levels '{lower}', '{upper}'")
+    print(f"In Revit press Ctrl+Z ONCE. The undo entry is 'Plinth: Batch'; levels '{lower}', '{upper}'")
     print("and the four walls should all disappear together. That is the one-undo gate.")
     print("\nPASS: steps 1-4")
     return 0

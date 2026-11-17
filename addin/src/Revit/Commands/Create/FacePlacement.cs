@@ -1,4 +1,4 @@
-// New in B2M (Step 10, F5): work-plane-based (face-based) families - sockets, switches, wall-mounted AC units, ceiling
+// New in Plinth (Step 10, F5): work-plane-based (face-based) families - sockets, switches, wall-mounted AC units, ceiling
 // lights - are placed on a face of their host: a straight wall's exterior or interior side face, a ceiling's bottom
 // face, or a floor's or roof's top face. This finds the face reference, the point on it and the in-face direction that
 // NewFamilyInstance(Reference, XYZ, XYZ, FamilySymbol) needs.
@@ -6,7 +6,7 @@
 using System;
 using Autodesk.Revit.DB;
 
-namespace B2M.Revit.Commands.Create
+namespace Plinth.Revit.Commands.Create
 {
     internal static class FacePlacement
     {

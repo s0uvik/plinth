@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Views/CaptureViewImageHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: PNG only, written to the exact absolute path asked for (output_path, or
+// Modified for Plinth: PNG only, written to the exact absolute path asked for (output_path, or
 // output_folder + file_name) through a staging folder instead of rvt-mcp's CaptureOutputPath allow-list
 // and CaptureOutputResolver; an existing file is replaced only with overwrite; the returned size is the
 // PNG's real pixel width and height read from the file.
@@ -10,13 +10,13 @@ using System.Collections.Generic;
 using System.IO;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Commands.Export;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Commands.Export;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.View
+namespace Plinth.Revit.Commands.View
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     public sealed class CaptureViewImageHandler : IRevitCommand

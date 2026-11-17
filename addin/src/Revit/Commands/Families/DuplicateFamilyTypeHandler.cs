@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Families/DuplicateFamilyTypeHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: all or nothing, so a parameter override that fails rolls back the whole duplicate (rvt-mcp
+// Modified for Plinth: all or nothing, so a parameter override that fails rolls back the whole duplicate (rvt-mcp
 // committed the new type and listed the failures); a missing parameter lists the type's writable parameters;
 // overrides use the shared value rules (lengths in mm through Mm, areas m2, volumes m3, angles degrees, other
 // measured values need unit "internal"); source_type_id is an integer; failures are errors, not success payloads.
@@ -10,11 +10,11 @@ using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Commands.Parameters;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Commands.Parameters;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Families
+namespace Plinth.Revit.Commands.Families
 {
     public sealed class DuplicateFamilyTypeHandler : IRevitCommand
     {
@@ -43,7 +43,7 @@ namespace B2M.Revit.Commands.Families
                     new JObject { ["existing_type_id"] = RevitCompat.GetId(clash.Id) });
             var overrides = p["type_parameter_overrides"] as JObject ?? new JObject();
 
-            using (var tx = new Transaction(doc, "B2M: Duplicate type"))
+            using (var tx = new Transaction(doc, "Plinth: Duplicate type"))
             {
                 tx.Start();
                 try

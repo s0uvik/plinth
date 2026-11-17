@@ -8,8 +8,8 @@ import math
 
 import pytest
 
-from b2m.fitout import families, furniture, rooms, to_plan
-from b2m.fitout.families import Measurement
+from plinth.fitout import families, furniture, rooms, to_plan
+from plinth.fitout.families import Measurement
 from tests.fitout.conftest import box_walls, plan_of
 from tests.fitout.fake_revit import FitoutRevit
 
@@ -205,7 +205,7 @@ def test_the_plan_places_each_measured_family_on_its_footprint(planned):
 
 
 def test_the_plan_builds_and_the_counter_and_sink_still_match_per_size(planned):
-    from b2m.runner import Runner
+    from plinth.runner import Runner
 
     plan, _, doc, found = planned
     assert found.ready and found.questions == []

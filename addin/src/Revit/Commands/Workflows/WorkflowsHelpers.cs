@@ -1,8 +1,8 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // files src/shared/Handlers/Workflows/WorkflowSupport.cs and src/shared/Handlers/Workflows/ClashDetectionHandler.cs,
 // commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: categories resolve by BuiltInCategory name (OST_Walls) or exact category name and a miss
-// lists the valid model categories; units go through Mm and the B2M m2/m3 factors (rvt-mcp used UnitUtils and
+// Modified for Plinth: categories resolve by BuiltInCategory name (OST_Walls) or exact category name and a miss
+// lists the valid model categories; units go through Mm and the Plinth m2/m3 factors (rvt-mcp used UnitUtils and
 // literal 304.8); file writes go through Export/OutputFile (exact path, no overwrite without overwrite: true);
 // the clash check is a compact local copy of clash_detection (bounding-box prefilter, then solid intersection)
 // with element and candidate caps, so the workflows do not depend on the geometry toolset being ported in parallel;
@@ -16,13 +16,13 @@ using System.Linq;
 using System.Text;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Commands.Export;
-using B2M.Revit.Commands.Sheets;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Commands.Export;
+using Plinth.Revit.Commands.Sheets;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Workflows
+namespace Plinth.Revit.Commands.Workflows
 {
     using View = Autodesk.Revit.DB.View;
 

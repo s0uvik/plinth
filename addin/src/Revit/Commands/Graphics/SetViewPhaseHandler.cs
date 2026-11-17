@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Views/SetViewPhaseHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: moved to the graphics toolset; id and name for the same field together are an error;
+// Modified for Plinth: moved to the graphics toolset; id and name for the same field together are an error;
 // a missing phase, phase filter or view lists the valid ones; parameter checks run before the transaction;
 // failures are errors with codes (rvt-mcp returned success with an error field).
 
@@ -8,10 +8,10 @@ using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Graphics
+namespace Plinth.Revit.Commands.Graphics
 {
     using View = Autodesk.Revit.DB.View;
 
@@ -69,7 +69,7 @@ namespace B2M.Revit.Commands.Graphics
                 return CommandResult.Fail("PARAMETER_READ_ONLY: view '" + view.Name + "' (" + view.ViewType + ") has no editable Phase Filter"
                     + (view.ViewTemplateId != ElementId.InvalidElementId ? "; its view template may control it" : "") + ".");
 
-            using (var tx = new Transaction(doc, "B2M: Set View Phase"))
+            using (var tx = new Transaction(doc, "Plinth: Set View Phase"))
             {
                 tx.Start();
                 try

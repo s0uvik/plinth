@@ -1,12 +1,12 @@
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Query
+namespace Plinth.Revit.Commands.Query
 {
-    /// <summary>New in B2M: grids with IDs and end points in mm, for read-back.</summary>
+    /// <summary>New in Plinth: grids with IDs and end points in mm, for read-back.</summary>
     public sealed class ListGridsHandler : IRevitCommand
     {
         public string Name => "list_grids";

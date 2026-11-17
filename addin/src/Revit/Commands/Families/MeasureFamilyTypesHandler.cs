@@ -1,4 +1,4 @@
-// New in B2M (Step 10, fit-out families first): measure_family_types. The fit-out lays furniture out with the real
+// New in Plinth (Step 10, fit-out families first): measure_family_types. The fit-out lays furniture out with the real
 // footprint of the family chosen for each item and inserts each family from its box, so it needs every type's box
 // about its insertion point. One instance per type is placed unrotated at the origin of a level (level-based: at the
 // level; work-plane-based: on the level's plane), its bounding box read, and everything is rolled back: from the
@@ -13,11 +13,11 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Core.Families;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Core.Families;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Families
+namespace Plinth.Revit.Commands.Families
 {
     public sealed class MeasureFamilyTypesHandler : IRevitCommand
     {
@@ -68,7 +68,7 @@ namespace B2M.Revit.Commands.Families
             var types = new JArray();
             var skipped = new JArray();
 
-            using (var tx = new Transaction(doc, "B2M: Measure family types (rolled back)"))
+            using (var tx = new Transaction(doc, "Plinth: Measure family types (rolled back)"))
             {
                 tx.Start();
                 try

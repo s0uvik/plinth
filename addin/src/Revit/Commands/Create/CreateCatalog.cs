@@ -1,6 +1,6 @@
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 
-namespace B2M.Revit.Commands.Create
+namespace Plinth.Revit.Commands.Create
 {
     /// <summary>Registers the create toolset's commands ported in Step 8 (the earlier ones are in CommandCatalog).</summary>
     internal static class CreateCatalog
@@ -8,11 +8,11 @@ namespace B2M.Revit.Commands.Create
         public static void Register(CommandDispatcher dispatcher)
         {
             dispatcher.Register(new CreateGroupFromElementsHandler());
-            // New in B2M: stairs, railings and roofs.
+            // New in Plinth: stairs, railings and roofs.
             dispatcher.Register(new CreateStairHandler());
             dispatcher.Register(new CreateRailingHandler());
             dispatcher.Register(new CreateRoofHandler());
-            // New in B2M (Step 9 T7c): structural foundation slabs from a foundation slab type (ensure_floor_type foundation: true).
+            // New in Plinth (Step 9 T7c): structural foundation slabs from a foundation slab type (ensure_floor_type foundation: true).
             dispatcher.Register(new CreateFoundationSlabHandler());
         }
     }

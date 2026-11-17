@@ -1,16 +1,16 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // files src/shared/Handlers/Mep/MepSystemMembership.cs and src/shared/Handlers/Mep/MepMembershipPolicy.cs, commit b44ee0b.
 // Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the two files merged; the counts policy is a nested struct; namespace and ID helper renamed.
+// Modified for Plinth: the two files merged; the counts policy is a nested struct; namespace and ID helper renamed.
 
 using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Mechanical;
 using Autodesk.Revit.DB.Plumbing;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 
-namespace B2M.Revit.Commands.Mep
+namespace Plinth.Revit.Commands.Mep
 {
     /// <summary>
     /// Reads each API collection of an MEP system once. A failed read must never look like an empty system.

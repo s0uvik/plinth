@@ -3,8 +3,8 @@ import threading
 
 import pytest
 
-from b2m.gateway import Gateway, GatewayError
-from b2m.revit import RevitError
+from plinth.gateway import Gateway, GatewayError
+from plinth.revit import RevitError
 
 
 class FakeClient:
@@ -31,7 +31,7 @@ class FakeClient:
 
 @pytest.fixture
 def gateway(tmp_path, monkeypatch):
-    monkeypatch.setenv("B2M_HOME", str(tmp_path))
+    monkeypatch.setenv("PLINTH_HOME", str(tmp_path))
     responses = []
     g = Gateway(threading.Lock(), connect=lambda target=None: FakeClient(responses))
     g._target = lambda: "fake-target"
@@ -105,10 +105,10 @@ def test_repeated_send_code_is_suggested_for_baking(gateway, tmp_path):
 
 
 def test_switch_target_confirms_the_document(gateway, monkeypatch):
-    from b2m.revit.discovery import Target
+    from plinth.revit.discovery import Target
     from pathlib import Path
-    t = Target(Path("x"), 42, 2026, "0.1.0", "pipe", "B2M.Revit.42", None, "tok")
-    monkeypatch.setattr("b2m.gateway.find_targets", lambda: [t])
+    t = Target(Path("x"), 42, 2026, "0.1.0", "pipe", "Plinth.Revit.42", None, "tok")
+    monkeypatch.setattr("plinth.gateway.find_targets", lambda: [t])
     result = gateway.switch_target("2026")
     assert result["confirmed_document"] == "Scratch" and gateway.document_id == "doc-1" and gateway.pinned_pid == 42
     with pytest.raises(GatewayError):

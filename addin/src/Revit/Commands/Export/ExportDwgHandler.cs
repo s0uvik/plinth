@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Export/ExportDwgHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: one DWG per view at a predictable name in output_folder (file_name for a single view,
+// Modified for Plinth: one DWG per view at a predictable name in output_folder (file_name for a single view,
 // else file_name_prefix + "sheet number - sheet name"), each exported through a staging folder and moved
 // into place, so nothing else in the folder is touched and an existing file is replaced only with overwrite
 // (rvt-mcp exported straight into the folder and reported files by timestamp); output_folder is created when
@@ -12,10 +12,10 @@ using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Export
+namespace Plinth.Revit.Commands.Export
 {
     using View = Autodesk.Revit.DB.View;
 

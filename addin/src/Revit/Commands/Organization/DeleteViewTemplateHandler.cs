@@ -1,19 +1,19 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Views/DeleteViewTemplateHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: dryRun still defaults to true; a dry run on a template in use says what clearFromViews
+// Modified for Plinth: dryRun still defaults to true; a dry run on a template in use says what clearFromViews
 // would do instead of only "wouldDelete: false"; a miss lists the valid templates; the result names the
 // views that used the template and whether they were detached; snake_case max_used_by_views became
-// maxUsedByViews to match the other fields; "B2M: ..." transaction with a commit-status check.
+// maxUsedByViews to match the other fields; "Plinth: ..." transaction with a commit-status check.
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Organization
+namespace Plinth.Revit.Commands.Organization
 {
     using View = Autodesk.Revit.DB.View;
 
@@ -65,7 +65,7 @@ namespace B2M.Revit.Commands.Organization
             var deletedIds = new List<long>();
             if (!dryRun)
             {
-                using (var tx = new Transaction(doc, "B2M: Delete view template"))
+                using (var tx = new Transaction(doc, "Plinth: Delete view template"))
                 {
                     tx.Start();
                     try

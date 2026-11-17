@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Annotations/TagAllWallsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: optional view_id (default still the active view) and tag_type_id; walls already tagged in
+// Modified for Plinth: optional view_id (default still the active view) and tag_type_id; walls already tagged in
 // the view are skipped (rvt-mcp tagged them again on every call); per-wall failures are reported instead of
 // swallowed; when no wall could be tagged the transaction is rolled back and the command fails; view templates
 // and views that cannot hold tags are refused.
@@ -10,12 +10,12 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Annotation
+namespace Plinth.Revit.Commands.Annotation
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     public sealed class TagAllWallsHandler : IRevitCommand
@@ -54,7 +54,7 @@ namespace B2M.Revit.Commands.Annotation
 
             var tagIds = new List<long>();
             var failed = new List<object>();
-            using (var tx = new Transaction(doc, "B2M: Tag All Walls"))
+            using (var tx = new Transaction(doc, "Plinth: Tag All Walls"))
             {
                 tx.Start();
                 try

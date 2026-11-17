@@ -1,16 +1,16 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Organization/ListSavedSelectionsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: sorted by name before the limit is applied (rvt-mcp cut first, then sorted); the
+// Modified for Plinth: sorted by name before the limit is applied (rvt-mcp cut first, then sorted); the
 // result says how many matched and whether it was truncated; per-selection element lists are capped at
 // 1000 IDs each to stay under the response cap; summaries carry the built-in category name.
 
 using System;
 using System.Linq;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Organization
+namespace Plinth.Revit.Commands.Organization
 {
     public sealed class ListSavedSelectionsHandler : IRevitCommand
     {

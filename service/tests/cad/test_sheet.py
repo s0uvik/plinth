@@ -2,7 +2,7 @@
 
 import ezdxf
 
-from b2m.cad import reader, sheet
+from plinth.cad import reader, sheet
 
 # What the sample sheets print (read off drawing-set.pdf): title, scale 1:N, page number.
 EXPECTED = {

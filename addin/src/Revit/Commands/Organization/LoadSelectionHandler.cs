@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Organization/LoadSelectionHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: like rvt-mcp it only reads the saved selection and returns its element IDs; it does
+// Modified for Plinth: like rvt-mcp it only reads the saved selection and returns its element IDs; it does
 // not change the user's selection in Revit (select_elements with savedSelectionId does that). ResponsePaging
 // is replaced by inline paging (startIndex / maxResults, renamed from start_index / max_results); a miss or
 // an ambiguous name lists the valid selections; element summaries carry the built-in category name.
@@ -8,10 +8,10 @@
 using System;
 using System.Linq;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Organization
+namespace Plinth.Revit.Commands.Organization
 {
     public sealed class LoadSelectionHandler : IRevitCommand
     {

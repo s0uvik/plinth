@@ -1,8 +1,8 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Geometry/CreateMeshShapesHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: transaction "B2M: Create mesh shapes", rolled back only while still open; our
+// Modified for Plinth: transaction "Plinth: Create mesh shapes", rolled back only while still open; our
 // FailureScope rolls it back on any Revit warning; DirectShapes are tagged with application id
-// "B2M.MeshShapes" (replace_existing only deletes shapes this add-in made); a category not allowed
+// "Plinth.MeshShapes" (replace_existing only deletes shapes this add-in made); a category not allowed
 // for DirectShape is an error instead of a silent switch to Generic Models; vertex mm go through Mm;
 // "Nothing was changed" outcomes are "CODE: message" errors.
 // Duplicate before edit (TypeEditGuard): update_materials changes existing materials named in the file, which changes
@@ -18,15 +18,15 @@ using System.IO;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Core.Safety;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Core.Safety;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Geometry
+namespace Plinth.Revit.Commands.Geometry
 {
     public sealed class CreateMeshShapesHandler : IRevitCommand
     {
-        public const string AppId = "B2M.MeshShapes";
+        public const string AppId = "Plinth.MeshShapes";
         private const int MaxListed = 200;
 
         public string Name => "create_mesh_shapes";
@@ -116,7 +116,7 @@ namespace B2M.Revit.Commands.Geometry
             var createdIds = new List<KeyValuePair<string, long>>();
             var outcomes = new JObject();
             string current = null;
-            using (var tx = new Transaction(doc, "B2M: Create mesh shapes"))
+            using (var tx = new Transaction(doc, "Plinth: Create mesh shapes"))
             {
                 tx.Start();
                 try

@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Documents/PurgeUnusedHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: candidates come from Revit's own purge test (Document.GetUnusedElements, Revit 2024+) filtered to
+// Modified for Plinth: candidates come from Revit's own purge test (Document.GetUnusedElements, Revit 2024+) filtered to
 // loadable family types, instead of rvt-mcp's "no placed instance" heuristic, so types used by tags, schedules or
 // other families are kept; in-place family types are still skipped. The unused "targets" option is dropped (family
 // types are the only target); a delete that Revit refuses is listed per type; a partial delete is reported as
@@ -11,10 +11,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Meta
+namespace Plinth.Revit.Commands.Meta
 {
     public sealed class PurgeUnusedHandler : IRevitCommand
     {
@@ -65,7 +65,7 @@ namespace B2M.Revit.Commands.Meta
             var deleted = new List<long>();
             var errors = new JArray();
             var gone = new HashSet<long>();
-            using (var tx = new Transaction(doc, "B2M: Purge unused family types"))
+            using (var tx = new Transaction(doc, "Plinth: Purge unused family types"))
             {
                 tx.Start();
                 foreach (var symbol in chosen)

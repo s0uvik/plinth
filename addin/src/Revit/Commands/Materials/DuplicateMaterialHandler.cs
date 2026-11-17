@@ -1,15 +1,15 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Materials/DuplicateMaterialHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the duplicate-name check is case-insensitive and returns the existing id; a missing source
+// Modified for Plinth: the duplicate-name check is case-insensitive and returns the existing id; a missing source
 // lists the valid materials.
 
 using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Materials
+namespace Plinth.Revit.Commands.Materials
 {
     public sealed class DuplicateMaterialHandler : IRevitCommand
     {
@@ -35,7 +35,7 @@ namespace B2M.Revit.Commands.Materials
                 return CommandResult.Fail("NAME_IN_USE: a material named '" + existing.Name + "' already exists.",
                     new JObject { ["existing_material_id"] = RevitCompat.GetId(existing.Id) });
 
-            using (var tx = new Transaction(doc, "B2M: Duplicate material"))
+            using (var tx = new Transaction(doc, "Plinth: Duplicate material"))
             {
                 tx.Start();
                 try

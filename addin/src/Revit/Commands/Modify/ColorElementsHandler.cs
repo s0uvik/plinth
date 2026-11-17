@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Graphics/ColorElementsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: category accepts OST_ names as well as display names and a miss lists the valid ones; colours
+// Modified for Plinth: category accepts OST_ names as well as display names and a miss lists the valid ones; colours
 // are applied with a solid surface fill so surfaces show them (rvt-mcp set only the pattern colour); groups are
 // ordered by value and doubles group in wire units (mm, m2, m3, degrees; rvt-mcp grouped raw feet); the active view
 // must allow graphic overrides and only elements visible in it are coloured (rvt-mcp overrode every element of the
@@ -10,10 +10,10 @@ using System.Globalization;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Modify
+namespace Plinth.Revit.Commands.Modify
 {
     public sealed class ColorElementsHandler : IRevitCommand
     {

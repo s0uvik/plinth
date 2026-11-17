@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Views/ListViewTemplatesHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: includeSettings now defaults to false (setting lists are long; counts are always given)
+// Modified for Plinth: includeSettings now defaults to false (setting lists are long; counts are always given)
 // to stay under the response cap; an unknown viewType fails with the valid ViewType names instead of
 // matching nothing; viewId must be a non-template view (Lookup.TryView); setting names come from
 // OrganizationHelpers.SettingInfo; the read errors rvt-mcp swallowed are reported per template.
@@ -9,10 +9,10 @@ using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Organization
+namespace Plinth.Revit.Commands.Organization
 {
     using View = Autodesk.Revit.DB.View;
 

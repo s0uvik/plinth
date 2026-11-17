@@ -1,4 +1,4 @@
-// New in B2M (Step 10, F5): a fixture often has several connectors of one domain (a basin's cold water, hot water and
+// New in Plinth (Step 10, F5): a fixture often has several connectors of one domain (a basin's cold water, hot water and
 // waste), so "the nearest open piping connector" can pick the wrong one. create_mep_run first keeps the connectors whose
 // classification fits the run's system: Revit's connector classification (PipeSystemType / DuctSystemType names) must
 // equal the run system type's classification (MEPSystemClassification name), unless the connector takes any system
@@ -6,7 +6,7 @@
 
 using System;
 
-namespace B2M.Revit.Core.Mep
+namespace Plinth.Revit.Core.Mep
 {
     public static class ConnectorMatch
     {

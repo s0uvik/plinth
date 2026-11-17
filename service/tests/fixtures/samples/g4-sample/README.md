@@ -1,7 +1,7 @@
 # G+4 sample drawing set (Step 9 test fixture)
 
 A real office drawing set used to build and gate the drawing-to-model pipeline (PRD Step 9). It is a test case for
-the system, not a project B2M is built for: no pipeline code may branch on it.
+the system, not a project Plinth is built for: no pipeline code may branch on it.
 
 - `dwg/`: the 9 source DWGs as received (AutoCAD 2018 format).
 - `dxf/`: the same, converted with ODA File Converter 27.10 (ACAD2018 DXF). Tests read these.

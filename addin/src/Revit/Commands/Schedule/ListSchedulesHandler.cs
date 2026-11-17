@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Schedules/ListSchedulesHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: each schedule also reports its BuiltInCategory name (language-independent, e.g. OST_Doors)
+// Modified for Plinth: each schedule also reports its BuiltInCategory name (language-independent, e.g. OST_Doors)
 // and categoryFilter matches either name; the category name lookup per schedule replaces rvt-mcp's map over
 // every BuiltInCategory; failures to read one schedule are counted in skipped, as before.
 
@@ -8,10 +8,10 @@ using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Schedule
+namespace Plinth.Revit.Commands.Schedule
 {
     public sealed class ListSchedulesHandler : IRevitCommand
     {

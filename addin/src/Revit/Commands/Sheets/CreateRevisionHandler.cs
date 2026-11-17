@@ -1,15 +1,15 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Sheets/CreateRevisionHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: failures are errors rather than a success with created=false; the result also reports
+// Modified for Plinth: failures are errors rather than a success with created=false; the result also reports
 // issued_to / issued_by; the camelCase aliases are gone.
 
 using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Sheets
+namespace Plinth.Revit.Commands.Sheets
 {
     public sealed class CreateRevisionHandler : IRevitCommand
     {
@@ -38,7 +38,7 @@ namespace B2M.Revit.Commands.Sheets
             var issuedBy = p.Value<string>("issued_by");
             var issued = p.Value<bool?>("issued") ?? false;
 
-            using (var tx = new Transaction(doc, "B2M: Create Revision"))
+            using (var tx = new Transaction(doc, "Plinth: Create Revision"))
             {
                 tx.Start();
                 try

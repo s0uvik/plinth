@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Parameters/ListSharedParametersHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: a missing or unset file is an error ("CODE: message") instead of success with exists=false;
+// Modified for Plinth: a missing or unset file is an error ("CODE: message") instead of success with exists=false;
 // the path must be an absolute .txt path; a custom path is used only for this call and the user's configured
 // shared parameter file is restored afterwards (as in rvt-mcp); bindings are matched by GUID through the
 // document's SharedParameterElements, since bound definitions are internal ones (rvt-mcp matched ExternalDefinition
@@ -11,10 +11,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Parameters
+namespace Plinth.Revit.Commands.Parameters
 {
     public sealed class ListSharedParametersHandler : IRevitCommand
     {

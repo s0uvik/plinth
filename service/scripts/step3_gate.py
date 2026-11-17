@@ -15,8 +15,8 @@ from pathlib import Path
 
 import yaml
 
-from b2m.brief.agent import BriefSession, Questions, SpecReady, anthropic_client
-from b2m.engine import LayoutError, generate
+from plinth.brief.agent import BriefSession, Questions, SpecReady, anthropic_client
+from plinth.engine import LayoutError, generate
 
 BRIEFS = Path(__file__).resolve().parent.parent / "tests" / "briefs" / "briefs.yaml"
 

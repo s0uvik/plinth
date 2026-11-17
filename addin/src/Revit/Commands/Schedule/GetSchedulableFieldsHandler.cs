@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Schedules/GetSchedulableFieldsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: schedule misses list the valid schedules; kindFilter values are checked against
+// Modified for Plinth: schedule misses list the valid schedules; kindFilter values are checked against
 // ScheduleFieldType names (an unknown kind is an error, rvt-mcp returned nothing); specTypeId comes from the
 // project/shared parameter definition (rvt-mcp reflected for SchedulableField.GetSpecTypeId, which the
 // 2024-2027 API does not have, so it was always null) and stays null for built-in parameters;
@@ -11,10 +11,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Schedule
+namespace Plinth.Revit.Commands.Schedule
 {
     public sealed class GetSchedulableFieldsHandler : IRevitCommand
     {

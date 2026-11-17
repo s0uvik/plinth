@@ -1,4 +1,4 @@
-// New in B2M: a structural foundation slab (raft / plinth-level slab) from a closed outline, for the drawing-to-model
+// New in Plinth: a structural foundation slab (raft / plinth-level slab) from a closed outline, for the drawing-to-model
 // build (Step 9). type_name must be a foundation slab FloorType (FloorType.IsFoundationSlab; make one with
 // ensure_floor_type foundation: true). It uses Floor.Create (Revit 2022+ API) with that type and structural = true, so
 // Revit makes a Structural Foundations element. The outline is checked first (PlanPolygon: 3+ points, simple, with area;
@@ -10,11 +10,11 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Core.Geometry;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Core.Geometry;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Create
+namespace Plinth.Revit.Commands.Create
 {
     public sealed class CreateFoundationSlabHandler : IRevitCommand
     {
@@ -59,7 +59,7 @@ namespace B2M.Revit.Commands.Create
                 return CommandResult.Fail("INVALID_PARAMS: Revit does not accept points as a horizontal boundary (it must be one closed, "
                     + "non-self-intersecting loop).");
 
-            using (var tx = new Transaction(doc, "B2M: Create foundation slab"))
+            using (var tx = new Transaction(doc, "Plinth: Create foundation slab"))
             {
                 tx.Start();
                 try

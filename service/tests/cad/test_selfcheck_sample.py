@@ -12,9 +12,9 @@ from collections import Counter
 
 import pytest
 
-from b2m.cad import structure
-from b2m.cad.recognise import recognise_plan
-from b2m.imported import selfcheck, to_plan
+from plinth.cad import structure
+from plinth.cad.recognise import recognise_plan
+from plinth.imported import selfcheck, to_plan
 from tests.cad.conftest import SAMPLE
 from tests.selfcheck_readback import perfect_readback
 

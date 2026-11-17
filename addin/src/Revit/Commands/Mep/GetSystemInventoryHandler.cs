@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Mep/GetSystemInventoryHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the system lookup lists the valid systems on a miss or ambiguity; limit outside 1..20000 is an
+// Modified for Plinth: the system lookup lists the valid systems on a miss or ambiguity; limit outside 1..20000 is an
 // error (rvt-mcp clamped it); parameter values convert lengths through Mm and other units through Revit's own
 // formatting (AsValueString) instead of hand-written factors; IDs are numbers; errors are "CODE: message".
 
@@ -9,10 +9,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Mep
+namespace Plinth.Revit.Commands.Mep
 {
     public sealed class GetSystemInventoryHandler : IRevitCommand
     {

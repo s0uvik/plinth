@@ -1,4 +1,4 @@
-// New in B2M: places a plan's dimension chains the way an architect does, so the drawing set reproduces the source
+// New in Plinth: places a plan's dimension chains the way an architect does, so the drawing set reproduces the source
 // sheets (PRD Step 9, stage 9 "Drawings"). Every chain is a live dimension: its references are wall faces (from the
 // wall solids, computed with references, crossing the view's cut plane), grids, and door/window Left/Right
 // reference planes, so the dimensions follow the model when it changes.
@@ -25,13 +25,13 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Architecture;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Core.Drawing;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Core.Drawing;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Annotation
+namespace Plinth.Revit.Commands.Annotation
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     public sealed class AutoDimensionPlanHandler : IRevitCommand
@@ -42,7 +42,7 @@ namespace B2M.Revit.Commands.Annotation
 
         public string Name => "auto_dimension_plan";
         public string Description =>
-            "New in B2M: dimension a plan view (view_id, default the active view) like an architect. modes: any of exterior_openings "
+            "New in Plinth: dimension a plan view (view_id, default the active view) like an architect. modes: any of exterior_openings "
             + "(each exterior wall face: corners and door/window edges), grids (grid to grid), overall (outer wall faces), "
             + "interior_rooms (each room's clear width and length; room_ids to limit). Default exterior_openings, grids, overall. "
             + "sides: any of top (+Y), bottom, left, right (default all). offset_mm (default 800) from the building to the first "
@@ -188,7 +188,7 @@ namespace B2M.Revit.Commands.Annotation
             var created = new JArray();
             var lines = new List<double[]>(); // axis, pos, min, max
             var failedCount = 0;
-            using (var group = new TransactionGroup(doc, "B2M: Auto Dimension Plan"))
+            using (var group = new TransactionGroup(doc, "Plinth: Auto Dimension Plan"))
             {
                 group.Start();
                 try
@@ -212,7 +212,7 @@ namespace B2M.Revit.Commands.Annotation
                         var array = new ReferenceArray();
                         foreach (var s in pc.Chain.Stops) array.Append(refs[s.Key]);
                         Dimension dim = null;
-                        var reason = DrawingSupport.RunItem(doc, "B2M: Dimension chain", () =>
+                        var reason = DrawingSupport.RunItem(doc, "Plinth: Dimension chain", () =>
                         {
                             dim = dimType != null ? doc.Create.NewDimension(plan, line, array, dimType) : doc.Create.NewDimension(plan, line, array);
                             if (dim == null) throw new InvalidOperationException("Revit returned no dimension.");

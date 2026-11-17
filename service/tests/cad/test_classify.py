@@ -2,7 +2,7 @@
 
 import pytest
 
-from b2m.cad.classify import classify, file_title
+from plinth.cad.classify import classify, file_title
 
 
 @pytest.mark.parametrize("title, role, storeys, name", [

@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Families/RenameFamilyTypeHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: failures are errors instead of success with renamed=false; a name clash is caught before the
+// Modified for Plinth: failures are errors instead of success with renamed=false; a name clash is caught before the
 // transaction and names the existing type; type_id is an integer.
 // Exempt from duplicate before edit (TypeEditGuard): a rename changes no element's geometry or data other than the type
 // name it shows, so it needs neither duplicate_as nor confirm_edit_all; the result reports instance_count so the
@@ -9,10 +9,10 @@
 using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Families
+namespace Plinth.Revit.Commands.Families
 {
     public sealed class RenameFamilyTypeHandler : IRevitCommand
     {
@@ -53,7 +53,7 @@ namespace B2M.Revit.Commands.Families
                 return CommandResult.Fail("NAME_IN_USE: a type named '" + clash.Name + "' already exists.",
                     new JObject { ["existing_type_id"] = RevitCompat.GetId(clash.Id) });
 
-            using (var tx = new Transaction(doc, "B2M: Rename type"))
+            using (var tx = new Transaction(doc, "Plinth: Rename type"))
             {
                 tx.Start();
                 try

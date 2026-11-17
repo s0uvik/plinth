@@ -1,14 +1,14 @@
 using System.Linq;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Meta
+namespace Plinth.Revit.Commands.Meta
 {
     /// <summary>
-    /// New in B2M: describes every command (toolset, description, parameter schema, read-only), so the service
+    /// New in Plinth: describes every command (toolset, description, parameter schema, read-only), so the service
     /// can expose the whole catalog to Claude Desktop as revit_ tools without a hand-kept list (PRD F11.2).
-    /// The toolset is the command's namespace under B2M.Revit.Commands.
+    /// The toolset is the command's namespace under Plinth.Revit.Commands.
     /// </summary>
     public sealed class ListCommandsHandler : IRevitCommand
     {

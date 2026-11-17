@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Export/ExportDgnHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: one DGN per view at a predictable name in output_folder (file_name for a single view,
+// Modified for Plinth: one DGN per view at a predictable name in output_folder (file_name for a single view,
 // else file_name_prefix + "number - name"), exported through a staging folder and moved into place; an
 // existing file is replaced only with overwrite; output_folder is created when missing; seed_file must be an
 // absolute path to an existing .dgn (rvt-mcp passed any string through); sheets export merged; errors are
@@ -11,10 +11,10 @@ using System.IO;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Export
+namespace Plinth.Revit.Commands.Export
 {
     public sealed class ExportDgnHandler : IRevitCommand
     {

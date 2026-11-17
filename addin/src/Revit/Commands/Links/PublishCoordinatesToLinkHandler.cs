@@ -1,20 +1,20 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Links/PublishCoordinatesToLinkHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: confirm is required and must be true (unchanged gate); the linked model's coordinate
+// Modified for Plinth: confirm is required and must be true (unchanged gate); the linked model's coordinate
 // snapshot is returned before and after with a "changes" list and a summary; the result states whether the
 // linked .rvt on disk was written: new save_to_link_file (default false) calls RevitLinkType.SavePositions
 // after the commit, otherwise the change lives only in this Revit session until saved; a missing
-// linked_project_location_id returns valid_locations; transaction "B2M: ..." rolled back only while open.
+// linked_project_location_id returns valid_locations; transaction "Plinth: ..." rolled back only while open.
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Links
+namespace Plinth.Revit.Commands.Links
 {
     public sealed class PublishCoordinatesToLinkHandler : IRevitCommand
     {
@@ -80,7 +80,7 @@ namespace B2M.Revit.Commands.Links
             var warnings = new List<string>();
             var before = LinksHelpers.CoordinateSystem(linkDoc, warnings);
 
-            using (var tx = new Transaction(doc, "B2M: Publish coordinates to link"))
+            using (var tx = new Transaction(doc, "Plinth: Publish coordinates to link"))
             {
                 tx.Start();
                 try

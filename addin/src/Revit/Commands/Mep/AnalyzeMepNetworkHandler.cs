@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Mep/AnalyzeMepNetworkHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the system lookup lists the valid systems on a miss or ambiguity; is_well_connected is null for
+// Modified for Plinth: the system lookup lists the valid systems on a miss or ambiguity; is_well_connected is null for
 // electrical systems (rvt-mcp reported true, so electrical systems never got the "not well connected" issue either
 // way); open connectors are listed (up to 200, with element and connector ids) besides being counted; IDs are numbers;
 // errors are "CODE: message".
@@ -10,10 +10,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Mep
+namespace Plinth.Revit.Commands.Mep
 {
     public sealed class AnalyzeMepNetworkHandler : IRevitCommand
     {

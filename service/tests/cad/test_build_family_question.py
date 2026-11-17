@@ -1,7 +1,7 @@
 """A build that stops on a family choice becomes an import question; its answer reaches the plan."""
 
-from b2m.cad.project import ImportProject
-from b2m.imported import stage_questions
+from plinth.cad.project import ImportProject
+from plinth.imported import stage_questions
 
 
 def _project() -> ImportProject:

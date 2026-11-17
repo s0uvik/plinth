@@ -11,10 +11,10 @@ import math
 
 import pytest
 
-from b2m.cad import project as cad_project, structure
-from b2m.cad.recognise import recognise_plan
-from b2m.imported import to_plan
-from b2m.imported.drawings import (ANSWER_TITLE_BLOCK, PlannedSheet, SheetPlan, SourceDimension, answer_elevation,
+from plinth.cad import project as cad_project, structure
+from plinth.cad.recognise import recognise_plan
+from plinth.imported import to_plan
+from plinth.imported.drawings import (ANSWER_TITLE_BLOCK, PlannedSheet, SheetPlan, SourceDimension, answer_elevation,
                                    choose_title_blocks, compare, make_import_drawing_set, paper_for, plan_sheet_set)
 from tests.cad.conftest import SAMPLE, SAMPLE_DXF
 
@@ -143,7 +143,7 @@ def test_plan_annotation_from_the_source(sample):
     tags = next(s for s in steps if s.command == "tag_elements").params["element_keys"]
     assert len(tags) == 29 - 14  # 29 rooms per storey (each flat's kitchen its own room), 14 labelled with a size
     assert [s.params["category"] for s in steps if s.command == "tag_all_by_category"] == ["OST_Doors", "OST_Windows"]
-    # the kitchens' room separation lines are B2M's, not the source's: hidden in the view
+    # the kitchens' room separation lines are Plinth's, not the source's: hidden in the view
     assert any(s.command == "set_category_visibility" and s.params["categories"] == ["OST_RoomSeparationLines"]
                for s in typical.views[0].after_create)
     assert typical.source_marks == {"door": {"D": 12, "D1": 20}, "window": {"W": 24, "W1": 4, "W2": 4, "W3": 4, "W4": 1}}
@@ -351,7 +351,7 @@ def test_comparison_by_value_multiset():
 def test_views_fit_a_title_block_of_another_size():
     """An A4 set on an A1 title block: each view gets the largest standard scale that fits its share of the drawing
     area (the frame less the title strip), centred in it; two views on a sheet sit side by side."""
-    from b2m.imported.drawings import PlannedSheet, PlannedView, _fit_layout, fit_scale
+    from plinth.imported.drawings import PlannedSheet, PlannedView, _fit_layout, fit_scale
     a1 = {"min_x": 0.0, "min_y": 0.0, "width": 841.0, "height": 594.0}
     plan = PlannedView(key="V1", kind="floor_plan", name="p", create={"cropMinX": 0, "cropMinY": 0, "cropMaxX": 34000,
                                                                        "cropMaxY": 21000})
@@ -371,10 +371,10 @@ def _made(revit, command):
 
 
 def test_grid_heads_outside_the_building(sample, tmp_path):
-    """Every plan runs B2M's grids past the building to heads at both ends, every section and elevation from the
+    """Every plan runs Plinth's grids past the building to heads at both ends, every section and elevation from the
     lowest level to a head above the highest; the crop region is grown to hold the heads, and the drawing stays
     where the source has it (the viewport is anchored on the crop centre, moved with it)."""
-    from b2m.imported.drawings import GRID_HEAD_MM, GRID_ROOM_MM
+    from plinth.imported.drawings import GRID_HEAD_MM, GRID_ROOM_MM
     project, building, result, sheets, created = sample
     plan = plan_sheet_set(project, building, result, sheets, FRONT)
     ground = _views(plan, GROUND)[0]
@@ -405,7 +405,7 @@ def test_grid_heads_outside_the_building(sample, tmp_path):
     assert place["x_mm"] == pytest.approx(ground.paper_center[0] + moved, abs=0.1)
 
 
-def test_levels_b2m_did_not_make_are_hidden_in_sections_and_elevations(sample, tmp_path):
+def test_levels_plinth_did_not_make_are_hidden_in_sections_and_elevations(sample, tmp_path):
     project, building, result, sheets, created = sample
     ours = next(iter(created.values()))
     revit = FakeRevit(levels=[{"elementId": 311, "name": "Level 1"}, {"elementId": 312, "name": "Level 2"},
@@ -420,8 +420,8 @@ def test_levels_b2m_did_not_make_are_hidden_in_sections_and_elevations(sample, t
 
 
 def test_an_elevation_gets_a_plan_for_its_marker_when_its_level_has_none():
-    """Revit hangs an elevation marker on a floor plan of its level; with none there, B2M makes its own (recorded)."""
-    from b2m.imported.drawings import PlannedView, _Exec, _marker_plan
+    """Revit hangs an elevation marker on a floor plan of its level; with none there, Plinth makes its own (recorded)."""
+    from plinth.imported.drawings import PlannedView, _Exec, _marker_plan
     sheet = PlannedSheet(file="e.dxf", role="elevation", title="FRONT ELEVATION", page=None, page_number=31,
                          number="31", scale=150, paper="A4", paper_mm=(297, 210), border_mm=(277, 190),
                          margins_mm=(10, 10))
@@ -440,8 +440,8 @@ def test_an_elevation_gets_a_plan_for_its_marker_when_its_level_has_none():
 
 def test_title_block_fields_from_the_answers(sample, tmp_path):
     """Title block fields are questions that never stop the set: answered ones fill Project Information and the
-    sheets; an unanswered sheet field is left blank on B2M's sheets, an unanswered project field is not touched."""
-    from b2m.imported.drawings import answer_title
+    sheets; an unanswered sheet field is left blank on Plinth's sheets, an unanswered project field is not touched."""
+    from plinth.imported.drawings import answer_title
     project, building, result, sheets, created = sample
     answers = {**FRONT, answer_title("project_name"): "G+4 Residential, Bardhaman", answer_title("client"): "S. Roy",
                answer_title("drawn_by"): "AK"}
@@ -462,9 +462,9 @@ def test_title_block_fields_from_the_answers(sample, tmp_path):
 
 
 def test_title_block_suggestions_from_the_source_texts():
-    from b2m.cad import sheet as cad_sheet
-    from b2m.cad.reader import CadEntity, CadSheet
-    from b2m.imported.drawings import title_suggestions
+    from plinth.cad import sheet as cad_sheet
+    from plinth.cad.reader import CadEntity, CadSheet
+    from plinth.imported.drawings import title_suggestions
 
     def text(handle, x, y, value, tag=None):
         return CadEntity(handle=handle, kind="text", dxftype="ATTRIB" if tag else "TEXT", layer="0", points=[(x, y)],
@@ -492,7 +492,7 @@ def test_title_block_suggestions_from_the_source_texts():
 def test_remake_deletes_the_previous_set_and_only_it(sample, tmp_path):
     """A remake deletes the previous set's sheets and views (recorded DWG- keys), sheets first, after making a view
     that is not being deleted active; elements already deleted by hand count as gone; then the set is made again."""
-    from b2m.imported.drawings import _Exec, remove_drawing_set
+    from plinth.imported.drawings import _Exec, remove_drawing_set
     project, building, result, sheets, created = sample
     first, recorded = FakeRevit(), {}
     make_import_drawing_set(first, project, building, result, created, tmp_path, sheets=sheets, answers=FRONT,

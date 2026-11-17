@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Elements/DeleteElementHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: elements Revit removes along with an earlier one (a door with its wall, views with
+// Modified for Plinth: elements Revit removes along with an earlier one (a door with its wall, views with
 // their level) count as deleted instead of "not found"; the result names them; the partial-failure
 // count is reported as failedCount so batch_execute rolls back a partial delete (rvt-mcp reported
 // "failed", which the batch never saw). Limiting deletes to IDs a run created is done by the service,
@@ -11,10 +11,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Delete
+namespace Plinth.Revit.Commands.Delete
 {
     public sealed class DeleteElementHandler : IRevitCommand
     {
@@ -46,7 +46,7 @@ namespace B2M.Revit.Commands.Delete
             var failed = new List<long>();
             var errors = new List<string>();
 
-            using (var tx = new Transaction(doc, "B2M: Delete elements"))
+            using (var tx = new Transaction(doc, "Plinth: Delete elements"))
             {
                 tx.Start();
                 foreach (var id in ids)

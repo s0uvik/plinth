@@ -2,10 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands
+namespace Plinth.Revit.Commands
 {
     /// <summary>
     /// Name and ID lookups shared by commands. A miss returns an error carrying the valid options,
@@ -126,7 +126,7 @@ namespace B2M.Revit.Commands
             return false;
         }
 
-        /// <summary>A view (not a template) by element ID. Fully qualified: B2M.Revit.Commands.View is a namespace.</summary>
+        /// <summary>A view (not a template) by element ID. Fully qualified: Plinth.Revit.Commands.View is a namespace.</summary>
         public static bool TryView(Document doc, long id, out Autodesk.Revit.DB.View view, out CommandResult failure)
         {
             if (!TryElement(doc, id, "view", out view, out failure)) return false;

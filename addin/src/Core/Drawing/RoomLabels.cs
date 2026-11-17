@@ -1,8 +1,8 @@
-// New in B2M: the Revit-free half of label_rooms and of the text types the drawing commands find or duplicate.
+// New in Plinth: the Revit-free half of label_rooms and of the text types the drawing commands find or duplicate.
 //   RoomSizeText  - "3500 X 4000" from a room's bounding rectangle: each side rounded to a step (5 mm), ordered
 //                   x-first, longer-first or shorter-first, whole numbers in invariant culture;
 //   LabelLayout   - where a note goes under a tag: paper sizes times the view scale give model lengths;
-//   TextTypeNames - the name a duplicated text type gets for a size ("B2M 2.5mm"), made unique against the
+//   TextTypeNames - the name a duplicated text type gets for a size ("Plinth 2.5mm"), made unique against the
 //                   names already in the project, and size matching within a tolerance.
 
 using System;
@@ -10,7 +10,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 
-namespace B2M.Revit.Core.Drawing
+namespace Plinth.Revit.Core.Drawing
 {
     public static class RoomSizeText
     {
@@ -75,9 +75,9 @@ namespace B2M.Revit.Core.Drawing
 
     public static class TextTypeNames
     {
-        /// <summary>"B2M 2.5mm" for 2.5, "B2M 3mm" for 3.</summary>
+        /// <summary>"Plinth 2.5mm" for 2.5, "Plinth 3mm" for 3.</summary>
         public static string ForSize(double sizeMm) =>
-            "B2M " + Math.Round(sizeMm, 2).ToString("0.##", CultureInfo.InvariantCulture) + "mm";
+            "Plinth " + Math.Round(sizeMm, 2).ToString("0.##", CultureInfo.InvariantCulture) + "mm";
 
         /// <summary>wanted if no existing name equals it (any case), else wanted + " (2)", " (3)", ...</summary>
         public static string Unique(string wanted, IEnumerable<string> existing)

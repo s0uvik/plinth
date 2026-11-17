@@ -6,7 +6,7 @@ from pathlib import Path
 
 import ezdxf
 
-from b2m.cad import reader, sheet
+from plinth.cad import reader, sheet
 
 
 class Drawing:

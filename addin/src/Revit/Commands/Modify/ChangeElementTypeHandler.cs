@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Elements/ChangeElementTypeHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the type can also be named (typeName with familyName, matched among types valid for the first
+// Modified for Plinth: the type can also be named (typeName with familyName, matched among types valid for the first
 // element) and a miss lists the valid types; elements that cannot take the type are listed with failedCount so
 // batch_execute rolls back; if no element changes, nothing is committed; at most 1000 IDs.
 
@@ -8,10 +8,10 @@ using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Modify
+namespace Plinth.Revit.Commands.Modify
 {
     public sealed class ChangeElementTypeHandler : IRevitCommand
     {

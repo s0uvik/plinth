@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Schedules/ExportScheduleCsvHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: written to the exact path asked for (output_path, or output_folder + file_name; .csv
+// Modified for Plinth: written to the exact path asked for (output_path, or output_folder + file_name; .csv
 // added unless the name ends in .txt) through a staging folder, so an existing file is replaced only with
 // overwrite (rvt-mcp let Revit overwrite it); output_folder is created when missing; the schedule is found
 // with the shared lookup, whose miss lists valid schedules; the delimiter must be one character.
@@ -8,10 +8,10 @@
 
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Export
+namespace Plinth.Revit.Commands.Export
 {
     public sealed class ExportScheduleCsvHandler : IRevitCommand
     {

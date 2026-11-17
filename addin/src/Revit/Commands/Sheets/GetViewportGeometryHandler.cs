@@ -1,17 +1,17 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Sheets/GetViewportGeometryHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: sheet resolution through Lookup.TrySheet (a miss lists the valid sheets; placeholder
+// Modified for Plinth: sheet resolution through Lookup.TrySheet (a miss lists the valid sheets; placeholder
 // sheets are refused; both sheet_id and sheet_number is an error); viewport ids not on the sheet are an
 // error listing the ones that are; paging through SheetsHelpers; the snapshot DTO lives in SheetsHelpers
-// because B2M's ViewportSheetSupport dropped it.
+// because Plinth's ViewportSheetSupport dropped it.
 
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Sheets
+namespace Plinth.Revit.Commands.Sheets
 {
     public sealed class GetViewportGeometryHandler : IRevitCommand
     {

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from b2m.cad import reader, sheet
+from plinth.cad import reader, sheet
 
 SAMPLE = Path(__file__).resolve().parents[1] / "fixtures" / "samples" / "g4-sample"
 SAMPLE_DXF = SAMPLE / "dxf"

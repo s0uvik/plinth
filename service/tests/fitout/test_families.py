@@ -2,8 +2,8 @@
 copy only when the family has the size parameters; otherwise the closest, with the difference listed; nothing that
 fits is asked."""
 
-from b2m.fitout import families
-from b2m.fitout.families import Need
+from plinth.fitout import families
+from plinth.fitout.families import Need
 from tests.fitout.fake_revit import FitoutRevit
 
 RES = "C:\\ProgramData\\Autodesk\\RVT 2026\\Templates\\English\\Residential-Default_Metric.rte"
@@ -90,7 +90,7 @@ def test_a_size_copy_is_planned_only_when_the_family_has_the_size_parameters():
     found = families.resolve([need("sofa", "OST_Furniture", ["sofa", "couch"], 1800, 850)], revit, templates=[])
     choice = found.choices["sofa-1800x850"]
     assert (choice.family, choice.base_type, choice.type, choice.values_mm) == (
-        "Sofa-3", "2000", "1800x850mm (B2M)", {"Width": 1800.0})
+        "Sofa-3", "2000", "1800x850mm (Plinth)", {"Width": 1800.0})
     assert [a.id for a in found.assumptions] == ["fitout:family-copy:sofa-1800x850"]
 
     # The same type with read-only size parameters: used as it is, the difference listed.

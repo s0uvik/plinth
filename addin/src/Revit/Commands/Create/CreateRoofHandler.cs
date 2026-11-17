@@ -1,4 +1,4 @@
-// New in B2M (PRD "New tools"): rvt-mcp cannot make roofs. create_roof makes a footprint roof from a closed plan
+// New in Plinth (PRD "New tools"): rvt-mcp cannot make roofs. create_roof makes a footprint roof from a closed plan
 // polygon on a level: flat by default, or sloped at slope_deg on every edge or on the chosen edges (edge i runs
 // from point i to point i + 1), which covers flat terraces, mono-pitch, gable and hip roofs.
 
@@ -7,10 +7,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Create
+namespace Plinth.Revit.Commands.Create
 {
     public sealed class CreateRoofHandler : IRevitCommand
     {
@@ -72,7 +72,7 @@ namespace B2M.Revit.Commands.Create
             var footprint = new CurveArray();
             for (var i = 0; i < edgeCount; i++) footprint.Append(Line.CreateBound(points[i], points[(i + 1) % edgeCount]));
 
-            using (var tx = new Transaction(doc, "B2M: Create Roof"))
+            using (var tx = new Transaction(doc, "Plinth: Create Roof"))
             {
                 tx.Start();
                 try

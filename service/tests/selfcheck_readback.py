@@ -7,11 +7,11 @@ from typing import Any
 
 from shapely.geometry import Polygon
 
-from b2m.imported import selfcheck
-from b2m.cad.building import RecognisedBuilding
-from b2m.imported.to_plan import ImportPlan
-from b2m.plan import KEY_SEPARATOR, TYPE_OPS
-from b2m.revit.commands import CATEGORY, RAILINGS
+from plinth.imported import selfcheck
+from plinth.cad.building import RecognisedBuilding
+from plinth.imported.to_plan import ImportPlan
+from plinth.plan import KEY_SEPARATOR, TYPE_OPS
+from plinth.revit.commands import CATEGORY, RAILINGS
 
 MERGED_ROOM_AREA_M2 = 30.0  # a room merged from several labels has no drawn boundary; any enclosed area will do
 

@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Annotations/FindUntaggedElementsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: a category is matched exactly by name or built-in name (rvt-mcp also took any OST_ name ending
+// Modified for Plinth: a category is matched exactly by name or built-in name (rvt-mcp also took any OST_ name ending
 // with the input) and a miss lists close matches; tagged ids come from GetTaggedLocalElementIds, RoomTag.Room and
 // AreaTag.Area directly (no reflection); unplaced rooms are left out; limit must be 1 to 500.
 
@@ -8,12 +8,12 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Architecture;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Annotation
+namespace Plinth.Revit.Commands.Annotation
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     public sealed class FindUntaggedElementsHandler : IRevitCommand

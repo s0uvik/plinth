@@ -5,10 +5,10 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from b2m.compliance import RoomFact, evaluate, facts_after_build, facts_before_build, hard_failures, kind_of
-from b2m.compliance.pdf import write_pdf
-from b2m.engine import generate
-from b2m.spec import BuildingSpec
+from plinth.compliance import RoomFact, evaluate, facts_after_build, facts_before_build, hard_failures, kind_of
+from plinth.compliance.pdf import write_pdf
+from plinth.engine import generate
+from plinth.spec import BuildingSpec
 
 SPECS = sorted((Path(__file__).parent / "golden" / "specs").glob("*.json"))
 
@@ -78,9 +78,9 @@ def test_pdf_is_written(tmp_path):
 
 
 def test_api_blocks_hard_failures_unless_overridden(tmp_path, monkeypatch):
-    from b2m.api import create_app
+    from plinth.api import create_app
     from tests.test_service import FakeClient, make_service
-    monkeypatch.setenv("B2M_HOME", str(tmp_path))
+    monkeypatch.setenv("PLINTH_HOME", str(tmp_path))
     spec = json.loads((SPECS[13]).read_text(encoding="utf-8"))  # 14: fails placeholder coverage and FAR
     service = make_service(tmp_path, FakeClient())
     api = TestClient(create_app(service, brief_client=lambda: None))

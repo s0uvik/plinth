@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Schedules/AddScheduleFieldHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: field.type "formula" is refused with NOT_SUPPORTED: the Revit 2024-2027 API has no way to
+// Modified for Plinth: field.type "formula" is refused with NOT_SUPPORTED: the Revit 2024-2027 API has no way to
 // create a formula field or set its formula (rvt-mcp reflected for AddField(type, name, spec) and SetFormula,
 // which do not exist, so it always failed). Combined fields use ScheduleDefinition.InsertCombinedParameterField
 // with the given name (rvt-mcp added a text "anchor" field and set combined parameters on it by reflection).
@@ -14,10 +14,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Schedule
+namespace Plinth.Revit.Commands.Schedule
 {
     public sealed class AddScheduleFieldHandler : IRevitCommand
     {
@@ -88,7 +88,7 @@ namespace B2M.Revit.Commands.Schedule
                 return failure;
             }
 
-            using (var tx = new Transaction(doc, "B2M: Add Schedule Field"))
+            using (var tx = new Transaction(doc, "Plinth: Add Schedule Field"))
             {
                 tx.Start();
                 try

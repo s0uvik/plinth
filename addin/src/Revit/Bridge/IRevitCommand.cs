@@ -1,12 +1,12 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Infrastructure/Execution/IRevitCommand.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: each command declares ReadOnly itself (rvt-mcp kept a separate read-only list);
+// Modified for Plinth: each command declares ReadOnly itself (rvt-mcp kept a separate read-only list);
 // params arrive already parsed and schema-checked; results carry JSON tokens and error data.
 
 using Autodesk.Revit.UI;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Bridge
+namespace Plinth.Revit.Bridge
 {
     public interface IRevitCommand
     {

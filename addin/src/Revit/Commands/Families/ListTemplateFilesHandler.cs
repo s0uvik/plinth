@@ -1,4 +1,4 @@
-// New in B2M (Step 10, F1): Revit 2026 installs no local family library, so the fit-out's families and MEP system
+// New in Plinth (Step 10, F1): Revit 2026 installs no local family library, so the fit-out's families and MEP system
 // types come from the project templates Revit installs. This lists them for the running Revit year (or another
 // installed year), per language folder, so the caller can pick one for list_types_in_file. It only reads the disk.
 
@@ -6,11 +6,11 @@ using System;
 using System.IO;
 using System.Linq;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Core.Families;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Core.Families;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Families
+namespace Plinth.Revit.Commands.Families
 {
     public sealed class ListTemplateFilesHandler : IRevitCommand
     {

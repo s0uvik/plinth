@@ -1,7 +1,7 @@
 import pytest
 
-from b2m.engine import units
-from b2m.engine.units import FlatError, carpet_m2, lay_out, min_lengths, size_depth
+from plinth.engine import units
+from plinth.engine.units import FlatError, carpet_m2, lay_out, min_lengths, size_depth
 
 
 @pytest.mark.parametrize("utype", ["1BHK", "2BHK", "3BHK"])

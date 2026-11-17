@@ -1,4 +1,4 @@
-// New in B2M: the Revit side of ensure_wall_type and ensure_floor_type (decisions in addin/src/Core/Families/HostTypeRules.cs).
+// New in Plinth: the Revit side of ensure_wall_type and ensure_floor_type (decisions in addin/src/Core/Families/HostTypeRules.cs).
 // Drawings give walls and slabs by thickness, so the build needs a Basic Wall or Floor type of exactly that total
 // thickness. The order is FIND, then ADAPT A COPY, then ASK:
 //   existing   - a candidate type of the requested name, or else any candidate with the same spec (total thickness,
@@ -17,12 +17,12 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Commands.Materials;
-using B2M.Revit.Core.Families;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Commands.Materials;
+using Plinth.Revit.Core.Families;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Families
+namespace Plinth.Revit.Commands.Families
 {
     internal static class HostTypes
     {
@@ -70,7 +70,7 @@ namespace B2M.Revit.Commands.Families
                     var name = request.Layers[i].Material;
                     if (name == null || named.ContainsKey(name)) continue;
                     if (!MaterialsHelpers.TryMaterial(doc, null, name, "material_id", "material", out var material, out var missing))
-                        return CommandResult.Fail(missing.Error + " (layers[" + i + "].material). B2M never creates materials: use one of valid_materials, "
+                        return CommandResult.Fail(missing.Error + " (layers[" + i + "].material). Plinth never creates materials: use one of valid_materials, "
                             + "omit material to keep the base type's, or ask the user." + Unchanged, missing.Data);
                     named[name] = material;
                 }
@@ -103,7 +103,7 @@ namespace B2M.Revit.Commands.Families
                 return CommandResult.Ok(Result(request, "duplicated", null, planned, decision, baseType, true));
             }
 
-            using (var tx = new Transaction(doc, "B2M: Ensure " + (kind == HostKind.Wall ? "wall" : "floor") + " type"))
+            using (var tx = new Transaction(doc, "Plinth: Ensure " + (kind == HostKind.Wall ? "wall" : "floor") + " type"))
             {
                 tx.Start();
                 try
@@ -331,7 +331,7 @@ namespace B2M.Revit.Commands.Families
         public string Name => "ensure_wall_type";
         public string Description =>
             "Make sure a Basic Wall type of this total thickness exists, without editing any existing type. FIND: the type named name (default "
-            + "'B2M <thickness>mm Exterior|Interior') when its thickness, function and (if given) layers match, else TYPE_DIMENSION_MISMATCH; "
+            + "'Plinth <thickness>mm Exterior|Interior') when its thickness, function and (if given) layers match, else TYPE_DIMENSION_MISMATCH; "
             + "otherwise any Basic Wall type with that spec (action existing). ADAPT A COPY: base_type_name, or the Basic Wall type of that "
             + "function closest in thickness (result: base_type, base_type_reason, alternatives; a tie that would change the inherited materials "
             + "is TYPE_CHOICE_NEEDED: ask the user, pass base_type_name) is duplicated and only the NEW type gets the layers and Function "
@@ -339,7 +339,7 @@ namespace B2M.Revit.Commands.Families
         public string ParametersSchema => @"{""type"":""object"",""properties"":{
             ""thickness_mm"":{""type"":""number"",""description"":""total wall thickness in mm""},
             ""function"":{""type"":""string"",""enum"":[""exterior"",""interior""],""description"":""default interior""},
-            ""name"":{""type"":""string"",""description"":""default 'B2M <thickness>mm Exterior' or '... Interior'""},
+            ""name"":{""type"":""string"",""description"":""default 'Plinth <thickness>mm Exterior' or '... Interior'""},
             ""base_type_name"":{""type"":""string"",""description"":""Basic Wall type to copy; default: the closest in thickness of that function""},
             " + HostTypes.LayersSchema + @",
             ""dry_run"":{""type"":""boolean""}},""required"":[""thickness_mm""]}";
@@ -353,8 +353,8 @@ namespace B2M.Revit.Commands.Families
         public string Name => "ensure_floor_type";
         public string Description =>
             "Make sure a floor type (or, with foundation: true, a structural foundation slab type) of this total thickness exists, without "
-            + "editing any existing type. FIND: the type named name (default 'B2M <thickness>mm Slab'; when a type of the other kind holds that "
-            + "name, 'B2M <thickness>mm Foundation Slab' / 'B2M <thickness>mm Floor Slab') when its thickness, structural layer (if structural) and "
+            + "editing any existing type. FIND: the type named name (default 'Plinth <thickness>mm Slab'; when a type of the other kind holds that "
+            + "name, 'Plinth <thickness>mm Foundation Slab' / 'Plinth <thickness>mm Floor Slab') when its thickness, structural layer (if structural) and "
             + "(if given) layers match, else TYPE_DIMENSION_MISMATCH; otherwise any type of that kind with that spec (action existing). ADAPT A "
             + "COPY: base_type_name, or the type of that kind closest in thickness (result: base_type, base_type_reason, alternatives; a tie that "
             + "would change the inherited materials is TYPE_CHOICE_NEEDED) is duplicated and only the NEW type gets the layers (action "
@@ -362,7 +362,7 @@ namespace B2M.Revit.Commands.Families
             + "(MATERIAL_NOT_FOUND); none are created. dry_run reports the same and changes nothing.";
         public string ParametersSchema => @"{""type"":""object"",""properties"":{
             ""thickness_mm"":{""type"":""number"",""description"":""total slab thickness in mm""},
-            ""name"":{""type"":""string"",""description"":""default 'B2M <thickness>mm Slab'""},
+            ""name"":{""type"":""string"",""description"":""default 'Plinth <thickness>mm Slab'""},
             ""base_type_name"":{""type"":""string"",""description"":""type of the same kind to copy; default: the closest in thickness""},
             ""structural"":{""type"":""boolean"",""description"":""the type must have a structural layer (default false)""},
             ""foundation"":{""type"":""boolean"",""description"":""a structural foundation slab type (FloorType.IsFoundationSlab), for create_foundation_slab (default false)""},

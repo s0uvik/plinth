@@ -1,17 +1,17 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Views/DuplicateViewTemplateHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: a miss lists the valid templates; the copy keeps the source's controlled/uncontrolled
-// split explicitly (CreateViewTemplate on a template does not promise to); "B2M: ..." transaction with a
+// Modified for Plinth: a miss lists the valid templates; the copy keeps the source's controlled/uncontrolled
+// split explicitly (CreateViewTemplate on a template does not promise to); "Plinth: ..." transaction with a
 // commit-status check.
 
 using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Organization
+namespace Plinth.Revit.Commands.Organization
 {
     public sealed class DuplicateViewTemplateHandler : IRevitCommand
     {
@@ -34,7 +34,7 @@ namespace B2M.Revit.Commands.Organization
             if (OrganizationHelpers.TemplateNameTaken(doc, newName))
                 return CommandResult.Fail("NAME_IN_USE: a view template named '" + newName + "' already exists.");
 
-            using (var tx = new Transaction(doc, "B2M: Duplicate view template"))
+            using (var tx = new Transaction(doc, "Plinth: Duplicate view template"))
             {
                 tx.Start();
                 try

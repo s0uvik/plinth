@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Families/ListFamilyTypesInFamilyHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: values use the shared read rules (lengths through Mm, areas m2, volumes m3, angles degrees,
+// Modified for Plinth: values use the shared read rules (lengths through Mm, areas m2, volumes m3, angles degrees,
 // other measured values marked "internal"); element parameters return the id plus the element's name instead of
 // the name in place of the id; family_id is an integer; misses list the valid families; no reflection fallbacks.
 
@@ -9,11 +9,11 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Commands.Parameters;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Commands.Parameters;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Families
+namespace Plinth.Revit.Commands.Families
 {
     public sealed class ListFamilyTypesInFamilyHandler : IRevitCommand
     {

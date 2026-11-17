@@ -1,4 +1,4 @@
-// New in B2M: room labels as the source plans show them, "BED ROOM" over "3500 X 4000". The Revit API cannot make a
+// New in Plinth: room labels as the source plans show them, "BED ROOM" over "3500 X 4000". The Revit API cannot make a
 // label family, so each room gets an existing room tag (its name; the project's default room tag type, or
 // tag_type_id / tag_type_name) and a text note hung under the tag: centred on the tag, its top gap_mm (paper) below the
 // tag's box, which is read from Revit after the tag is placed (the view scale turns paper mm into model mm). The text is
@@ -15,20 +15,20 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Architecture;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Core.Drawing;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Core.Drawing;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Annotation
+namespace Plinth.Revit.Commands.Annotation
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     public sealed class LabelRoomsHandler : IRevitCommand
     {
         public string Name => "label_rooms";
         public string Description =>
-            "New in B2M: label rooms in a plan view (view_id, default the active view) with a room tag (name) and a text note under it "
+            "New in Plinth: label rooms in a plan view (view_id, default the active view) with a room tag (name) and a text note under it "
             + "such as \"3500 X 4000\". rooms: [{room_id, text?}] (default every placed room in the view). text_mode: measured (default; "
             + "the room's bounding rectangle rounded to round_mm, default 5, ordered by size_order x_first|longer_first|shorter_first) or "
             + "given (each room needs text). A room's own text always wins. text_size_mm (default 2.5) picks or makes the note's text type "
@@ -128,13 +128,13 @@ namespace B2M.Revit.Commands.Annotation
 
             var labelled = new JArray();
             var skipped = new JArray();
-            using (var group = new TransactionGroup(doc, "B2M: Label Rooms"))
+            using (var group = new TransactionGroup(doc, "Plinth: Label Rooms"))
             {
                 group.Start();
                 try
                 {
                     TextNoteType textType = null;
-                    var typeReason = DrawingSupport.RunItem(doc, "B2M: Text type", () => textType = DrawingSupport.ApplyTextType(textPlan));
+                    var typeReason = DrawingSupport.RunItem(doc, "Plinth: Text type", () => textType = DrawingSupport.ApplyTextType(textPlan));
                     if (typeReason != null)
                     {
                         group.RollBack();
@@ -166,7 +166,7 @@ namespace B2M.Revit.Commands.Annotation
 
                         Element tag = existing;
                         TextNote note = null;
-                        var reason = DrawingSupport.RunItem(doc, "B2M: Label room", () =>
+                        var reason = DrawingSupport.RunItem(doc, "Plinth: Label room", () =>
                         {
                             if (tag == null)
                             {

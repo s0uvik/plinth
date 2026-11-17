@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Parameters/BindSharedParameterHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: categories must allow bound parameters and a miss lists the valid ones; a parameter group
+// Modified for Plinth: categories must allow bound parameters and a miss lists the valid ones; a parameter group
 // miss lists the built-in groups; a request already covered by the existing binding is a no-op instead of
 // needing allowRebind; when the GUID is already in the project the file is not needed; the user's configured
 // shared parameter file is restored after a custom path; the transaction is checked for Committed.
@@ -10,10 +10,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Parameters
+namespace Plinth.Revit.Commands.Parameters
 {
     public sealed class BindSharedParameterHandler : IRevitCommand
     {
@@ -89,7 +89,7 @@ namespace B2M.Revit.Commands.Parameters
             }
 
             using (file)
-            using (var tx = new Transaction(doc, "B2M: Bind shared parameter"))
+            using (var tx = new Transaction(doc, "Plinth: Bind shared parameter"))
             {
                 tx.Start();
                 try

@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Transport/TransportResponseWriter.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: request dispatch moved to ConnectionSession; script-protocol, failure-protocol
+// Modified for Plinth: request dispatch moved to ConnectionSession; script-protocol, failure-protocol
 // and host-busy checks removed; in-flight tracking exposed as Begin/EndRequest.
 
 using System;
@@ -10,7 +10,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 
-namespace B2M.Revit.Core.Transport
+namespace Plinth.Revit.Core.Transport
 {
     /// <summary>
     /// One background thread owns the connection's write side. Revit's main thread and timer
@@ -65,7 +65,7 @@ namespace B2M.Revit.Core.Transport
                     lock (_queueGate) { _frames.Dispose(); }
                 }
             })
-            { IsBackground = true, Name = "B2M.TransportWriter" };
+            { IsBackground = true, Name = "Plinth.TransportWriter" };
             _thread.Start();
         }
 

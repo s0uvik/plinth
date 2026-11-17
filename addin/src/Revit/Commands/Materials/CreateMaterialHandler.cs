@@ -1,15 +1,15 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Materials/CreateMaterialHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the duplicate-name check is case-insensitive (as Revit's own) and returns the existing id;
+// Modified for Plinth: the duplicate-name check is case-insensitive (as Revit's own) and returns the existing id;
 // the response reads the material back.
 
 using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Materials
+namespace Plinth.Revit.Commands.Materials
 {
     public sealed class CreateMaterialHandler : IRevitCommand
     {
@@ -39,7 +39,7 @@ namespace B2M.Revit.Commands.Materials
             var materialClass = p.Value<string>("material_class");
             var materialCategory = p.Value<string>("material_category");
 
-            using (var tx = new Transaction(doc, "B2M: Create material"))
+            using (var tx = new Transaction(doc, "Plinth: Create material"))
             {
                 tx.Start();
                 try

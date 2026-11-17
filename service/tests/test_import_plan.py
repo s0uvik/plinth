@@ -5,13 +5,13 @@ from collections import Counter
 
 import pytest
 
-from b2m.cad.building import (Column, Evidence, Finding, Level, Opening, PlanRecognition, Projection,
+from plinth.cad.building import (Column, Evidence, Finding, Level, Opening, PlanRecognition, Projection,
                               RecognisedBuilding, Registration, Room, SectionRecognition, Shaft, Stair, Wall)
-from b2m.imported import ProjectStandards, to_plan
-from b2m.plan import BuildPlan
-from b2m.revit import commands
-from b2m.revit.client import RevitError
-from b2m.runner import Runner, plan_batches
+from plinth.imported import ProjectStandards, to_plan
+from plinth.plan import BuildPlan
+from plinth.revit import commands
+from plinth.revit.client import RevitError
+from plinth.runner import Runner, plan_batches
 
 PLAN, ROOF, SEC = "plan.dxf", "roof.dxf", "section.dxf"
 
@@ -100,8 +100,8 @@ def test_plan_from_answers_exact_ops():
     # walls: storey 0 base Ground Floor, top Floor 1; moved into the building frame by the plan's registration
     w = ops["plan.dxf-w1-0"]
     assert (w.level, w.top_level, w.start, w.end, w.type) == ("Ground Floor", "Floor 1", (1000, 0), (11000, 0),
-                                                               "B2M 250mm Exterior")
-    assert ops["plan.dxf-w5-1"].type == "B2M 125mm Interior" and ops["plan.dxf-w5-1"].top_level == "Roof"
+                                                               "Plinth 250mm Exterior")
+    assert ops["plan.dxf-w5-1"].type == "Plinth 125mm Interior" and ops["plan.dxf-w5-1"].top_level == "Roof"
     parapet = ops["roof.dxf-pw1-roof"]
     assert (parapet.level, parapet.height_mm, parapet.top_level) == ("Roof", 1000, None)
     # door: offset from the wall start to its centre, type by mark, flips from swing and hinge
@@ -117,7 +117,7 @@ def test_plan_from_answers_exact_ops():
     assert {op.key: op.level for op in plan.ops if op.op == "floor" and "outline" in op.key} == {
         "plan.dxf-outline-0": "Ground Floor", "plan.dxf-outline-1": "Floor 1", "roof.dxf-outline-roof": "Roof"}
     chajja = ops["plan.dxf-p1-1"]
-    assert (chajja.offset_mm, chajja.type) == (2200, "B2M 100mm Slab")
+    assert (chajja.offset_mm, chajja.type) == (2200, "Plinth 100mm Slab")
     # the duct cuts the slab of the storey it is drawn on (not the lowest)
     shaft = ops["plan.dxf-s1-1"]
     assert (shaft.base_level, shaft.top_level, shaft.base_offset_mm, shaft.top_offset_mm) == ("Floor 1", "Floor 1", -200, 50)
@@ -150,7 +150,7 @@ def test_door_in_no_wall_and_beam_depth_are_asked():
                                "opening_host:plan.dxf:o3": {"mode": "new_wall", "thickness_mm": 250, "function": "interior"}})
     plan = to_plan(b, answers).plan
     wall, door = plan.by_key()["plan.dxf-o3.wall-1"], plan.by_key()["plan.dxf-o3-1"]
-    assert (wall.start, wall.end, wall.type) == ((6500, 8000), (7500, 8000), "B2M 250mm Interior")
+    assert (wall.start, wall.end, wall.type) == ((6500, 8000), (7500, 8000), "Plinth 250mm Interior")
     assert (door.host_key, door.offset_mm, door.type) == ("plan.dxf-o3.wall-1", 500, "door-1000")
 
 
@@ -176,7 +176,7 @@ def test_stair_from_plan_risers_within_the_rule_and_landing_asked():
 def test_standards_persist(tmp_path):
     standards = to_plan(building(), ANSWERS).standards
     assert [(w.name, w.function, w.thickness_mm) for w in standards.walls] == [
-        ("B2M 250mm Exterior", "exterior", 250), ("B2M 125mm Interior", "interior", 125)]
+        ("Plinth 250mm Exterior", "exterior", 250), ("Plinth 125mm Interior", "interior", 125)]
     assert [(d.name, d.width_mm, d.height_mm) for d in standards.doors] == [("D1", 800, 2100)]
     assert [(c.name, c.b_mm, c.h_mm) for c in standards.columns] == [("RCC Column 250x500", 250, 500)]
     standards.save(tmp_path)
@@ -200,7 +200,7 @@ class TypeRevit:
         if command in ("ensure_wall_type", "ensure_floor_type", "ensure_family_type"):
             if self.fail_code:
                 raise RevitError({"success": False, "error": f"{self.fail_code}: ask"})
-            name = "Generic - 250mm" if params.get("name") == "B2M 250mm Exterior" else params.get("name") or "900 x 2100mm D1"
+            name = "Generic - 250mm" if params.get("name") == "Plinth 250mm Exterior" else params.get("name") or "900 x 2100mm D1"
             action = "existing" if name == "Generic - 250mm" else "duplicated"
             data = {"type_name": name, "type_id": self.next_id, "action": action}
             if command == "ensure_family_type":
@@ -236,17 +236,17 @@ def test_runner_makes_types_first_and_uses_the_returned_names():
     assert result.status == "built"
     sub = [s for c, p in revit.calls if c == "batch_execute" for s in p["commands"]]
     walls = [s["params"] for s in sub if s["command"] == "create_line_based_element"]
-    assert {w["typeName"] for w in walls} == {"Generic - 250mm", "B2M 125mm Interior"}
+    assert {w["typeName"] for w in walls} == {"Generic - 250mm", "Plinth 125mm Interior"}
     doors = [s["params"] for s in sub if s["params"].get("builtInCategory") == "OST_Doors"]
     assert doors[0]["familyName"] == "M_Single-Flush" and doors[0]["typeName"] == "800 x 2100mm"
     ensure = [p for c, p in revit.calls if c == "ensure_family_type" and p["category"] == "door"]
     assert ensure[0] == {"category": "door", "dimensions": {"width_mm": 800, "height_mm": 2100}, "type_mark": "D1"}
     # the wall type that already existed is not the run's to remove; the duplicated ones are
-    assert "TYPE-wall-B2M 250mm Exterior" not in result.created and "TYPE-wall-B2M 125mm Interior" in result.created
+    assert "TYPE-wall-Plinth 250mm Exterior" not in result.created and "TYPE-wall-Plinth 125mm Interior" in result.created
     assert "plan.dxf-share-1.1-1#2" in result.created  # a separator op's second line
     report = Runner(revit).verify(plan, result.created)
     stats = [p for c, p in revit.calls if c == "analyze_model_statistics"][-1]
-    assert result.created["TYPE-wall-B2M 125mm Interior"] not in stats["elementIds"]
+    assert result.created["TYPE-wall-Plinth 125mm Interior"] not in stats["elementIds"]
     assert {m["category"] for m in report["mismatches"]} >= {"OST_RoomSeparationLines", "OST_Walls"}
 
 
@@ -259,9 +259,9 @@ def test_type_questions_stop_the_build_as_needs_input(code):
 def test_new_op_commands():
     plan = BuildPlan.model_validate({"ops": [
         {"op": "level", "key": "L0", "name": "F", "elevation_mm": -1300},
-        {"op": "floor_type", "key": "T", "name": "B2M 500mm Foundation Slab", "thickness_mm": 500, "structural": True,
+        {"op": "floor_type", "key": "T", "name": "Plinth 500mm Foundation Slab", "thickness_mm": 500, "structural": True,
          "foundation": True},
-        {"op": "foundation_slab", "key": "R", "level": "F", "type": "B2M 500mm Foundation Slab",
+        {"op": "foundation_slab", "key": "R", "level": "F", "type": "Plinth 500mm Foundation Slab",
          "points": [(0, 0), (10, 0), (10, 10)], "offset_mm": 50},
         {"op": "room_separator", "key": "S", "level": "F", "points": [(0, 0), (5, 0)]},
         {"op": "wall_type", "key": "W", "name": "x", "thickness_mm": 230, "function": "exterior",
@@ -270,10 +270,10 @@ def test_new_op_commands():
     ]})
     by = plan.by_key()
     assert commands.to_command(by["R"], by, {}) == {"command": "create_foundation_slab", "params": {
-        "level": "F", "points": [[0, 0], [10, 0], [10, 10]], "type_name": "B2M 500mm Foundation Slab",
+        "level": "F", "points": [[0, 0], [10, 0], [10, 10]], "type_name": "Plinth 500mm Foundation Slab",
         "height_offset_mm": 50}}
     assert commands.to_command(by["T"], by, {})["params"] == {
-        "thickness_mm": 500, "name": "B2M 500mm Foundation Slab", "structural": True, "foundation": True}
+        "thickness_mm": 500, "name": "Plinth 500mm Foundation Slab", "structural": True, "foundation": True}
     assert commands.to_command(by["S"], by, {}) == {"command": "create_room_separator", "params": {
         "points": [{"x": 0, "y": 0}, {"x": 5, "y": 0}], "level_name": "F", "close_loop": False}}
     assert commands.to_command(by["W"], by, {})["params"]["layers"][1] == {"function": "structure", "thickness_mm": 200}

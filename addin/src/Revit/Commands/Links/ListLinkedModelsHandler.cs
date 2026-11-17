@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Links/ListLinkedModelsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: params come schema-checked; lengths through Mm; transforms add rotation_deg; each type
+// Modified for Plinth: params come schema-checked; lengths through Mm; transforms add rotation_deg; each type
 // reports whether it holds unsaved shared-position changes (has_saveable_positions) and locally_unloaded.
 
 using System;
@@ -8,10 +8,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Links
+namespace Plinth.Revit.Commands.Links
 {
     public sealed class ListLinkedModelsHandler : IRevitCommand
     {

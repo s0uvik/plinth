@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Infrastructure/Execution/McpEventHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: keeps the queue, the stale-request skip, one command per ExternalEvent run with
+// Modified for Plinth: keeps the queue, the stale-request skip, one command per ExternalEvent run with
 // re-raise, schema validation before dispatch, the document check, path scrubbing and the _target stamp.
 // History, reports, survey, toasts, script protocol, change tracking and response spilling are not
 // ported here; the response cap now replaces oversized data with an error that says whether the
@@ -11,15 +11,15 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Linq;
 using Autodesk.Revit.UI;
-using B2M.Revit.Core.Execution;
-using B2M.Revit.Core.Health;
-using B2M.Revit.Core.Logging;
-using B2M.Revit.Core.Security;
-using B2M.Revit.Core.Transport;
+using Plinth.Revit.Core.Execution;
+using Plinth.Revit.Core.Health;
+using Plinth.Revit.Core.Logging;
+using Plinth.Revit.Core.Security;
+using Plinth.Revit.Core.Transport;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Bridge
+namespace Plinth.Revit.Bridge
 {
     /// <summary>
     /// Receives requests from the transport thread and runs them on Revit's main thread through one
@@ -40,7 +40,7 @@ namespace B2M.Revit.Bridge
 
         public void Attach(ExternalEvent externalEvent) => _event = externalEvent;
 
-        public string GetName() => "B2M.RequestEventHandler";
+        public string GetName() => "Plinth.RequestEventHandler";
 
         public JObject Health() => _health.Snapshot();
 

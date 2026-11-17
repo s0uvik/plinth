@@ -12,12 +12,12 @@ import json
 import sys
 import time
 
-from b2m import logs
-from b2m.builds import BuildService
-from b2m.examples import two_storey_house
-from b2m.revit import RevitClient
-from b2m.revit.types import FamilyType, TypeMap
-from b2m.runs import RunStore
+from plinth import logs
+from plinth.builds import BuildService
+from plinth.examples import two_storey_house
+from plinth.revit import RevitClient
+from plinth.revit.types import FamilyType, TypeMap
+from plinth.runs import RunStore
 
 
 def first_type(revit: RevitClient, category: str) -> FamilyType:
@@ -54,7 +54,7 @@ def main() -> int:
     print("read-back:", json.dumps({k: record["readback"][k] for k in ("ok", "elements", "warnings_total", "mismatches")}))
 
     if args.keep:
-        print("\n--keep: the house stays. Each batch is one undo step named 'B2M: Batch' in Revit's undo list.")
+        print("\n--keep: the house stays. Each batch is one undo step named 'Plinth: Batch' in Revit's undo list.")
         return 0
 
     removed = service.remove(record["run_id"])

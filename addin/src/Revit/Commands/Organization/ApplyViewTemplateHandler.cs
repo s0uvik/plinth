@@ -1,19 +1,19 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Views/ApplyViewTemplateHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: viewIds is required (rvt-mcp silently used the active view); every target is checked
+// Modified for Plinth: viewIds is required (rvt-mcp silently used the active view); every target is checked
 // first and a refusal reports every view's problem at once (rvt-mcp stopped at the first); a miss lists
 // the valid templates; views that already use the template are reported as unchanged instead of needing
-// replaceExisting; at most 500 views per call; "B2M: ..." transaction with a commit-status check.
+// replaceExisting; at most 500 views per call; "Plinth: ..." transaction with a commit-status check.
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Organization
+namespace Plinth.Revit.Commands.Organization
 {
     using View = Autodesk.Revit.DB.View;
 
@@ -73,7 +73,7 @@ namespace B2M.Revit.Commands.Organization
                 });
 
             var results = new JArray();
-            using (var tx = new Transaction(doc, "B2M: Apply view template"))
+            using (var tx = new Transaction(doc, "Plinth: Apply view template"))
             {
                 tx.Start();
                 try

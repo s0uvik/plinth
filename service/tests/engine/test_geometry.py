@@ -1,6 +1,6 @@
 import pytest
 
-from b2m.engine.geometry import (GeometryError, Rect, Space, atomic_edges, derive_walls, net_area_mm2, net_rect,
+from plinth.engine.geometry import (GeometryError, Rect, Space, atomic_edges, derive_walls, net_area_mm2, net_rect,
                                  wall_thickness_on)
 
 T = {"ext": 230, "int": 115}

@@ -1,6 +1,6 @@
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 
-namespace B2M.Revit.Commands.Modify
+namespace Plinth.Revit.Commands.Modify
 {
     /// <summary>Registers the modify toolset's commands ported in Step 8 (the earlier ones are in CommandCatalog).</summary>
     internal static class ModifyCatalog

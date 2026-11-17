@@ -1,16 +1,16 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Lint/DetectFirmProfileHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: profiles load from %LOCALAPPDATA%\B2M\firm-profiles (see NamingLint); the result names that folder,
+// Modified for Plinth: profiles load from %LOCALAPPDATA%\Plinth\firm-profiles (see NamingLint); the result names that folder,
 // how many profiles loaded and any files that could not be read; the sheet prefix ignores placeholder sheets.
 
 using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Lint
+namespace Plinth.Revit.Commands.Lint
 {
     using View = Autodesk.Revit.DB.View;
 
@@ -18,7 +18,7 @@ namespace B2M.Revit.Commands.Lint
     {
         public string Name => "detect_firm_profile";
         public string Description => "Fingerprint the project's naming (dominant view-name pattern, sheet-number prefix, level-name pattern) and match it "
-            + "against the firm profiles in %LOCALAPPDATA%\\B2M\\firm-profiles. library_match is null when none matches.";
+            + "against the firm profiles in %LOCALAPPDATA%\\Plinth\\firm-profiles. library_match is null when none matches.";
         public string ParametersSchema => @"{""type"":""object"",""properties"":{}}";
         public bool ReadOnly => true;
 

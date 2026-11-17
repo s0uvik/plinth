@@ -6,11 +6,11 @@ import json
 
 import pytest
 
-from b2m.cad.building import (Column, Evidence, Finding, FoundationRecognition, Grid, Level, Opening, PlanRecognition,
+from plinth.cad.building import (Column, Evidence, Finding, FoundationRecognition, Grid, Level, Opening, PlanRecognition,
                               RecognisedBuilding, Registration, Room, SectionRecognition, Stair, Wall)
-from b2m.cad.building import Column as Section
-from b2m.imported import selfcheck, to_plan
-from b2m.imported.selfcheck import Explanation, Tolerances, compare
+from plinth.cad.building import Column as Section
+from plinth.imported import selfcheck, to_plan
+from plinth.imported.selfcheck import Explanation, Tolerances, compare
 from tests.selfcheck_readback import perfect_readback
 
 P, S = "P.dxf", "S.dxf"

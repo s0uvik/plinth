@@ -1,16 +1,16 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp), command get_report_history
 // (listed in src/shared/Infrastructure/ToolReadPolicy.cs; served from src/shared/Reports/History), commit b44ee0b.
 // Licensed under the Apache License, Version 2.0.
-// Modified for B2M: reads the last N records of %LOCALAPPDATA%\B2M\reports.jsonl (written by report_task_result),
+// Modified for Plinth: reads the last N records of %LOCALAPPDATA%\Plinth\reports.jsonl (written by report_task_result),
 // newest first, instead of the SQLite history; unreadable lines are counted and skipped.
 
 using System;
 using System.IO;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Meta
+namespace Plinth.Revit.Commands.Meta
 {
     public sealed class GetReportHistoryHandler : IRevitCommand
     {

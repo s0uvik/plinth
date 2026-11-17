@@ -1,7 +1,7 @@
 // Helpers shared by the export toolset's Step 8 commands. Parts replace rvt-mcp infrastructure:
 // ExportTransaction (src/shared/Infrastructure/ExportTransaction.cs) and ResponsePaging, from
 // rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp), commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: exports write one file per view through OutputFile's staging folder, with every target
+// Modified for Plinth: exports write one file per view through OutputFile's staging folder, with every target
 // path planned and checked for collisions before anything is exported (rvt-mcp diffed folder timestamps).
 
 using System;
@@ -9,10 +9,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Autodesk.Revit.DB;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Export
+namespace Plinth.Revit.Commands.Export
 {
     using View = Autodesk.Revit.DB.View;
 

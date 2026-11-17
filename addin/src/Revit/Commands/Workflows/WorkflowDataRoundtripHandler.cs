@@ -1,12 +1,12 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Workflows/WorkflowDataRoundtripHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: export_path goes through Export/OutputFile (absolute, exact, no overwrite unless overwrite: true)
+// Modified for Plinth: export_path goes through Export/OutputFile (absolute, exact, no overwrite unless overwrite: true)
 // and is required only when exporting (rvt-mcp required it for import_only too); key_field is element_id or
-// unique_id; values use B2M units (lengths mm, areas m2, volumes m3, angles degrees) through Mm and the B2M factors;
+// unique_id; values use Plinth units (lengths mm, areas m2, volumes m3, angles degrees) through Mm and the Plinth factors;
 // the category accepts BuiltInCategory names and a miss lists the valid ones; the import file is capped at 20 MB
 // and 10000 rows, and the response lists at most 500 changes, 200 skipped rows and 200 errors (with totals);
-// rvt-mcp's output=file NDJSON report spilling is dropped (no response spill infrastructure in B2M); the import
-// transaction is "B2M: ..." and any Revit warning rolls it back (FailureScope). dry_run applies to the model
+// rvt-mcp's output=file NDJSON report spilling is dropped (no response spill infrastructure in Plinth); the import
+// transaction is "Plinth: ..." and any Revit warning rolls it back (FailureScope). dry_run applies to the model
 // import only; the export file is written whenever the mode exports.
 // Duplicate before edit (TypeEditGuard): the export lists placed elements only, but an import row keyed to a type (or a
 // material) would change something shared. Such rows need duplicate_as (the values go to a new copy; no element moves)
@@ -20,10 +20,10 @@ using System.IO;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Workflows
+namespace Plinth.Revit.Commands.Workflows
 {
     public sealed class WorkflowDataRoundtripHandler : IRevitCommand
     {
@@ -166,7 +166,7 @@ namespace B2M.Revit.Commands.Workflows
 
                 if (changes.Count > 0)
                 {
-                    using (var tx = new Transaction(doc, "B2M: Workflow data roundtrip import"))
+                    using (var tx = new Transaction(doc, "Plinth: Workflow data roundtrip import"))
                     {
                         tx.Start();
                         try

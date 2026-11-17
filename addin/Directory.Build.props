@@ -1,5 +1,5 @@
 <Project>
-  <!-- Shared settings for every B2M.Revit year project and the test project. -->
+  <!-- Shared settings for every Plinth.Revit year project and the test project. -->
   <PropertyGroup>
     <Version>0.1.0</Version>
     <LangVersion>latest</LangVersion>

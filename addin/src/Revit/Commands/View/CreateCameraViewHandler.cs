@@ -1,7 +1,7 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Views/CreateCameraViewHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the 3D view type is the project's default 3D view type through Lookup.TryViewFamilyType
-// (rvt-mcp took the first 3D view type found); B2M error codes; rvt-mcp's SavedViewOrientationRefresh
+// Modified for Plinth: the 3D view type is the project's default 3D view type through Lookup.TryViewFamilyType
+// (rvt-mcp took the first 3D view type found); Plinth error codes; rvt-mcp's SavedViewOrientationRefresh
 // (Idling/DocumentChanged hooks that re-sync the temporary camera after Undo of a re-aim) is not ported,
 // so after an Undo the open window may keep the new camera until the view is reopened.
 
@@ -9,12 +9,12 @@ using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.View
+namespace Plinth.Revit.Commands.View
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     public sealed class CreateCameraViewHandler : IRevitCommand
@@ -62,7 +62,7 @@ namespace B2M.Revit.Commands.View
 
             var created = view == null;
             var before = view?.GetOrientation();
-            using (var tx = new Transaction(doc, "B2M: Create Camera View"))
+            using (var tx = new Transaction(doc, "Plinth: Create Camera View"))
             {
                 tx.Start();
                 try

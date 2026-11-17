@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Rooms/GetRoomOpeningsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: each opening says how it was matched ("association": from_room, to_room, room, or
+// Modified for Plinth: each opening says how it was matched ("association": from_room, to_room, room, or
 // bounding_box for the window bounding-box fallback, which rvt-mcp applied silently); categories are
 // compared by BuiltInCategory; instance width/height are read when the type has none; mm through Mm;
 // at most 2000 openings returned, with truncation reported; status via the shared classification.
@@ -11,10 +11,10 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Architecture;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Rooms
+namespace Plinth.Revit.Commands.Rooms
 {
     public sealed class GetRoomOpeningsHandler : IRevitCommand
     {

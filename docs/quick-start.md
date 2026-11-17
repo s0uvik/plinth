@@ -1,6 +1,6 @@
-# B2M quick start: drawings to a Revit model
+# Plinth quick start: drawings to a Revit model
 
-B2M reads an office's DWG drawing set (plans, sections, elevations, foundation and beam layouts), asks you about
+Plinth reads an office's DWG drawing set (plans, sections, elevations, foundation and beam layouts), asks you about
 everything the drawings leave open, and once you approve, builds a native Revit model. From that model it makes a
 Revit drawing set and a door/window estimate in the office's Excel format. This page covers one complete run.
 
@@ -15,21 +15,21 @@ python.org (tick "Add to PATH").
 
 1. **ODA File Converter.** It converts DWG to DXF. It is free from opendesign.com ("ODA File Converter"). Install
    it to its default folder under `C:\Program Files\ODA\`. If you put it somewhere else, set the environment
-   variable `B2M_ODA` to its folder.
-2. **B2M.** Close Revit completely. Unzip the B2M package, then run this in PowerShell inside the unzipped folder:
+   variable `PLINTH_ODA` to its folder.
+2. **Plinth.** Close Revit completely. Unzip the Plinth package, then run this in PowerShell inside the unzipped folder:
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File install.ps1
    ```
 
-   This installs the add-in for every Revit year it finds, and the B2M service under `%LOCALAPPDATA%\B2M`. To remove
+   This installs the add-in for every Revit year it finds, and the Plinth service under `%LOCALAPPDATA%\Plinth`. To remove
    it later, run `uninstall.ps1`.
 
 ## 2. Start
 
-1. Double-click `%LOCALAPPDATA%\B2M\start-b2m.cmd`. A console window opens; leave it open while you work.
+1. Double-click `%LOCALAPPDATA%\Plinth\start-plinth.cmd`. A console window opens; leave it open while you work.
 2. Open Revit, then start a **new project from the Metric template** and save it under a scratch name, e.g.
-   `scratch-01`. B2M builds only into the project whose title you give it.
+   `scratch-01`. Plinth builds only into the project whose title you give it.
 3. Open **http://127.0.0.1:8765/import** in a browser.
 
 ## 3. Import, answer, approve, build
@@ -37,12 +37,12 @@ python.org (tick "Add to PATH").
 | Step | What you do | What to look for |
 |---|---|---|
 | Drawing folder | Paste the folder that holds the DWG (or DXF) sheets. Click **Import drawings**. | Every sheet is listed with what it was read as (plan, section, elevation, foundation, beam layout, site). A sheet read as the wrong kind is worth reporting. |
-| Sheets | Click a sheet to see what B2M recognised, drawn over the sheet. Click an element to see its source lines. | Missing or extra walls, doors, windows, columns and rooms. |
-| Project location | Enter the City, Municipality, State and Country, then click **Save location**. | B2M bases its assumptions on the location, so it asks for the location before assuming anything. |
+| Sheets | Click a sheet to see what Plinth recognised, drawn over the sheet. Click an element to see its source lines. | Missing or extra walls, doors, windows, columns and rooms. |
+| Project location | Enter the City, Municipality, State and Country, then click **Save location**. | Plinth bases its assumptions on the location, so it asks for the location before assuming anything. |
 | Questions | Answer each question, or click **Assume remaining** to accept the suggestions for that location. | Each assumption is listed with its reason. Change any that are wrong for this project. |
 | Review and build | Add a short note (e.g. "checked all sheets against the PDF set") and click **Approve review**. Type the open project's title exactly as Revit shows it, then click **Build in Revit**. | The batches tick off one by one. A batch that fails stops the build and says why. |
 
-**Family questions during the build.** B2M first looks in the open project and in the family library installed with Revit.
+**Family questions during the build.** Plinth first looks in the open project and in the family library installed with Revit.
 If a size is missing, it adapts a **copy** of a close family. Only if nothing fits does it stop and ask whether to
 use another family or create one. Answer the question, then build again.
 
@@ -59,12 +59,12 @@ approval, or delete anything it did not create.
 
 ## 4. After the build
 
-- **Self-check.** B2M reads the model back and compares it with the plan and with the drawings. Open the
+- **Self-check.** Plinth reads the model back and compares it with the plan and with the drawings. Open the
   self-check report. *Explained* differences are ones your answers caused (e.g. a door width you changed).
   *Unexplained* ones are what to check in Revit.
 - **Make drawing set.** This makes sheets with views fitted to the title block at standard scales, and a PDF. It asks
   which title block to use and what to fill into the title fields; it never guesses those. **Remake drawing set**
-  deletes the sheets and views B2M made for this run and makes them again (it asks you to confirm first).
+  deletes the sheets and views Plinth made for this run and makes them again (it asks you to confirm first).
 - **Make estimate.** This makes the door/window estimate workbook. Optionally, give the office's own estimate
   workbook to get a cell-by-cell comparison.
 - **Remove generated model.** This deletes exactly what this run created, nothing else.
@@ -77,8 +77,8 @@ the trial. For each item, note:
 | Sheet | Element (e.g. wall near grid C/4, door D1 on Floor 2) | What was wrong | What you did |
 |---|---|---|---|
 
-When something fails, send the run folder `%LOCALAPPDATA%\B2M\runs\<run id>\` (every Revit call B2M made is in
-`tool_calls.jsonl`) and the import folder `%LOCALAPPDATA%\B2M\imports\<import id>\`. The run id is shown on the
+When something fails, send the run folder `%LOCALAPPDATA%\Plinth\runs\<run id>\` (every Revit call Plinth made is in
+`tool_calls.jsonl`) and the import folder `%LOCALAPPDATA%\Plinth\imports\<import id>\`. The run id is shown on the
 review page.
 
 ## Known limits

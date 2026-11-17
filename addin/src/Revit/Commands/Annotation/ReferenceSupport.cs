@@ -1,4 +1,4 @@
-// New in B2M (Step 9 T10b): dimensionable references shared by create_dimensions and auto_dimension_section.
+// New in Plinth (Step 9 T10b): dimensionable references shared by create_dimensions and auto_dimension_section.
 //   - PlanarFaces: every planar face of an element with a reference Revit can dimension to. Faces of an element's own
 //     solids carry their references directly; faces of a family instance's symbol geometry (an instance whose geometry
 //     is not modified by joins or cuts) are turned into instance references through the stable representation
@@ -15,11 +15,11 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
-using B2M.Revit.Core.Drawing;
+using Plinth.Revit.Core.Drawing;
 
-namespace B2M.Revit.Commands.Annotation
+namespace Plinth.Revit.Commands.Annotation
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     /// <summary>A planar face with a reference, in model coordinates.</summary>

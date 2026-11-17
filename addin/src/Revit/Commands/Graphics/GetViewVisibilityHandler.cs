@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Views/GetViewVisibilityHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: moved to the graphics toolset; ids are numbers (rvt-mcp sent strings); categories carry
+// Modified for Plinth: moved to the graphics toolset; ids are numbers (rvt-mcp sent strings); categories carry
 // built_in_category (language independent); filters are listed in the view's order with enabled state; the view
 // template reports whether it controls this view's visibility; a missing view lists the valid ones.
 
@@ -9,10 +9,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Graphics
+namespace Plinth.Revit.Commands.Graphics
 {
     using View = Autodesk.Revit.DB.View;
 

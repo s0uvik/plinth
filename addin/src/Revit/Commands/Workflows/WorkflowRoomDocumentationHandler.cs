@@ -1,12 +1,12 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Workflows/WorkflowRoomDocumentationHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the finish schedule is made by create_schedule and placed by place_schedule_on_sheet
+// Modified for Plinth: the finish schedule is made by create_schedule and placed by place_schedule_on_sheet
 // (called in-process; fields by BuiltInParameter name, so not language-dependent); view_id (new) picks the parent
 // view for callouts and tags (default the active view); the callout uses the parent view's own type (rvt-mcp took
 // the first detail, section or plan type, which may not fit the parent); room_ids that are not rooms, an unknown
 // level_name, or a bad sheet_id are errors with the valid options (rvt-mcp warned and skipped); callout viewports
 // go on a grid inside the title block frame (rvt-mcp used fixed foot offsets); padding goes through Mm;
-// transactions are "B2M: ..."; any Revit warning rolls the whole group back (FailureScope).
+// transactions are "Plinth: ..."; any Revit warning rolls the whole group back (FailureScope).
 
 using System;
 using System.Collections.Generic;
@@ -14,12 +14,12 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Architecture;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Commands.Schedule;
-using B2M.Revit.Commands.Sheets;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Commands.Schedule;
+using Plinth.Revit.Commands.Sheets;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Workflows
+namespace Plinth.Revit.Commands.Workflows
 {
     using View = Autodesk.Revit.DB.View;
 
@@ -143,14 +143,14 @@ namespace B2M.Revit.Commands.Workflows
 
             var status = "succeeded";
             long? scheduleId = null;
-            using (var group = new TransactionGroup(doc, "B2M: Workflow room documentation"))
+            using (var group = new TransactionGroup(doc, "Plinth: Workflow room documentation"))
             {
                 group.Start();
 
                 if (createSchedule)
                 {
                     var name = WorkflowsHelpers.UniqueName(
-                        new FilteredElementCollector(doc).OfClass(typeof(ViewSchedule)).Cast<ViewSchedule>().Select(s => s.Name), "B2M Room Finish Schedule");
+                        new FilteredElementCollector(doc).OfClass(typeof(ViewSchedule)).Cast<ViewSchedule>().Select(s => s.Name), "Plinth Room Finish Schedule");
                     var result = WorkflowsHelpers.Invoke(new CreateScheduleHandler(), app, new JObject
                     {
                         ["category"] = "OST_Rooms",
@@ -172,7 +172,7 @@ namespace B2M.Revit.Commands.Workflows
                 }
 
                 var updated = new JArray();
-                using (var tx = new Transaction(doc, "B2M: Room documentation"))
+                using (var tx = new Transaction(doc, "Plinth: Room documentation"))
                 {
                     tx.Start();
                     try

@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Families/GetFamilyTypesHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: filter by builtInCategory (OST_Doors...) as well as by display name, because
+// Modified for Plinth: filter by builtInCategory (OST_Doors...) as well as by display name, because
 // display names change with Revit's language ("Puertas"); with builtInCategory, system types such as
 // wall and floor types are included, so a client can check every type a build plan needs in one call.
 
@@ -8,10 +8,10 @@ using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Query
+namespace Plinth.Revit.Commands.Query
 {
     public sealed class GetAvailableFamilyTypesHandler : IRevitCommand
     {

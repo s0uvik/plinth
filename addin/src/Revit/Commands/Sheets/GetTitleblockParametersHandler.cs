@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Sheets/GetTitleblockParametersHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: sheet resolution through Lookup.TrySheet (a miss lists the valid sheets; placeholders
+// Modified for Plinth: sheet resolution through Lookup.TrySheet (a miss lists the valid sheets; placeholders
 // refused); a sheet with several title blocks needs title_block_id (rvt-mcp read the first); parameters are
 // ordered by name and each carries its unit (lengths mm, areas m², volumes m³, angles degrees, converted
 // through SheetsHelpers/Mm); the camelCase aliases are gone.
@@ -9,10 +9,10 @@ using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Sheets
+namespace Plinth.Revit.Commands.Sheets
 {
     public sealed class GetTitleblockParametersHandler : IRevitCommand
     {

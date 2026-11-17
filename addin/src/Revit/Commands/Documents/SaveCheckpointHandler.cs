@@ -1,9 +1,9 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp), files
 // src/shared/Handlers/Documents/SaveCheckpointHandler.cs and src/shared/Documents/CheckpointSpace.cs, CheckpointNaming.cs
 // and CheckpointFiles.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: a checkpoint never saves the user's model. rvt-mcp saved a modified model first; B2M refuses with
+// Modified for Plinth: a checkpoint never saves the user's model. rvt-mcp saved a modified model first; Plinth refuses with
 // DOCUMENT_MODIFIED and asks for save_document, so only save_document ever writes the model file. The verified copy
-// (same size and same save count/version GUID as the source) goes to %LOCALAPPDATA%\B2M\checkpoints\... with a
+// (same size and same save count/version GUID as the source) goes to %LOCALAPPDATA%\Plinth\checkpoints\... with a
 // manifest.json, not next to the model; the index lock is not ported.
 
 using System;
@@ -12,15 +12,15 @@ using System.IO;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Documents
+namespace Plinth.Revit.Commands.Documents
 {
     public sealed class SaveCheckpointHandler : IRevitCommand
     {
         public string Name => "save_checkpoint";
-        public string Description => "Copy the active model's saved file to a labelled checkpoint under %LOCALAPPDATA%\\B2M\\checkpoints. "
+        public string Description => "Copy the active model's saved file to a labelled checkpoint under %LOCALAPPDATA%\\Plinth\\checkpoints. "
             + "The model must have no unsaved changes (call save_document first); the model file itself is never written. "
             + "milestone: true protects the checkpoint from pruning. Not for workshared or cloud models.";
         public string ParametersSchema => @"{""type"":""object"",""properties"":{

@@ -1,5 +1,5 @@
-// New in B2M: rvt-mcp can only load a family from a path the caller already knows. This finds .rfa files by name
-// under the caller's folders, B2M's own family folder (%LOCALAPPDATA%\B2M\families, where ensure_family_type saves
+// New in Plinth: rvt-mcp can only load a family from a path the caller already knows. This finds .rfa files by name
+// under the caller's folders, Plinth's own family folder (%LOCALAPPDATA%\Plinth\families, where ensure_family_type saves
 // the families it creates) and the Revit content library of the running year. The scan is breadth first in name
 // order, so the shallowest match wins and repeated runs give the same answer; it stops after a fixed number of
 // entries per root, skips folders it cannot read and never follows junctions or symbolic links. The library root
@@ -11,11 +11,11 @@ using System.IO;
 using System.Linq;
 using System.Security;
 using System.Text.RegularExpressions;
-using B2M.Revit.Bridge;
-using B2M.Revit.Commands.Parameters;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Commands.Parameters;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Families
+namespace Plinth.Revit.Commands.Families
 {
     internal static class FamilyFileSearch
     {
@@ -34,7 +34,7 @@ namespace B2M.Revit.Commands.Families
         {
             public string Folder;
 
-            /// <summary>"given", "b2m" or "library".</summary>
+            /// <summary>"given", "plinth" or "library".</summary>
             public string Kind;
 
             public bool Exists;
@@ -64,8 +64,8 @@ namespace B2M.Revit.Commands.Families
         }
 
         /// <summary>Where ensure_family_type saves the families it creates.</summary>
-        public static string B2MFamiliesFolder =>
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "B2M", "families");
+        public static string PlinthFamiliesFolder =>
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Plinth", "families");
 
         public static string LibraryFolder(string year) =>
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Autodesk", "RVT " + year, "Libraries");
@@ -74,7 +74,7 @@ namespace B2M.Revit.Commands.Families
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Autodesk", "RVT " + year,
                 "Family Templates", "English");
 
-        /// <summary>The caller's folders (absolute, existing) first, then B2M's folder, then the year's library.</summary>
+        /// <summary>The caller's folders (absolute, existing) first, then Plinth's folder, then the year's library.</summary>
         public static bool TryRoots(JToken searchFolders, string year, out List<Root> roots, out CommandResult failure)
         {
             roots = new List<Root>();
@@ -107,7 +107,7 @@ namespace B2M.Revit.Commands.Families
                 }
                 Add(roots, folder, "given");
             }
-            Add(roots, B2MFamiliesFolder, "b2m");
+            Add(roots, PlinthFamiliesFolder, "plinth");
             Add(roots, LibraryFolder(year), "library");
             return true;
         }

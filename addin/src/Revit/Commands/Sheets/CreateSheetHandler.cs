@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Sheets/CreateSheetHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: with no title block named, the project's default title block is used (rvt-mcp took
+// Modified for Plinth: with no title block named, the project's default title block is used (rvt-mcp took
 // the first one found); a miss or an ambiguous name lists the valid title blocks; failures are errors
 // rather than a success with created=false; the camelCase aliases are gone (the schema rejects them);
 // the response carries the title block frame on the sheet in mm, for placing views.
@@ -9,10 +9,10 @@ using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Sheets
+namespace Plinth.Revit.Commands.Sheets
 {
     public sealed class CreateSheetHandler : IRevitCommand
     {
@@ -64,7 +64,7 @@ namespace B2M.Revit.Commands.Sheets
                         new JObject { ["valid_title_blocks"] = Lookup.TitleBlocks(all) });
             }
 
-            using (var tx = new Transaction(doc, "B2M: Create Sheet"))
+            using (var tx = new Transaction(doc, "Plinth: Create Sheet"))
             {
                 tx.Start();
                 try

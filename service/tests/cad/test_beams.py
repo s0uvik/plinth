@@ -1,6 +1,6 @@
 """Beam layout recognition (T4): beams from edge pairs along centre lines, grids, column points."""
 
-from b2m.cad.beams import recognise_beam_layout
+from plinth.cad.beams import recognise_beam_layout
 from tests.cad import synthetic
 
 

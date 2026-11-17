@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Organization/AssignElementsToWorksetHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: a workset that is not found lists the valid user worksets; worksetId and worksetName may not
+// Modified for Plinth: a workset that is not found lists the valid user worksets; worksetId and worksetName may not
 // disagree; elements that cannot move are listed with failedCount so batch_execute rolls back; elements already on
 // the workset count as unchanged without a write; at most 5000 IDs.
 
@@ -8,10 +8,10 @@ using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Modify
+namespace Plinth.Revit.Commands.Modify
 {
     public sealed class AssignElementsToWorksetHandler : IRevitCommand
     {

@@ -1,20 +1,20 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Rooms/CreateAreaHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: no silent defaults: rvt-mcp took the first area scheme and the first level when
+// Modified for Plinth: no silent defaults: rvt-mcp took the first area scheme and the first level when
 // none was named; now the scheme is the plan's, the named one, or the only one in the project, and a
 // new area plan needs level_name. Without a plan id or name, the area plan of level_name (or the active
 // area plan) is used, and several candidates are an error listing them. Misses list valid options.
 // The plan creation and the area share one transaction (rvt-mcp's TransactionGroup and
-// SafeFailuresPreprocessor are replaced by B2M's FailureScope, which rolls back on any warning).
+// SafeFailuresPreprocessor are replaced by Plinth's FailureScope, which rolls back on any warning).
 
 using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Rooms
+namespace Plinth.Revit.Commands.Rooms
 {
     public sealed class CreateAreaHandler : IRevitCommand
     {
@@ -107,7 +107,7 @@ namespace B2M.Revit.Commands.Rooms
             }
 
             var planLabel = createPlan ? "a new area plan on level '" + level.Name + "'" : "'" + plan.Name + "'";
-            using (var tx = new Transaction(doc, "B2M: Create Area"))
+            using (var tx = new Transaction(doc, "Plinth: Create Area"))
             {
                 tx.Start();
                 try

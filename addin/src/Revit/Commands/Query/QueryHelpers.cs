@@ -2,7 +2,7 @@
 // src/shared/Infrastructure/Responses/ResponsePaging.cs and the category / parameter-value code repeated in
 // src/shared/Handlers/Elements/AiElementFilterHandler.cs and src/shared/Handlers/Parameters/GetElementParametersHandler.cs,
 // commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: one copy for the query toolset; categories resolve by OST_ name or display name and a miss lists
+// Modified for Plinth: one copy for the query toolset; categories resolve by OST_ name or display name and a miss lists
 // the valid names; double values convert by unit (length mm via Mm, area m2, volume m3, angle degrees) instead of
 // literal 304.8 factors and spec-name string matching.
 
@@ -11,10 +11,10 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Autodesk.Revit.DB;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Query
+namespace Plinth.Revit.Commands.Query
 {
     internal static class QueryHelpers
     {
@@ -105,7 +105,7 @@ namespace B2M.Revit.Commands.Query
             }
         }
 
-        /// <summary>The unit B2M uses on the wire for a double parameter: "mm", "m2", "m3", "deg", or "internal".</summary>
+        /// <summary>The unit Plinth uses on the wire for a double parameter: "mm", "m2", "m3", "deg", or "internal".</summary>
         public static string WireUnit(Parameter parameter)
         {
             ForgeTypeId spec;

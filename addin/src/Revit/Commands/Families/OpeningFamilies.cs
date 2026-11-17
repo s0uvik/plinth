@@ -1,4 +1,4 @@
-// New in B2M: ensure_family_type for doors and windows. Imported drawings name openings by mark and size (D = 900 x
+// New in Plinth: ensure_family_type for doors and windows. Imported drawings name openings by mark and size (D = 900 x
 // 2100, W1 = 1000 x 1200), so the build needs a type with exactly that width/height and Type Mark. The decisions are
 // Revit-free (addin/src/Core/Families/OpeningTypeRules.cs); this file reads the facts from the project and applies them:
 //   - width/height are TYPE parameters found by built-in DOOR_WIDTH/WINDOW_WIDTH, then FAMILY_WIDTH_PARAM, then the names
@@ -15,11 +15,11 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Autodesk.Revit.DB;
-using B2M.Revit.Bridge;
-using B2M.Revit.Core.Families;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Core.Families;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Families
+namespace Plinth.Revit.Commands.Families
 {
     internal sealed class DoorRecipe : FamilyRecipe
     {
@@ -38,7 +38,7 @@ namespace B2M.Revit.Commands.Families
         public override string[] CategoryWords => new[] { "door" };
 
         internal override BuiltGeometry Build(FamilyBuilder fb, FamilyParameter pb, FamilyParameter ph, double b, double h) =>
-            throw new FamilyBuildException("choose a recipe", "B2M has no recipe that builds door families");
+            throw new FamilyBuildException("choose a recipe", "Plinth has no recipe that builds door families");
     }
 
     internal sealed class WindowRecipe : FamilyRecipe
@@ -58,7 +58,7 @@ namespace B2M.Revit.Commands.Families
         public override string[] CategoryWords => new[] { "window" };
 
         internal override BuiltGeometry Build(FamilyBuilder fb, FamilyParameter pb, FamilyParameter ph, double b, double h) =>
-            throw new FamilyBuildException("choose a recipe", "B2M has no recipe that builds window families");
+            throw new FamilyBuildException("choose a recipe", "Plinth has no recipe that builds window families");
     }
 
     internal static class OpeningFamilies
@@ -161,7 +161,7 @@ namespace B2M.Revit.Commands.Families
             var what = named
                 ? "no " + noun + " family named '" + r.FamilyName + "' is loaded or was found in " + EnsureFamilyTypeHandler.Searched(roots, year)
                 : choice.Error.Substring(choice.Error.IndexOf(':') + 2).TrimEnd('.');
-            return CommandResult.Fail("FAMILY_NOT_FOUND: " + what + ". B2M has no recipe that builds " + noun + " families (can_create is false"
+            return CommandResult.Fail("FAMILY_NOT_FOUND: " + what + ". Plinth has no recipe that builds " + noun + " families (can_create is false"
                 + (r.AllowCreate ? ", so allow_create does not apply" : "") + "). Ask the user which family to use: pass family_name of a loaded "
                 + "family, or of a family file (give its folder in search_folders); candidates lists both." + EnsureFamilyTypeHandler.Unchanged,
                 new JObject

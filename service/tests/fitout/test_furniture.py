@@ -12,7 +12,7 @@ from collections import Counter
 import pytest
 from shapely.geometry import Point, Polygon
 
-from b2m.fitout import furniture, rooms
+from plinth.fitout import furniture, rooms
 from tests.fitout.conftest import box_walls, plan_of
 
 

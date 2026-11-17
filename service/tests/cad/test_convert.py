@@ -6,19 +6,19 @@ from pathlib import Path
 import ezdxf
 import pytest
 
-from b2m.cad import convert, reader
+from plinth.cad import convert, reader
 from tests.cad.conftest import SAMPLE, SAMPLE_DXF
 
 try:
-    ODA = convert.find_oda()  # looked up before any test points B2M_HOME elsewhere
+    ODA = convert.find_oda()  # looked up before any test points PLINTH_HOME elsewhere
 except convert.OdaNotFound:
     ODA = None
 
 
 @pytest.fixture
 def no_oda_anywhere(monkeypatch, tmp_path):
-    monkeypatch.setenv("B2M_HOME", str(tmp_path / "home"))
-    monkeypatch.delenv("B2M_ODA", raising=False)
+    monkeypatch.setenv("PLINTH_HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("PLINTH_ODA", raising=False)
     monkeypatch.setenv("ProgramFiles", str(tmp_path / "pf"))
     monkeypatch.setenv("ProgramFiles(x86)", str(tmp_path / "pf86"))
     return tmp_path
@@ -45,7 +45,7 @@ def test_converter_lookup_order(no_oda_anywhere, monkeypatch):
     portable = fake(no_oda_anywhere / "home" / "tools" / "oda" / convert.EXE)
     assert convert.find_oda() == portable
     override = fake(no_oda_anywhere / "elsewhere" / convert.EXE)
-    monkeypatch.setenv("B2M_ODA", str(override.parent))
+    monkeypatch.setenv("PLINTH_ODA", str(override.parent))
     assert convert.find_oda() == override
     assert convert.find_oda(newer) == newer
 
@@ -59,7 +59,7 @@ def test_dxf_is_used_as_is_and_other_files_are_refused(tmp_path):
 
 @pytest.mark.skipif(ODA is None, reason="ODA File Converter is not installed on this PC")
 def test_dwg_converts_once_into_the_hash_named_cache(monkeypatch, tmp_path):
-    monkeypatch.setenv("B2M_HOME", str(tmp_path))
+    monkeypatch.setenv("PLINTH_HOME", str(tmp_path))
     source = SAMPLE / "dwg" / "3.ROOF PLAN.dwg"
     before = convert.sha256(source)
     dxf = convert.to_dxf(source, ODA)

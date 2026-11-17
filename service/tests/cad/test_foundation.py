@@ -1,6 +1,6 @@
 """Foundation recognition (T4): footings, founding depth, column sections, rebar notes tied to members."""
 
-from b2m.cad.foundation import recognise_foundation
+from plinth.cad.foundation import recognise_foundation
 from tests.cad import synthetic
 
 

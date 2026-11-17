@@ -10,7 +10,7 @@ from __future__ import annotations
 import copy
 from typing import Any
 
-from b2m.revit.client import RevitError
+from plinth.revit.client import RevitError
 
 FAMILY_KINDS = ("family_type",)
 MEP_CATEGORY = {"pipe_type": "OST_PipeCurves", "pipe_system_type": "OST_PipingSystem", "duct_type": "OST_DuctCurves",
@@ -245,7 +245,7 @@ class FitoutRevit:
         that name already in the project is returned as already_there (never overwritten, nothing created)."""
         name = p["family_name"]
         w, d, h = p["width_mm"], p["depth_mm"], p["height_mm"]
-        type_name = p.get("type_name") or f"{w:g} x {d:g} x {h:g}mm (B2M)"
+        type_name = p.get("type_name") or f"{w:g} x {d:g} x {h:g}mm (Plinth)"
         family = next((i for i, e in self.elements.items() if e.get("is_family") and e["family"].casefold() == name.casefold()), None)
         if family is not None:
             types = [(i, e) for i, e in self.project_types().items() if e["family"] == self.elements[family]["family"]]
@@ -258,7 +258,7 @@ class FitoutRevit:
         type_id = self._add_type("family_type", type_name, name, p.get("category") or "OST_Furniture",
                                  dims={"width": w, "depth": d, "height": h}, placement="OneLevelBased", made_by="box")
         self.elements[type_id]["box"] = {"min": [-w / 2, -d, 0], "max": [w / 2, 0, h]}
-        material = p.get("material_name") or "B2M Fit-out"
+        material = p.get("material_name") or "Plinth Fit-out"
         if not any(e.get("is_material") and e["name"] == material for e in self.elements.values()):
             self.elements[self._new_id()] = {"is_material": True, "name": material, "category": "OST_Materials"}
         family_id = next(i for i in sorted(set(self.elements) - before) if self.elements[i].get("is_family"))

@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Runtime/BatchExecutor.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the list of commands that must run directly is one table; each sub-command's
+// Modified for Plinth: the list of commands that must run directly is one table; each sub-command's
 // params are validated against its schema before anything runs, so a typo in sub-command 19 no
 // longer rolls back 18 finished ones; the failure-policy stop is reported through the invoker.
 
@@ -8,7 +8,7 @@ using System;
 using System.Collections.Generic;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Core.Execution
+namespace Plinth.Revit.Core.Execution
 {
     /// <summary>
     /// Iteration and rollback decision for <c>batch_execute</c>, kept free of the Revit API so it

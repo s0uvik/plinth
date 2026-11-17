@@ -110,7 +110,7 @@ Twelve components: eleven in the Python service, plus your Revit add-in (F12). I
 | F9.1 | Drawing builder | Creates views, tags rooms, builds schedules and sheets, and exports one PDF |
 | F9.2 | Drawing builder | Merges the compliance report PDF into the set |
 | F10.1 | Run store | Saves brief, spec, build plan, tool results, report and versions for every run, so runs can be replayed |
-| F11.1 | MCP facade | Exposes `b2m_plan_from_brief`, `b2m_build`, `b2m_check` and `b2m_drawing_set` to Claude Desktop |
+| F11.1 | MCP facade | Exposes `plinth_plan_from_brief`, `plinth_build`, `plinth_check` and `plinth_drawing_set` to Claude Desktop |
 | F11.2 | MCP facade | Exposes every catalog tool as a `revit_` MCP tool, grouped by toolset; a small default set is on, the rest are switched on in config; a read-only mode exposes only read tools |
 | F11.3 | MCP facade | Implements the 17 tools that ran in rvt-mcp's .NET gateway (targets, health, operation status, failure and change records, message lookup, usage, code modules, bake suggestions) |
 | F12.1 | Revit add-in | Loads in Revit 2024–2027 (2028 later), starts the pipe or TCP server on a background thread, and writes a discovery file with pipe name, token and process ID |
@@ -121,7 +121,7 @@ Twelve components: eleven in the Python service, plus your Revit add-in (F12). I
 
 ## Revit add-in, built from rvt-mcp parts
 
-The product ships its own add-in, `B2M.Revit`, with one build per Revit year. Nothing connects to rvt-mcp at runtime: the add-in's core and all 256 of rvt-mcp's tools are copied from its source at one recorded commit, reviewed, improved where needed and renamed. Your Python service talks to the add-in directly, with no MCP server in between.
+The product ships its own add-in, `Plinth.Revit`, with one build per Revit year. Nothing connects to rvt-mcp at runtime: the add-in's core and all 256 of rvt-mcp's tools are copied from its source at one recorded commit, reviewed, improved where needed and renamed. Your Python service talks to the add-in directly, with no MCP server in between.
 
 ### What to copy
 
@@ -131,12 +131,12 @@ The product ships its own add-in, `B2M.Revit`, with one build per Revit year. No
 | `src/shared/Infrastructure/Execution/` (`McpEventHandler`, `CommandDispatcher`, `IRevitCommand`, `PendingRequestLifecycle`, `RequestWait`, `DocumentTargetGuard`, `CommandOutcome`) | `Bridge/Execution` | Keep; drop the script-execution states |
 | `src/shared/Handlers/Runtime/` (`BatchExecuteHandler`, `BatchExecutor`) | `Commands/Runtime` | Keep, including the rule that `send_code` and baked tools can't run inside a batch |
 | `src/shared/Handlers/` (all 24 toolset folders, 239 handler files) | `Commands/<Toolset>` | Port every handler to the porting standard below; improve the ones flagged in Appendix A |
-| Support folders the handlers use: `Lint/`, `Survey/`, `Documents/`, `Reports/`, `ToolBaker/` | Same names under `B2M.Revit` | Keep what the tools need; Reports keeps a minimal window for `report_task_result`; ToolBaker runs only in developer mode |
+| Support folders the handlers use: `Lint/`, `Survey/`, `Documents/`, `Reports/`, `ToolBaker/` | Same names under `Plinth.Revit` | Keep what the tools need; Reports keeps a minimal window for `report_task_result`; ToolBaker runs only in developer mode |
 | `src/server/Tools/` and `src/server/Handlers/` (the 17 gateway-side tools) | Python service, `mcp_facade/` | Rewrite in Python against the same inputs and outputs; this is the one part that isn't a straight copy |
 | `src/shared/Infrastructure/SafeFailuresPreprocessor.cs`, `src/shared/Failures/FailurePolicy.cs` | `Bridge/Failures` | Keep rollback on warnings; replace the SQLite failure ledger with a JSON log |
 | `src/shared/Infrastructure/SchemaValidator.cs`, `RevitCompat.cs` | `Bridge` | Keep as is |
 | `src/shared/Security/` (`AuthToken`, `DiscoveryPublisher`, `ErrorSanitizer`) | `Bridge/Security` | Keep; write discovery files to your own folder under `%LOCALAPPDATA%` |
-| `src/plugin-r24` to `src/plugin-r27` project files | `addin/B2M.Revit.R24` to `R27` | Keep the pattern: one project per year compiling shared source, year flags in `DefineConstants`, Nice3point.Revit.Api packages for references |
+| `src/plugin-r24` to `src/plugin-r27` project files | `addin/Plinth.Revit.R24` to `R27` | Keep the pattern: one project per year compiling shared source, year flags in `DefineConstants`, Nice3point.Revit.Api packages for references |
 
 ### Tool catalog
 
@@ -247,11 +247,11 @@ Toasts, localization, the update checker, the History window, the .NET MCP serve
 
 | Revit | Add-in runtime | Transport | Build |
 | --- | --- | --- | --- |
-| 2024 | .NET Framework 4.8 | Loopback TCP | `B2M.Revit.R24` |
-| 2025 | .NET 8 (Autodesk is moving it to .NET 10 through updates) | Named pipe | `B2M.Revit.R25` |
-| 2026 | .NET 8 (same move to .NET 10) | Named pipe | `B2M.Revit.R26`, your development machine |
-| 2027 | .NET 10 | Named pipe | `B2M.Revit.R27` |
-| 2028 | Not yet announced | — | `B2M.Revit.R28`, added after release |
+| 2024 | .NET Framework 4.8 | Loopback TCP | `Plinth.Revit.R24` |
+| 2025 | .NET 8 (Autodesk is moving it to .NET 10 through updates) | Named pipe | `Plinth.Revit.R25` |
+| 2026 | .NET 8 (same move to .NET 10) | Named pipe | `Plinth.Revit.R26`, your development machine |
+| 2027 | .NET 10 | Named pipe | `Plinth.Revit.R27` |
+| 2028 | Not yet announced | — | `Plinth.Revit.R28`, added after release |
 
 - **Version-specific code lives only in the add-in,** in one shared source with `#if` year flags; the Python service is the same for every year.
 - **Target the lowest runtime per year.** A .NET 8 build for 2025 and 2026 still loads after Autodesk moves them to .NET 10; a .NET 10 build would not load on older updates.
@@ -424,7 +424,7 @@ Nine steps, each ending at a gate. A step starts only when the previous gate pas
 
 A second way in, beside the brief: the office's own CAD drawing set (DWG) becomes the Revit model, drawing set and estimate, matching the source 100%, proven by automatic comparison, never assumed. The sample used to build and gate it is a G+4 RCC block (stilt + 4 floors of 4 × 3BHK, 2 lifts): 9 DWGs (ground, typical 1st–4th, roof, site plan, front elevation, sections AA/BB, foundation details, tie beam layout), the same set as PDF, and the office's door/window estimate (Excel). It is a test case for the system, not a one-off: the next similar project must go through the same pipeline unchanged.
 
-**Rules.** No guessing. Every fact comes from the drawings, the project standards or the user. Anything unclear becomes a question. When the user says "assume", B2M first asks the project location (city/municipality), then assumes from that location's rule set and typical practice, and lists every assumption back. Families: find, adapt a copy, ask before creating. Types: duplicate before edit.
+**Rules.** No guessing. Every fact comes from the drawings, the project standards or the user. Anything unclear becomes a question. When the user says "assume", Plinth first asks the project location (city/municipality), then assumes from that location's rule set and typical practice, and lists every assumption back. Families: find, adapt a copy, ask before creating. Types: duplicate before edit.
 
 **What the sample DWGs are like** (and so what the importer must handle): millimetres, true size; each file is one sheet with its border, title and page number drawn in model space; floors are not on a shared origin; walls are plain line pairs on layer 0 (250 mm outer, 125 mm inner), columns are solid hatches, doors are anonymous dynamic blocks, windows are line patterns in wall gaps with a text mark beside them (w, w1–w4), room names and sizes are text ("3500 X 4000"); heights exist only as dimensions in the sections (2700 floor to floor, 150 slab, 450 beam, 900 parapet, PL/GL, plinth); foundation sizes and rebar are dimensions, MTEXT notes and a Reinforcement layer.
 
@@ -437,7 +437,7 @@ A second way in, beside the brief: the office's own CAD drawing set (DWG) become
 | 3 | Recognise | Per plan: grids, walls (thickness classes), columns, doors (width, swing, hinge, mark), windows (width, mark), rooms (name, labelled size), stair, lifts, shafts, balconies/verandahs, parapets; per section: levels and heights; foundation: footings, plinth/tie beams, rebar specs | Each element keeps its source entity handles; unclaimed geometry is listed |
 | 4 | Register | All storeys and sections on one origin and grid; section lines tied to plans | Grids and columns coincide across sheets within 1 mm |
 | 5 | Questions | Everything ambiguous or missing (location/rules, sizes not measurable, heights not dimensioned, unknown blocks/layers), with the evidence | List empty, or answered/assumed and recorded |
-| 6 | Review | Web page: source drawing overlaid with what B2M understood, per storey, plus the question list; nothing builds until approved | User approval stored with the run |
+| 6 | Review | Web page: source drawing overlaid with what Plinth understood, per storey, plus the question list; nothing builds until approved | User approval stored with the run |
 | 7 | Build | Building model → build plan → the existing runner (batches, undo, families find/adapt/ask, duplicate-before-edit); door/window types by mark and size | Zero Revit warnings |
 | 8 | Self-check | Revit model read back and compared with the recognised building and the DWG: wall axes and thicknesses, opening positions/sizes/marks, room areas vs labels, columns, levels | Difference report; target zero |
 | 9 | Drawings | The source sheet set reproduced: plans per storey type with dimensions, room tags "NAME / W X L", door/window marks, roof plan, sections at the source section lines, elevation, foundation plan, tie beam layout, office sheet format and page numbers | Sheet list and dimension values match the source |
@@ -464,9 +464,9 @@ A second way in, beside the brief: the office's own CAD drawing set (DWG) become
 
 ### Step 10 · Fit-out: furniture and MEP (F14)
 
-After a building is modelled (from a brief or from DWGs), B2M furnishes it and lays out its MEP: plumbing and drainage, electrical, HVAC and fire safety. When the office has no MEP or furniture drawings (the G+4 sample has none), the layout comes **from rules**: NBC 2016 and typical Indian residential practice for the project's location. The result is an indicative coordination model, and every output says so: an MEP engineer designs and checks the real systems. Decided with the user on 2026-11-16: all four systems, standard furniture per room, MEP system types from Revit's installed Systems template. Decided on 2026-11-17: a kitchen inside a shared open space (living/dining/kitchen with no wall between) is its own room, closed off by a room separation line, so it gets its own fittings and exhaust; the line is found in the build plan (Step 9 stage 7) where the kitchen's alcove opens (wall ends, column faces), and asked with the candidate lines when no line is clear.
+After a building is modelled (from a brief or from DWGs), Plinth furnishes it and lays out its MEP: plumbing and drainage, electrical, HVAC and fire safety. When the office has no MEP or furniture drawings (the G+4 sample has none), the layout comes **from rules**: NBC 2016 and typical Indian residential practice for the project's location. The result is an indicative coordination model, and every output says so: an MEP engineer designs and checks the real systems. Decided with the user on 2026-11-16: all four systems, standard furniture per room, MEP system types from Revit's installed Systems template. Decided on 2026-11-17: a kitchen inside a shared open space (living/dining/kitchen with no wall between) is its own room, closed off by a room separation line, so it gets its own fittings and exhaust; the line is found in the build plan (Step 9 stage 7) where the kitchen's alcove opens (wall ends, column faces), and asked with the candidate lines when no line is clear.
 
-**Rules.** The same as Step 9: no guessing, location first, then assumptions from that location's rule set, listed back for review. Nothing is built before approval. Families: find, adapt a copy, ask. Revit 2026 installs no local family library, so B2M looks in the open project, then in Revit's installed templates (Systems, Plumbing, Electrical, Mechanical, Multi-Discipline, Residential, Default Metric). It matches by category and keywords at planning time, copies in only the types it uses, as new types, and asks when nothing fits. It never edits a type in place. When the user answers that an item gets a plain box (`{"create": "box"}`, decided 2026-11-17 for the bed: the loaded bed set fitted no bedroom), B2M creates that box family as a run pre-step and removes it with the run. Rule values (fixture units, points per room, tank sizes, fire provisions) carry their source and are **unverified placeholders** until checked.
+**Rules.** The same as Step 9: no guessing, location first, then assumptions from that location's rule set, listed back for review. Nothing is built before approval. Families: find, adapt a copy, ask. Revit 2026 installs no local family library, so Plinth looks in the open project, then in Revit's installed templates (Systems, Plumbing, Electrical, Mechanical, Multi-Discipline, Residential, Default Metric). It matches by category and keywords at planning time, copies in only the types it uses, as new types, and asks when nothing fits. It never edits a type in place. When the user answers that an item gets a plain box (`{"create": "box"}`, decided 2026-11-17 for the bed: the loaded bed set fitted no bedroom), Plinth creates that box family as a run pre-step and removes it with the run. Rule values (fixture units, points per room, tank sizes, fire provisions) carry their source and are **unverified placeholders** until checked.
 
 **Pipeline**
 
@@ -722,11 +722,11 @@ Every tool in rvt-mcp at commit `b44ee0b`, grouped by toolset. The add-in comman
 | `export_family_to_path` | D | Save a loadable family from the current project back to an .rfa file at outputPath |  |  |
 | `get_family_instances` | R | List placed instances of a Family (or a specific type within it) with location/host/level DTOs in mm |  |  |
 | `list_family_types_in_family` | R | List a bounded page of types in one family |  |  |
-| `list_template_files` | R | Revit's installed templates for the running year (.rte), per language folder |  | New in B2M, Step 10 (F1): Revit 2026 installs no family library; fit-out types come from these. |
-| `list_types_in_file` | R | Family types and MEP types (pipe, duct, conduit, cable tray, piping/duct/electrical distribution system types) in an .rte/.rvt, opened in the background and closed unsaved |  | New in B2M, Step 10 (F1). Cached per file and year; not in `batch_execute`. |
-| `copy_types_from_file` | W | Copy chosen types from an .rte/.rvt into the project as new types (CopyElements, dependents use the project's types) |  | New in B2M, Step 10 (F1). Never overwrites or edits a type: per item copied / already_there / not_found; `created_ids`; not in `batch_execute`. |
-| `measure_family_types` | R | Each family type's box about its insertion point: one unrotated instance per type at a level's origin (level-based at the level, work-plane-based on its plane), measured, then rolled back |  | New in B2M, Step 10 (families first, 2026-11-17): the fit-out lays out with the chosen family's real footprint and inserts it from its box. `base_offset_mm` makes explicit a family that takes the point's z as its offset above the level; hosted types are skipped with the reason. The model is never changed. |
-| `create_box_family` | W | Create a plain box family (W x D x H, type parameters Width, Depth, Height, Material; origin at the middle of its back edge, front facing −Y, base at the level) from the category's metric template (else Metric Generic Model with the category set) and load it as a new family |  | New in B2M, Step 10 (2026-11-17): only when the user answers `{"create": "box"}` for a fit-out item no family suits. A family of that name is never overwritten (`already_there`); `created_ids` (family, type, anything the load brought) are removed with the run; not in `batch_execute`. |
+| `list_template_files` | R | Revit's installed templates for the running year (.rte), per language folder |  | New in Plinth, Step 10 (F1): Revit 2026 installs no family library; fit-out types come from these. |
+| `list_types_in_file` | R | Family types and MEP types (pipe, duct, conduit, cable tray, piping/duct/electrical distribution system types) in an .rte/.rvt, opened in the background and closed unsaved |  | New in Plinth, Step 10 (F1). Cached per file and year; not in `batch_execute`. |
+| `copy_types_from_file` | W | Copy chosen types from an .rte/.rvt into the project as new types (CopyElements, dependents use the project's types) |  | New in Plinth, Step 10 (F1). Never overwrites or edits a type: per item copied / already_there / not_found; `created_ids`; not in `batch_execute`. |
+| `measure_family_types` | R | Each family type's box about its insertion point: one unrotated instance per type at a level's origin (level-based at the level, work-plane-based on its plane), measured, then rolled back |  | New in Plinth, Step 10 (families first, 2026-11-17): the fit-out lays out with the chosen family's real footprint and inserts it from its box. `base_offset_mm` makes explicit a family that takes the point's z as its offset above the level; hosted types are skipped with the reason. The model is never changed. |
+| `create_box_family` | W | Create a plain box family (W x D x H, type parameters Width, Depth, Height, Material; origin at the middle of its back edge, front facing −Y, base at the level) from the category's metric template (else Metric Generic Model with the category set) and load it as a new family |  | New in Plinth, Step 10 (2026-11-17): only when the user answers `{"create": "box"}` for a fit-out item no family suits. A family of that name is never overwritten (`already_there`); `created_ids` (family, type, anything the load brought) are removed with the run; not in `batch_execute`. |
 | `list_loaded_families` | R | List all loaded families (loadable + in-place + system) in the active document grouped by category |  |  |
 | `load_family_from_path` | D | Load or replace family definitions; restore model changes with Revit Undo |  |  |
 | `rename_family_type` | D | Rename an existing type; restore its name with Revit Undo |  |  |
@@ -887,8 +887,8 @@ Every tool in rvt-mcp at commit `b44ee0b`, grouped by toolset. The add-in comman
 | `create_duct` | W | Create an HVAC duct between two points (mm) |  |  |
 | `create_lighting_fixture` | W | Place a lighting fixture family instance at a point (mm) |  | Step 10 (F5): face-based on a ceiling's bottom face or a wall side; without a ceiling at `offset` with `face_down`; `rotation`; `created_ids`. |
 | `create_mep_fitting` | W | Insert an MEP fitting at connectors of existing MEP elements |  |  |
-| `create_mep_run` | W | Pipe, duct, conduit or cable tray run along 3D points with elbows at bends; ends joined to a fixture's free connector of the run's domain and system, a free curve end, or a pipe/duct main (tee) |  | New in B2M, Step 10 (F5). One transaction; refused joins listed in `failed_connections` (or `require_connections` undoes all); returns `segment_ids`, `fitting_ids`, `created_ids`, `modified_ids`. |
-| `create_electrical_circuit` | W | Put devices and fixtures on one circuit and assign a panel |  | New in B2M, Step 10 (F5). Elements without a free electrical connector of the circuit type are named and nothing is created. |
+| `create_mep_run` | W | Pipe, duct, conduit or cable tray run along 3D points with elbows at bends; ends joined to a fixture's free connector of the run's domain and system, a free curve end, or a pipe/duct main (tee) |  | New in Plinth, Step 10 (F5). One transaction; refused joins listed in `failed_connections` (or `require_connections` undoes all); returns `segment_ids`, `fitting_ids`, `created_ids`, `modified_ids`. |
+| `create_electrical_circuit` | W | Put devices and fixtures on one circuit and assign a panel |  | New in Plinth, Step 10 (F5). Elements without a free electrical connector of the circuit type are named and nothing is created. |
 | `create_pipe` | W | Create a pipe (mm) |  |  |
 | `detect_system_elements` | R | Walk an MEP system and page IDs per category with startElement + maxElements (hard max 5000) |  |  |
 | `find_mep_disconnects` | R | Find MEP elements with open/unconnected End connectors (potential gaps in ductwork, piping, conduit) |  |  |

@@ -1,4 +1,4 @@
-// New in B2M (Step 10, F1): list_types_in_file and copy_types_from_file read another Revit project or template (.rvt,
+// New in Plinth (Step 10, F1): list_types_in_file and copy_types_from_file read another Revit project or template (.rvt,
 // .rte). The file is opened in the background with Application.OpenDocumentFile, never made active, and always closed
 // without saving. A file Revit already has open is used as it is and left open. A workshared file is detached with
 // every user workset closed (types live in the always-open workset of standards), so the central is never touched.
@@ -7,12 +7,12 @@ using System;
 using System.IO;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Commands.Parameters;
-using B2M.Revit.Core.Families;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Commands.Parameters;
+using Plinth.Revit.Core.Families;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Families
+namespace Plinth.Revit.Commands.Families
 {
     internal sealed class SourceDocument : IDisposable
     {

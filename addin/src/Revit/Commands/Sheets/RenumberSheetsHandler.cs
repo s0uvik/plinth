@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Sheets/RenumberSheetsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: conflicts and failures are errors carrying the planned changes and conflicts (rvt-mcp
+// Modified for Plinth: conflicts and failures are errors carrying the planned changes and conflicts (rvt-mcp
 // returned success with an error field); items are checked field by field (unknown fields, wrong types, both
 // or neither of sheet_id/sheet_number) because the schema validator does not look inside array items; an
 // unknown sheet lists the valid ones; items cannot be mixed with find/replace/prefix/suffix; replace needs
@@ -12,10 +12,10 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Sheets
+namespace Plinth.Revit.Commands.Sheets
 {
     public sealed class RenumberSheetsHandler : IRevitCommand
     {
@@ -114,14 +114,14 @@ namespace B2M.Revit.Commands.Sheets
             if (dryRun)
                 return CommandResult.Ok(new JObject { ["dry_run"] = true, ["updated"] = false, ["count"] = planned.Count, ["changes"] = planned });
 
-            using (var tx = new Transaction(doc, "B2M: Renumber Sheets"))
+            using (var tx = new Transaction(doc, "Plinth: Renumber Sheets"))
             {
                 tx.Start();
                 try
                 {
                     // Two passes: unique temporary numbers first, so swaps and chains never collide midway.
                     for (var i = 0; i < effective.Count; i++)
-                        effective[i].Sheet.SheetNumber = "B2M_TMP_" + Guid.NewGuid().ToString("N") + "_" + i;
+                        effective[i].Sheet.SheetNumber = "PLINTH_TMP_" + Guid.NewGuid().ToString("N") + "_" + i;
                     foreach (var c in effective)
                     {
                         c.Sheet.SheetNumber = c.NewNumber;

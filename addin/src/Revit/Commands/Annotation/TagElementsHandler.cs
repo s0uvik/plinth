@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Annotations/TagElementsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: with tag_type_id the tag is placed with that type directly (rvt-mcp placed the category
+// Modified for Plinth: with tag_type_id the tag is placed with that type directly (rvt-mcp placed the category
 // default and then changed its type, which failed when no default tag was loaded); an element with no location
 // or bounding box is a per-element failure (rvt-mcp tagged it at the project origin); when nothing could be tagged
 // the transaction is rolled back; offsets go through Mm; the view is resolved by Lookup.TryView.
@@ -10,12 +10,12 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Annotation
+namespace Plinth.Revit.Commands.Annotation
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     public sealed class TagElementsHandler : IRevitCommand
@@ -56,7 +56,7 @@ namespace B2M.Revit.Commands.Annotation
 
             var tags = new JArray();
             var failed = new JArray();
-            using (var tx = new Transaction(doc, "B2M: Tag Elements"))
+            using (var tx = new Transaction(doc, "Plinth: Tag Elements"))
             {
                 tx.Start();
                 try

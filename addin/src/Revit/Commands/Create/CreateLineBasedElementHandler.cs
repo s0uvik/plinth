@@ -1,7 +1,7 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Elements/CreateLineBasedElementHandler.cs, commit b44ee0b.
 // Licensed under the Apache License, Version 2.0.
-// Modified for B2M (PRD improvement for walls):
+// Modified for Plinth (PRD improvement for walls):
 // - level is required; an unknown level or wall type is an error with the valid options
 //   (rvt-mcp silently used the first level and ignored a wrong typeId);
 // - typeName as well as typeId; the wall is created with its type in one call;
@@ -14,10 +14,10 @@ using System;
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Create
+namespace Plinth.Revit.Commands.Create
 {
     public sealed class CreateLineBasedElementHandler : IRevitCommand
     {
@@ -71,7 +71,7 @@ namespace B2M.Revit.Commands.Create
             var locationKey = p.Value<string>("locationLine") ?? "wall_centerline";
             var structural = p.Value<bool?>("structural") ?? false;
 
-            // A curtain wall type makes a curtain wall through the same Wall.Create call (B2M). Curtain walls have no
+            // A curtain wall type makes a curtain wall through the same Wall.Create call (Plinth). Curtain walls have no
             // core or finish faces to align and are never structural, so refuse those options instead of failing inside Revit.
             var curtain = wallType.Kind == WallKind.Curtain;
             if (curtain && locationKey != "wall_centerline")
@@ -93,7 +93,7 @@ namespace B2M.Revit.Commands.Create
                     + Mm.FromFeet(app.Application.ShortCurveTolerance) + " mm).");
             var line = Line.CreateBound(start, end);
 
-            using (var tx = new Transaction(doc, "B2M: Create Wall"))
+            using (var tx = new Transaction(doc, "Plinth: Create Wall"))
             {
                 tx.Start();
                 try

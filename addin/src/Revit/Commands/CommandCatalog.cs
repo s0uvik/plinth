@@ -1,17 +1,17 @@
-using B2M.Revit.Bridge;
-using B2M.Revit.Commands.Annotation;
-using B2M.Revit.Commands.Create;
-using B2M.Revit.Commands.Delete;
-using B2M.Revit.Commands.Export;
-using B2M.Revit.Commands.Lint;
-using B2M.Revit.Commands.Meta;
-using B2M.Revit.Commands.Query;
-using B2M.Revit.Commands.Rooms;
-using B2M.Revit.Commands.Schedule;
-using B2M.Revit.Commands.Sheets;
-using B2M.Revit.Commands.View;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Commands.Annotation;
+using Plinth.Revit.Commands.Create;
+using Plinth.Revit.Commands.Delete;
+using Plinth.Revit.Commands.Export;
+using Plinth.Revit.Commands.Lint;
+using Plinth.Revit.Commands.Meta;
+using Plinth.Revit.Commands.Query;
+using Plinth.Revit.Commands.Rooms;
+using Plinth.Revit.Commands.Schedule;
+using Plinth.Revit.Commands.Sheets;
+using Plinth.Revit.Commands.View;
 
-namespace B2M.Revit.Commands
+namespace Plinth.Revit.Commands
 {
     /// <summary>Every command the add-in serves, registered in one place, grouped by catalog toolset.</summary>
     internal static class CommandCatalog
@@ -61,29 +61,29 @@ namespace B2M.Revit.Commands
             dispatcher.Register(new ListCommandsHandler(dispatcher));
 
             // Step 8: the rest of the catalog, one registration file per toolset.
-            global::B2M.Revit.Commands.Query.QueryCatalog.Register(dispatcher);
-            global::B2M.Revit.Commands.Modify.ModifyCatalog.Register(dispatcher);
-            global::B2M.Revit.Commands.Create.CreateCatalog.Register(dispatcher);
-            global::B2M.Revit.Commands.Lint.LintCatalog.Register(dispatcher);
-            global::B2M.Revit.Commands.Documents.DocumentsCatalog.Register(dispatcher);
-            global::B2M.Revit.Commands.Families.FamiliesCatalog.Register(dispatcher);
-            global::B2M.Revit.Commands.Materials.MaterialsCatalog.Register(dispatcher);
-            global::B2M.Revit.Commands.Parameters.ParametersCatalog.Register(dispatcher);
-            global::B2M.Revit.Commands.View.ViewCatalog.Register(dispatcher);
-            global::B2M.Revit.Commands.Sheets.SheetsCatalog.Register(dispatcher);
-            global::B2M.Revit.Commands.Schedule.ScheduleCatalog.Register(dispatcher);
-            global::B2M.Revit.Commands.Annotation.AnnotationCatalog.Register(dispatcher);
-            global::B2M.Revit.Commands.Export.ExportCatalog.Register(dispatcher);
-            global::B2M.Revit.Commands.Links.LinksCatalog.Register(dispatcher);
-            global::B2M.Revit.Commands.Organization.OrganizationCatalog.Register(dispatcher);
-            global::B2M.Revit.Commands.Geometry.GeometryCatalog.Register(dispatcher);
-            global::B2M.Revit.Commands.Graphics.GraphicsCatalog.Register(dispatcher);
-            global::B2M.Revit.Commands.Rooms.RoomsCatalog.Register(dispatcher);
-            global::B2M.Revit.Commands.Workflows.WorkflowsCatalog.Register(dispatcher);
-            global::B2M.Revit.Commands.Mep.MepCatalog.Register(dispatcher);
-            global::B2M.Revit.Commands.Structural.StructuralCatalog.Register(dispatcher);
-            global::B2M.Revit.Commands.Meta.MetaCatalog.Register(dispatcher);
-            global::B2M.Revit.Commands.ToolBaker.ToolBakerCatalog.Register(dispatcher);
+            global::Plinth.Revit.Commands.Query.QueryCatalog.Register(dispatcher);
+            global::Plinth.Revit.Commands.Modify.ModifyCatalog.Register(dispatcher);
+            global::Plinth.Revit.Commands.Create.CreateCatalog.Register(dispatcher);
+            global::Plinth.Revit.Commands.Lint.LintCatalog.Register(dispatcher);
+            global::Plinth.Revit.Commands.Documents.DocumentsCatalog.Register(dispatcher);
+            global::Plinth.Revit.Commands.Families.FamiliesCatalog.Register(dispatcher);
+            global::Plinth.Revit.Commands.Materials.MaterialsCatalog.Register(dispatcher);
+            global::Plinth.Revit.Commands.Parameters.ParametersCatalog.Register(dispatcher);
+            global::Plinth.Revit.Commands.View.ViewCatalog.Register(dispatcher);
+            global::Plinth.Revit.Commands.Sheets.SheetsCatalog.Register(dispatcher);
+            global::Plinth.Revit.Commands.Schedule.ScheduleCatalog.Register(dispatcher);
+            global::Plinth.Revit.Commands.Annotation.AnnotationCatalog.Register(dispatcher);
+            global::Plinth.Revit.Commands.Export.ExportCatalog.Register(dispatcher);
+            global::Plinth.Revit.Commands.Links.LinksCatalog.Register(dispatcher);
+            global::Plinth.Revit.Commands.Organization.OrganizationCatalog.Register(dispatcher);
+            global::Plinth.Revit.Commands.Geometry.GeometryCatalog.Register(dispatcher);
+            global::Plinth.Revit.Commands.Graphics.GraphicsCatalog.Register(dispatcher);
+            global::Plinth.Revit.Commands.Rooms.RoomsCatalog.Register(dispatcher);
+            global::Plinth.Revit.Commands.Workflows.WorkflowsCatalog.Register(dispatcher);
+            global::Plinth.Revit.Commands.Mep.MepCatalog.Register(dispatcher);
+            global::Plinth.Revit.Commands.Structural.StructuralCatalog.Register(dispatcher);
+            global::Plinth.Revit.Commands.Meta.MetaCatalog.Register(dispatcher);
+            global::Plinth.Revit.Commands.ToolBaker.ToolBakerCatalog.Register(dispatcher);
             return dispatcher;
         }
     }

@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Sheets/AlignViewportsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: behaviour kept (modes, dry_run default true, pinned/saved-position refusal, read-back
+// Modified for Plinth: behaviour kept (modes, dry_run default true, pinned/saved-position refusal, read-back
 // verification, partial-apply reporting); params arrive parsed and schema-checked, so the camelCase
 // aliases and hand-parsing of viewport_ids are gone; errors are "CODE: message"; sheet lookup lists the
 // valid sheets on a miss; feet/mm conversion goes through Mm.
@@ -10,10 +10,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Sheets
+namespace Plinth.Revit.Commands.Sheets
 {
     public sealed class AlignViewportsHandler : IRevitCommand
     {
@@ -155,7 +155,7 @@ namespace B2M.Revit.Commands.Sheets
                         : "Nothing to move: the viewports already satisfy this alignment."));
             }
 
-            using (var tx = new Transaction(doc, "B2M: Align Viewports"))
+            using (var tx = new Transaction(doc, "Plinth: Align Viewports"))
             {
                 tx.Start();
                 try

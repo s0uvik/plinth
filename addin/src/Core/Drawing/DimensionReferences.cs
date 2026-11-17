@@ -1,4 +1,4 @@
-// New in B2M (Step 9 T10b): the Revit-free half of the drawing-set reference work in create_view (plan view ranges),
+// New in Plinth (Step 9 T10b): the Revit-free half of the drawing-set reference work in create_view (plan view ranges),
 // create_dimensions (reference kinds, duplicate and zero-gap checks) and auto_dimension_section (chain order, cut test).
 //   ViewRangeRules        - a looking-down plan's view range must run top >= cut >= bottom >= depth (absolute heights);
 //   ReferenceChecks       - two references in one dimension must not be the same reference nor at the same position;
@@ -11,7 +11,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace B2M.Revit.Core.Drawing
+namespace Plinth.Revit.Core.Drawing
 {
     public static class ViewRangeRules
     {

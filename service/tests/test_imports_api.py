@@ -1,16 +1,16 @@
-"""Drawing import review API (PRD Step 9 T8): the flow with the engine seams faked (b2m.imports_api), and the overlay
+"""Drawing import review API (PRD Step 9 T8): the flow with the engine seams faked (plinth.imports_api), and the overlay
 of a real sample plan sheet recognised by the real plan recogniser."""
 
 import pytest
 from fastapi.testclient import TestClient
 
-from b2m import imports_api
-from b2m.api import create_app
-from b2m.cad import classify, reader, sheet
-from b2m.cad.building import Evidence as BEvidence, Finding, PlanRecognition, RecognisedBuilding, Registration, Wall
-from b2m.cad.project import Evidence, ImportStore
-from b2m.cad.recognise import recognise_plan
-from b2m.examples import two_storey_house
+from plinth import imports_api
+from plinth.api import create_app
+from plinth.cad import classify, reader, sheet
+from plinth.cad.building import Evidence as BEvidence, Finding, PlanRecognition, RecognisedBuilding, Registration, Wall
+from plinth.cad.project import Evidence, ImportStore
+from plinth.cad.recognise import recognise_plan
+from plinth.examples import two_storey_house
 from tests.cad.conftest import SAMPLE_DXF
 from tests.cad.test_project import _sheet
 from tests.test_service import FakeClient, make_service
@@ -181,7 +181,7 @@ def test_import_review_flow(tmp_path, engine):
 
 def test_unwired_engine_never_assumes_or_approves(tmp_path, monkeypatch):
     def not_wired(*a):
-        raise imports_api.NotWired("The drawing import step 'pipeline' is not installed in this B2M build yet.")
+        raise imports_api.NotWired("The drawing import step 'pipeline' is not installed in this Plinth build yet.")
     for name in ("run_import", "question_groups", "apply_answer", "assume", "ready_to_build", "to_plan"):
         monkeypatch.setattr(imports_api, name, not_wired)
     drawings = tmp_path / "drawings"

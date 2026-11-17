@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Mep/CreateDuctHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: level (by name), duct type and system type (by id or name) are required and a miss lists
+// Modified for Plinth: level (by name), duct type and system type (by id or name) are required and a miss lists
 // the options (rvt-mcp used the first DuctType, the first MechanicalSystemType and the level nearest start_z);
 // a requested size that the type cannot take is an error that rolls back (rvt-mcp ignored it silently);
 // diameter together with width/height is refused; the response reads size and length back from Revit.
@@ -9,10 +9,10 @@ using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Mechanical;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Mep
+namespace Plinth.Revit.Commands.Mep
 {
     public sealed class CreateDuctHandler : IRevitCommand
     {
@@ -51,7 +51,7 @@ namespace B2M.Revit.Commands.Mep
             if (!MepHelpers.TryType<MechanicalSystemType>(doc, p.Value<long?>("system_type_id"), p.Value<string>("system_type_name"),
                     "mechanical system", "system_type_id", "system_type_name", out var systemType, out failure)) return failure;
 
-            using (var tx = new Transaction(doc, "B2M: Create Duct"))
+            using (var tx = new Transaction(doc, "Plinth: Create Duct"))
             {
                 tx.Start();
                 try

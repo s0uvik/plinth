@@ -1,7 +1,7 @@
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Core.Execution
+namespace Plinth.Revit.Core.Execution
 {
     /// <summary>
     /// Builds response lines. Every response has <c>id</c> and <c>success</c>; failures carry

@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Graphics/ListViewFiltersHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: ids are numbers (rvt-mcp sent strings); categories carry built_in_category; the view branch
+// Modified for Plinth: ids are numbers (rvt-mcp sent strings); categories carry built_in_category; the view branch
 // lists the overridden settings by name and keeps the view's filter order; the filter list and each filter's
 // usage list are capped with truncation reported; a missing view lists the valid ones.
 
@@ -9,10 +9,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Graphics
+namespace Plinth.Revit.Commands.Graphics
 {
     using View = Autodesk.Revit.DB.View;
 

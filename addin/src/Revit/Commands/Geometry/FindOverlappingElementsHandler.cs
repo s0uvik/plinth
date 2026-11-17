@@ -1,16 +1,16 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Geometry/FindOverlappingElementsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: elements are sorted along X and only boxes that overlap in X are compared, so
+// Modified for Plinth: elements are sorted along X and only boxes that overlap in X are compared, so
 // max_pairs counts real candidate comparisons instead of every pair in input order; at most 20000
 // elements are boxed; mm through Mm; unknown categories list the valid names.
 
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Geometry
+namespace Plinth.Revit.Commands.Geometry
 {
     using View = Autodesk.Revit.DB.View;
 

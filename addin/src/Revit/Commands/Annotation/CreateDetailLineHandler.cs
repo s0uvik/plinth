@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Annotations/CreateDetailLineHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: in plan views the points are model X/Y in mm (other views: mm along the view's right/up from
+// Modified for Plinth: in plan views the points are model X/Y in mm (other views: mm along the view's right/up from
 // its origin, as before); line_style_id is checked before the transaction and must be a line style (a subcategory
 // of Lines), a miss lists the valid styles; the minimum length is Revit's short-curve tolerance; mm via Mm.
 
@@ -9,12 +9,12 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Annotation
+namespace Plinth.Revit.Commands.Annotation
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     public sealed class CreateDetailLineHandler : IRevitCommand
@@ -59,7 +59,7 @@ namespace B2M.Revit.Commands.Annotation
                 return CommandResult.Fail("LINE_TOO_SHORT: start and end are closer than Revit's shortest allowed line.");
 
             DetailCurve curve;
-            using (var tx = new Transaction(doc, "B2M: Create Detail Line"))
+            using (var tx = new Transaction(doc, "Plinth: Create Detail Line"))
             {
                 tx.Start();
                 try

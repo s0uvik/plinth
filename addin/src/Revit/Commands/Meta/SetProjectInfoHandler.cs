@@ -1,16 +1,16 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Documents/SetProjectInfoHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: a call that changes nothing (every field missing or read-only) fails and rolls back, so
-// batch_execute sees it; field errors use the B2M "CODE: message" form.
+// Modified for Plinth: a call that changes nothing (every field missing or read-only) fails and rolls back, so
+// batch_execute sees it; field errors use the Plinth "CODE: message" form.
 
 using System;
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Meta
+namespace Plinth.Revit.Commands.Meta
 {
     public sealed class SetProjectInfoHandler : IRevitCommand
     {
@@ -53,7 +53,7 @@ namespace B2M.Revit.Commands.Meta
 
             var changed = new JArray();
             var skipped = new JArray();
-            using (var tx = new Transaction(doc, "B2M: Set project info"))
+            using (var tx = new Transaction(doc, "Plinth: Set project info"))
             {
                 tx.Start();
                 foreach (var field in Fields)

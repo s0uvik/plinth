@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Structural/CreateRebarSetHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the bar type (bar_type_id or bar_type_name) is required and a miss lists the options (rvt-mcp used
+// Modified for Plinth: the bar type (bar_type_id or bar_type_name) is required and a miss lists the options (rvt-mcp used
 // the first bar type); the host is checked with RebarHostData.IsValidHost; MaximumSpacing needs an explicit array_length
 // (rvt-mcp guessed it from the host's largest bounding-box side); FixedNumber needs quantity >= 2 and spacing; an
 // optional normal (normal_x/y/z) sets the direction the set is laid out in (rvt-mcp's derived normal stays the
@@ -11,10 +11,10 @@ using System.Collections.Generic;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Structural
+namespace Plinth.Revit.Commands.Structural
 {
     public sealed class CreateRebarSetHandler : IRevitCommand
     {
@@ -93,7 +93,7 @@ namespace B2M.Revit.Commands.Structural
                 normal = Math.Abs(direction.Z) > 0.999 ? XYZ.BasisX : direction.CrossProduct(XYZ.BasisZ).Normalize();
             }
 
-            using (var tx = new Transaction(doc, "B2M: Create Rebar Set"))
+            using (var tx = new Transaction(doc, "Plinth: Create Rebar Set"))
             {
                 tx.Start();
                 try

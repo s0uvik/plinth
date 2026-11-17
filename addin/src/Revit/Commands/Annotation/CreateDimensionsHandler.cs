@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Annotations/CreateDimensionsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: every reference must resolve or nothing is created (rvt-mcp dimensioned the ones that
+// Modified for Plinth: every reference must resolve or nothing is created (rvt-mcp dimensioned the ones that
 // resolved, and returned success with created=false when fewer than two did); the nested references and line
 // objects are checked here because the schema checker stops at the top level; a bad dimension_type_id lists the
 // valid linear dimension types; a line given with coincident ends is an error instead of being replaced by the
@@ -21,13 +21,13 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Core.Drawing;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Core.Drawing;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Annotation
+namespace Plinth.Revit.Commands.Annotation
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     public sealed class CreateDimensionsHandler : IRevitCommand
@@ -163,7 +163,7 @@ namespace B2M.Revit.Commands.Annotation
             foreach (var r in resolvedRefs) references.Append(r.Reference);
 
             Dimension dimension;
-            using (var tx = new Transaction(doc, "B2M: Create Dimension"))
+            using (var tx = new Transaction(doc, "Plinth: Create Dimension"))
             {
                 tx.Start();
                 try

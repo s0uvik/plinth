@@ -1,4 +1,4 @@
-"""Stair railings in the imported project's estimate come from the built model (b2m.imported.estimate): the railings
+"""Stair railings in the imported project's estimate come from the built model (plinth.imported.estimate): the railings
 the run made are read back with their path lengths and measured; only railings nothing measured are asked.
 
 A one-stair plan stands in for the import: the stair is built by create_stair, which (as Revit does) comes back with
@@ -9,13 +9,13 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from b2m.cad.building import RecognisedBuilding
-from b2m.cad.project import ImportProject, SheetRecord
-from b2m.estimate import load_rules
-from b2m.imported import estimate
-from b2m.imported.standards import ProjectStandards
-from b2m.imported.to_plan import ImportPlan, Source
-from b2m.plan import BuildPlan
+from plinth.cad.building import RecognisedBuilding
+from plinth.cad.project import ImportProject, SheetRecord
+from plinth.estimate import load_rules
+from plinth.imported import estimate
+from plinth.imported.standards import ProjectStandards
+from plinth.imported.to_plan import ImportPlan, Source
+from plinth.plan import BuildPlan
 
 SHEET = "1.GROUND FLOOR PLAN.dxf"
 PLAN = ImportPlan(

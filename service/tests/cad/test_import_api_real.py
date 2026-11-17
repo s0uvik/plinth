@@ -2,8 +2,8 @@
 
 from fastapi.testclient import TestClient
 
-from b2m.api import create_app
-from b2m.cad.project import ImportStore
+from plinth.api import create_app
+from plinth.cad.project import ImportStore
 from tests.cad.conftest import SAMPLE_DXF
 from tests.test_service import FakeClient, make_service
 

@@ -2,7 +2,7 @@
 // src/shared/Handlers/Views/ListViewTemplatesHandler.cs (ResolveParameterInfo) and the template / selection
 // lookups repeated in src/shared/Handlers/Views/*ViewTemplate*.cs and src/shared/Handlers/Organization/*Selection*.cs,
 // commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: one shared lookup per kind; a miss returns the valid options (rvt-mcp returned a bare
+// Modified for Plinth: one shared lookup per kind; a miss returns the valid options (rvt-mcp returned a bare
 // "not found"); template setting names come from ParameterElement / BuiltInParameter labels instead of a
 // scan of the template's parameters.
 
@@ -10,10 +10,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Organization
+namespace Plinth.Revit.Commands.Organization
 {
     using View = Autodesk.Revit.DB.View;
 

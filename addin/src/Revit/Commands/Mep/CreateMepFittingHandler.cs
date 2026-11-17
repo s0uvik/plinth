@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Mep/CreateMepFittingHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: each connectors entry is {element_id, connector_id} (rvt-mcp called the id connector_index) and
+// Modified for Plinth: each connectors entry is {element_id, connector_id} (rvt-mcp called the id connector_index) and
 // entries are checked strictly, unknown fields included, since the schema validator does not look inside array items;
 // every refusal is a failure with a CODE (rvt-mcp returned success with created=false); the response adds the
 // fitting's family type.
@@ -9,10 +9,10 @@ using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Mep
+namespace Plinth.Revit.Commands.Mep
 {
     public sealed class CreateMepFittingHandler : IRevitCommand
     {
@@ -58,7 +58,7 @@ namespace B2M.Revit.Commands.Mep
                     return CommandResult.Fail("CONNECTOR_NOT_FOUND: element " + elementId + " has no connector with id " + connectorId + ".");
             }
 
-            using (var tx = new Transaction(doc, "B2M: Create MEP Fitting"))
+            using (var tx = new Transaction(doc, "Plinth: Create MEP Fitting"))
             {
                 tx.Start();
                 try

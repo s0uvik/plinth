@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Annotations/CreateTextNoteHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: in plan views x/y are model X/Y in mm (other views: mm along the view's right/up from its
+// Modified for Plinth: in plan views x/y are model X/Y in mm (other views: mm along the view's right/up from its
 // origin, as before); with no text_type_id the project's default text type is used and a project without one is
 // an error listing the text types (rvt-mcp fell back to the first text type found); a bad text_type_id lists the
 // valid ones; mm conversion goes through Mm.
@@ -9,12 +9,12 @@ using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Annotation
+namespace Plinth.Revit.Commands.Annotation
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     public sealed class CreateTextNoteHandler : IRevitCommand
@@ -61,7 +61,7 @@ namespace B2M.Revit.Commands.Annotation
 
             var position = AnnotationHelpers.ViewPoint(view, p.Value<double>("x"), p.Value<double>("y"));
             TextNote note;
-            using (var tx = new Transaction(doc, "B2M: Create Text Note"))
+            using (var tx = new Transaction(doc, "Plinth: Create Text Note"))
             {
                 tx.Start();
                 try

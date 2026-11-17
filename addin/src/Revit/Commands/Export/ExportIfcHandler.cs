@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Export/ExportIfcHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: written to the exact path asked for (output_path, or output_folder + file_name) through a
+// Modified for Plinth: written to the exact path asked for (output_path, or output_folder + file_name) through a
 // staging folder; an existing file is replaced only with overwrite; output_folder is created when missing; an
 // unavailable IFC exporter fails with EXPORTER_NOT_AVAILABLE; a requested IFC version that cannot be set fails
 // instead of silently falling back to the default; optional view_id limits the export to what that view shows.
@@ -10,10 +10,10 @@
 using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Export
+namespace Plinth.Revit.Commands.Export
 {
     public sealed class ExportIfcHandler : IRevitCommand
     {
@@ -60,7 +60,7 @@ namespace B2M.Revit.Commands.Export
 
             return ExportHelpers.ExportSingle("ifc", target, "*.ifc", overwrite, staging =>
             {
-                var ok = ExportHelpers.RunRolledBack(doc, "B2M: Export IFC (rolled back)", () => doc.Export(staging, "export", options));
+                var ok = ExportHelpers.RunRolledBack(doc, "Plinth: Export IFC (rolled back)", () => doc.Export(staging, "export", options));
                 if (!ok) throw new InvalidOperationException("Revit reported that the IFC export did not succeed.");
             }, new { ifc_version = version, view_id = viewId });
         }

@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Parameters/ExportSharedParameterFileHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: read-only; it only returns the file's content as data, so rvt-mcp's unused "output: file"
+// Modified for Plinth: read-only; it only returns the file's content as data, so rvt-mcp's unused "output: file"
 // option is dropped and nothing is written. A missing file is an error instead of success with exists=false;
 // bound state is matched by GUID through the project's SharedParameterElements (rvt-mcp matched ExternalDefinition
 // keys only, which never occur in a project); a custom path is used only for this call and Revit's setting is restored.
@@ -11,10 +11,10 @@ using System.IO;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Parameters
+namespace Plinth.Revit.Commands.Parameters
 {
     public sealed class ExportSharedParameterFileHandler : IRevitCommand
     {

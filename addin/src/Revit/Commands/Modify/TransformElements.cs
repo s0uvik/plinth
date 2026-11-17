@@ -1,7 +1,7 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // files src/shared/Handlers/Elements/TransformElementsHandlers.cs and PlacementInput.cs, commit b44ee0b.
 // Licensed under the Apache License, Version 2.0.
-// Modified for B2M: FailureControl.BeginBatch / NotifyBatchRolledBack are not ported (FailureScope rolls back on any
+// Modified for Plinth: FailureControl.BeginBatch / NotifyBatchRolledBack are not ported (FailureScope rolls back on any
 // Revit warning or error); the TransactionGroup and the before/after placement check are kept, so a move or rotation
 // that Revit constrains (hosted, joined, level-bound elements) rolls back as a whole; mm through Mm; missing,
 // pinned, type and group-member IDs are listed in the error data.
@@ -11,10 +11,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Modify
+namespace Plinth.Revit.Commands.Modify
 {
     public sealed class MoveElementsHandler : IRevitCommand
     {
@@ -91,7 +91,7 @@ namespace B2M.Revit.Commands.Modify
             var transforms = pivots.Select(pivot => rotate ? Transform.CreateRotationAtPoint(XYZ.BasisZ, radians, pivot) : Transform.CreateTranslation(vector)).ToArray();
 
             State[] after;
-            var title = rotate ? "B2M: Rotate elements" : "B2M: Move elements";
+            var title = rotate ? "Plinth: Rotate elements" : "Plinth: Move elements";
             using (var group = new TransactionGroup(doc, title))
             {
                 group.Start();

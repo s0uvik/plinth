@@ -1,19 +1,19 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Views/SetViewStyleHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: view lookup through ViewHelpers (a name shared by several views is an error with the
-// options; rvt-mcp took the first); the schema enums replace the hand-written value checks; B2M error codes.
+// Modified for Plinth: view lookup through ViewHelpers (a name shared by several views is an error with the
+// options; rvt-mcp took the first); the schema enums replace the hand-written value checks; Plinth error codes.
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.View
+namespace Plinth.Revit.Commands.View
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     public sealed class SetViewStyleHandler : IRevitCommand
@@ -58,7 +58,7 @@ namespace B2M.Revit.Commands.View
             if (!ViewHelpers.TryResolveView(uidoc, p.Value<long?>("view_id"), p.Value<string>("view_name"), false, out var view, out var failure))
                 return failure;
 
-            using (var tx = new Transaction(doc, "B2M: Set View Style"))
+            using (var tx = new Transaction(doc, "Plinth: Set View Style"))
             {
                 tx.Start();
                 try

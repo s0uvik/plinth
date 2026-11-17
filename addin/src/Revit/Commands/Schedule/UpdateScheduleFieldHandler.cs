@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Schedules/UpdateScheduleFieldHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: every change is checked before the transaction and all of them apply or none do (rvt-mcp
+// Modified for Plinth: every change is checked before the transaction and all of them apply or none do (rvt-mcp
 // skipped bad or unknown keys and committed the rest); "formula" and "isPercentage" are refused with
 // NOT_SUPPORTED because the Revit 2024-2027 API cannot read or write them (rvt-mcp reflected for members that
 // do not exist); isTotal maps to DisplayType Totals/Standard and checks CanTotal (rvt-mcp reflected for a
@@ -13,10 +13,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Schedule
+namespace Plinth.Revit.Commands.Schedule
 {
     public sealed class UpdateScheduleFieldHandler : IRevitCommand
     {
@@ -120,7 +120,7 @@ namespace B2M.Revit.Commands.Schedule
                 && !field.CanDisplayMinMax())
                 return CommandResult.Fail("CANNOT_MINMAX: field '" + field.GetName() + "' cannot show minimum/maximum values.");
 
-            using (var tx = new Transaction(doc, "B2M: Update Schedule Field"))
+            using (var tx = new Transaction(doc, "Plinth: Update Schedule Field"))
             {
                 tx.Start();
                 try

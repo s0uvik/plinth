@@ -1,17 +1,17 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Runtime/BatchExecuteHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: every sub-command is validated before the TransactionGroup starts; a rolled-back
+// Modified for Plinth: every sub-command is validated before the TransactionGroup starts; a rolled-back
 // batch returns success=false (rvt-mcp returned success with rolledBack=true); the output=file option
 // is not ported; failure-policy stops arrive through the sub-command's own result.
 
 using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Core.Execution;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Core.Execution;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Meta
+namespace Plinth.Revit.Commands.Meta
 {
     /// <summary>
     /// Runs up to 20 commands in one TransactionGroup, assimilated into a single undo step.
@@ -47,7 +47,7 @@ namespace B2M.Revit.Commands.Meta
                 return CommandResult.Fail("BATCH_INVALID: " + precheck.FirstError + " Nothing ran.",
                     new JObject { ["results"] = precheck.Results, ["rolledBack"] = false });
 
-            using (var group = new TransactionGroup(doc, "B2M: Batch"))
+            using (var group = new TransactionGroup(doc, "Plinth: Batch"))
             {
                 group.Start();
                 var outcome = BatchExecutor.Run(commands, continueOnError, (name, json) =>

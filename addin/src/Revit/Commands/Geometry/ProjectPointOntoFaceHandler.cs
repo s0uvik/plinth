@@ -1,16 +1,16 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Geometry/ProjectPointOntoFaceHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: mm through Mm; a point that does not project is a NOT_PROJECTED error (rvt-mcp
+// Modified for Plinth: mm through Mm; a point that does not project is a NOT_PROJECTED error (rvt-mcp
 // returned success with an error field); the face count is returned with out-of-range indexes.
 
 using System;
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Geometry
+namespace Plinth.Revit.Commands.Geometry
 {
     public sealed class ProjectPointOntoFaceHandler : IRevitCommand
     {

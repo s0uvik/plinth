@@ -2,9 +2,9 @@
 // src/shared/Handlers/Runtime/SendCodeToRevitHandler.cs, src/shared/Infrastructure/Scripting/SendCodeSourceBuilder.cs,
 // src/shared/Infrastructure/Scripting/ScriptReferences.cs and src/shared/ToolBaker/ToolCompiler.cs, commit b44ee0b.
 // Licensed under the Apache License, Version 2.0.
-// Modified for B2M: one small compiler shared by send_code_to_revit and run_baked_tool. The user's code is a
+// Modified for Plinth: one small compiler shared by send_code_to_revit and run_baked_tool. The user's code is a
 // method body (plus optional usings and helper types) wrapped into one fixed entry point
-// B2MScript.Run(app, uidoc, doc, args) and run inside a single named Transaction that is rolled back on any
+// PlinthScript.Run(app, uidoc, doc, args) and run inside a single named Transaction that is rolled back on any
 // error. Script protocol, modules, compile-only mode, journaling, telemetry, history, receipts, bake policy and
 // redaction are not ported. On .NET 8+ the assembly is loaded into the add-in's own load context so it sees
 // the same RevitAPI and Newtonsoft.Json types as the add-in.
@@ -17,15 +17,15 @@ using System.Reflection;
 using System.Text;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Commands.Meta;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Commands.Meta;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.ToolBaker
+namespace Plinth.Revit.Commands.ToolBaker
 {
     /// <summary>
     /// Compiles C# into an in-memory assembly and runs it on Revit's main thread inside one transaction.
@@ -33,7 +33,7 @@ namespace B2M.Revit.Commands.ToolBaker
     /// </summary>
     internal static class CodeRunner
     {
-        public const string EntryType = "B2MScript";
+        public const string EntryType = "PlinthScript";
         private const string SourceName = "code";
         private const int MaxDiagnostics = 10;
 
@@ -62,7 +62,7 @@ namespace B2M.Revit.Commands.ToolBaker
             var year = app.Application.VersionNumber;
             var runId = Guid.NewGuid().ToString("N");
             if (!DeveloperMode.Log(year, runId, command, tool, code, "started"))
-                return CommandResult.Fail("AUDIT_LOG_UNAVAILABLE: the code-execution log (%LOCALAPPDATA%\\B2M\\logs\\code-execution.jsonl) "
+                return CommandResult.Fail("AUDIT_LOG_UNAVAILABLE: the code-execution log (%LOCALAPPDATA%\\Plinth\\logs\\code-execution.jsonl) "
                     + "could not be written, so the code was not run. Nothing ran.");
 
             var outcome = "error";
@@ -192,7 +192,7 @@ namespace B2M.Revit.Commands.ToolBaker
         private static byte[] Compile(string code, out JArray diagnostics)
         {
             var tree = CSharpSyntaxTree.ParseText(BuildSource(code));
-            var compilation = CSharpCompilation.Create("B2MScript_" + Guid.NewGuid().ToString("N"), new[] { tree }, References(),
+            var compilation = CSharpCompilation.Create("PlinthScript_" + Guid.NewGuid().ToString("N"), new[] { tree }, References(),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, optimizationLevel: OptimizationLevel.Release));
             using (var stream = new MemoryStream())
             {

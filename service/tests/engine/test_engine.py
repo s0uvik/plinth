@@ -3,11 +3,11 @@ from collections import defaultdict
 
 import pytest
 
-from b2m.engine import LayoutError, generate
-from b2m.engine import catalog, structure
-from b2m.engine.stair import MAX_RISER, TREAD
-from b2m.plan import BeamOp, ColumnOp, DoorOp, FloorOp, LevelOp, RailingOp, RoomOp, ShaftOp, StairOp, WallOp, WindowOp
-from b2m.spec import BuildingSpec
+from plinth.engine import LayoutError, generate
+from plinth.engine import catalog, structure
+from plinth.engine.stair import MAX_RISER, TREAD
+from plinth.plan import BeamOp, ColumnOp, DoorOp, FloorOp, LevelOp, RailingOp, RoomOp, ShaftOp, StairOp, WallOp, WindowOp
+from plinth.spec import BuildingSpec
 
 OPENING_WIDTH = {t.name: t.width for t in list(catalog.DOORS.values()) + [o for opts in catalog.WINDOW_OPTIONS.values() for o in opts]}
 

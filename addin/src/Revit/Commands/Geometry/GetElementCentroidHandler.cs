@@ -1,16 +1,16 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Geometry/GetElementCentroidHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: mm through Mm, m3 = ft3 * 0.0283168466; shared solid walk; aliases dropped.
+// Modified for Plinth: mm through Mm, m3 = ft3 * 0.0283168466; shared solid walk; aliases dropped.
 // The bounding-box fallback is explicit in the result (strategy, fallback_used), as in rvt-mcp.
 
 using System;
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Geometry
+namespace Plinth.Revit.Commands.Geometry
 {
     public sealed class GetElementCentroidHandler : IRevitCommand
     {

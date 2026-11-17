@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Rooms/CreateSpaceHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: without level_name the active plan's level is used and anything else is an error
+// Modified for Plinth: without level_name the active plan's level is used and anything else is an error
 // (rvt-mcp fell back to the first level); level and phase misses list valid options; the phase
 // default (active view's phase, else the last phase) uses the ordered project phases and is reported;
 // volume uses the exact ft3 to m3 factor.
@@ -9,10 +9,10 @@ using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Mechanical;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Rooms
+namespace Plinth.Revit.Commands.Rooms
 {
     public sealed class CreateSpaceHandler : IRevitCommand
     {
@@ -53,7 +53,7 @@ namespace B2M.Revit.Commands.Rooms
             }
             if (!RoomsHelpers.TryPhase(app, doc, p.Value<string>("phase_name"), out var phase, out failure)) return failure;
 
-            using (var tx = new Transaction(doc, "B2M: Create Space"))
+            using (var tx = new Transaction(doc, "Plinth: Create Space"))
             {
                 tx.Start();
                 try

@@ -1,22 +1,22 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Elements/CreatePointBasedElementHandler.cs, commit b44ee0b.
 // Licensed under the Apache License, Version 2.0.
-// Modified for B2M (PRD improvement for doors and windows):
+// Modified for Plinth (PRD improvement for doors and windows):
 // - hostOffset places a hosted family by distance along its wall from the wall's start, so callers
 //   need no geometry; sillHeight sets the sill; flipFacing/flipHand set orientation;
 // - typeName (with familyName and builtInCategory) as well as typeId;
 // - an unknown level is an error with the valid options (no silent first-level fallback);
 // - kept: placement-type checks, host and 1 mm position verification before commit.
-// Modified for B2M Step 10 (F5): placement goes through FamilyPlacer (see there): offset above the level, rotation,
+// Modified for Plinth Step 10 (F5): placement goes through FamilyPlacer (see there): offset above the level, rotation,
 // the wall side for wall-hosted and face-based families, face-based families on wall, ceiling and floor faces, and
 // face-based families without a host (level plane, or a reference plane facing down); created_ids in the result.
 
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Create
+namespace Plinth.Revit.Commands.Create
 {
     public sealed class CreatePointBasedElementHandler : IRevitCommand
     {

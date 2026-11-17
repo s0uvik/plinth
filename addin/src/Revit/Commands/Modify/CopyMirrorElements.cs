@@ -1,4 +1,4 @@
-// New in B2M (PRD "New tools"): rvt-mcp can move and rotate elements but not copy or mirror them.
+// New in Plinth (PRD "New tools"): rvt-mcp can move and rotate elements but not copy or mirror them.
 // copy_elements copies by an offset, or to other levels the way Revit's "Paste aligned to selected levels" does:
 // each copy is re-associated with the target level, keeping its offset from the level. mirror_elements mirrors
 // about a vertical plane through a drawn axis, for mirrored flats. Both are all or nothing.
@@ -8,10 +8,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Modify
+namespace Plinth.Revit.Commands.Modify
 {
     public sealed class CopyElementsHandler : IRevitCommand
     {

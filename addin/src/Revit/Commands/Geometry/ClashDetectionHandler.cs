@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Workflows/ClashDetectionHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: lives in the geometry toolset; set B is sorted along X so only boxes that overlap
+// Modified for Plinth: lives in the geometry toolset; set B is sorted along X so only boxes that overlap
 // in X count against max_pairs (rvt-mcp counted every A x B pair in input order); at most 5000
 // elements per side; when the two category sets share elements each pair is reported once; unknown
 // categories are an error listing valid names (rvt-mcp warned and went on); mm and m3 conversions
@@ -11,10 +11,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Geometry
+namespace Plinth.Revit.Commands.Geometry
 {
     using View = Autodesk.Revit.DB.View;
 

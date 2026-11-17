@@ -1,10 +1,10 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Infrastructure/RevitCompat.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: B2M supports Revit 2024 and later only, so the IntegerValue branches are gone.
+// Modified for Plinth: Plinth supports Revit 2024 and later only, so the IntegerValue branches are gone.
 
 using Autodesk.Revit.DB;
 
-namespace B2M.Revit.Bridge
+namespace Plinth.Revit.Bridge
 {
     /// <summary>
     /// The one place Revit API year differences live. ElementId.Value exists from 2024;

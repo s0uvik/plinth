@@ -1,16 +1,16 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Mep/ConnectMepElementsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: connector_index_1/2 renamed connector_id_1/2 (they always held Connector.Id, not an ordinal);
+// Modified for Plinth: connector_index_1/2 renamed connector_id_1/2 (they always held Connector.Id, not an ordinal);
 // every refusal (no compatible pair, system type mismatch, Revit failure) is a failure with a CODE and the details
 // as data (rvt-mcp returned success with connected=false); errors are "CODE: message".
 
 using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Mep
+namespace Plinth.Revit.Commands.Mep
 {
     public sealed class ConnectMepElementsHandler : IRevitCommand
     {
@@ -93,7 +93,7 @@ namespace B2M.Revit.Commands.Mep
 
             if (!alreadyConnected)
             {
-                using (var tx = new Transaction(doc, "B2M: Connect MEP Elements"))
+                using (var tx = new Transaction(doc, "Plinth: Connect MEP Elements"))
                 {
                     tx.Start();
                     try

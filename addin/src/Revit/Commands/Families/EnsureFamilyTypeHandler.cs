@@ -1,15 +1,15 @@
-// New in B2M: rvt-mcp needs every family type to exist before it can place anything. ensure_family_type makes sure a
+// New in Plinth: rvt-mcp needs every family type to exist before it can place anything. ensure_family_type makes sure a
 // loadable family type exists in the active project, doing only what is missing. The order is FIND, then ADAPT A
 // COPY, then ASK; it never builds a family unless the caller passes allow_create: true. The result says what ran:
 //   existing   - the family has the type: its b/h are checked (within 0.5 mm) and it is returned; never edited.
 //   duplicated - the family is loaded but lacks the type: one of its types is duplicated to a NEW type with b/h set.
-//   loaded     - the family is not loaded: <family_name>.rfa is searched for (search_folders, %LOCALAPPDATA%\B2M\families,
+//   loaded     - the family is not loaded: <family_name>.rfa is searched for (search_folders, %LOCALAPPDATA%\Plinth\families,
 //                every language folder of the year's content library), loaded, then checked or duplicated as above.
 //   adapted    - no exact match: a related family of the same category (FamilyAdapter: e.g. M_Concrete-Rectangular Beam)
 //                gets the new type; when the family itself would need editing, an edited copy saved as <family_name>.rfa
 //                is loaded instead and the original is never touched.
 //   created    - only with allow_create: FamilyFactory builds the family from Revit's template, saves it in
-//                %LOCALAPPDATA%\B2M\families (so later projects find it by name) and loads it with the type.
+//                %LOCALAPPDATA%\Plinth\families (so later projects find it by name) and loads it with the type.
 // With no match and no allow_create it fails with FAMILY_NOT_FOUND so the caller can ask the user. Each project change
 // is one transaction; any failure leaves the project unchanged (a file this command saved is deleted again).
 // It opens, saves and closes separate family documents and may write files, which no TransactionGroup rollback can
@@ -27,13 +27,13 @@ using System.IO;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Commands.Materials;
-using B2M.Revit.Commands.Parameters;
-using B2M.Revit.Core.Families;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Commands.Materials;
+using Plinth.Revit.Commands.Parameters;
+using Plinth.Revit.Core.Families;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Families
+namespace Plinth.Revit.Commands.Families
 {
     /// <summary>One ensure_family_type call, validated.</summary>
     internal sealed class EnsureRequest
@@ -92,7 +92,7 @@ namespace B2M.Revit.Commands.Families
             "Make sure a loadable family type exists in the project. category: structural_column or structural_framing (dimensions "
             + "{b_mm (width), h_mm (depth)}), or door or window (dimensions {width_mm, height_mm}). Order: FIND (existing: type found, "
             + "size must match within 0.5 mm, never edited; duplicated: family loaded, a new type is made; loaded: <family_name>.rfa found "
-            + "in search_folders, %LOCALAPPDATA%\\B2M\\families or the Revit library), then ADAPT (structural only: a related family such "
+            + "in search_folders, %LOCALAPPDATA%\\Plinth\\families or the Revit library), then ADAPT (structural only: a related family such "
             + "as M_Concrete-Rectangular Beam gets the new type; the result's family_name is that family), then ASK (FAMILY_NOT_FOUND: ask "
             + "the user). allow_create: true builds a structural family from Revit's template instead of asking (created); doors and "
             + "windows are never built. material_name (structural) sets the type's Structural Material. type_mark: the Type Mark, set only "
@@ -308,7 +308,7 @@ namespace B2M.Revit.Commands.Families
                 {
                     failure = CommandResult.Fail("PARAMETER_NOT_FOUND: family '" + symbol.FamilyName + "' has no length TYPE parameter for its "
                         + d.Parameter + " (built-in " + string.Join(" / ", d.BuiltIns) + ", or " + string.Join(" / ", d.Names.Select(n => "'" + n + "'"))
-                        + "). If its " + d.Parameter + " is an instance parameter, its types cannot carry a size; B2M does not edit " + r.Recipe.Key
+                        + "). If its " + d.Parameter + " is an instance parameter, its types cannot carry a size; Plinth does not edit " + r.Recipe.Key
                         + " families, so pick another family (family_name). Its numeric type parameters are listed.",
                         new JObject { ["numeric_type_parameters"] = NumericParameters(r.Doc, symbol) });
                     return false;
@@ -625,7 +625,7 @@ namespace B2M.Revit.Commands.Families
                 if (!TryCanCreate(r, plan.Source, out var failure)) return failure;
                 return CommandResult.Ok(With(Result(r, adapted ? "adapted" : "duplicated", source, family, null, null, null, null, "duplicated"), extra));
             }
-            using (var tx = new Transaction(r.Doc, "B2M: Ensure family type"))
+            using (var tx = new Transaction(r.Doc, "Plinth: Ensure family type"))
             {
                 tx.Start();
                 try
@@ -651,7 +651,7 @@ namespace B2M.Revit.Commands.Families
         {
             var doc = r.Doc;
             var note = ownTypes ? " Nothing was changed in the project." : Unchanged;
-            using (var tx = new Transaction(doc, "B2M: Ensure family type"))
+            using (var tx = new Transaction(doc, "Plinth: Ensure family type"))
             {
                 tx.Start();
                 try
@@ -728,7 +728,7 @@ namespace B2M.Revit.Commands.Families
             var canCreate = File.Exists(templatePath);
             var searched = Searched(roots, year);
             return CommandResult.Fail("FAMILY_NOT_FOUND: no " + r.Recipe.Key + " family named '" + r.FamilyName + "' or similar was found in the "
-                + "project or in " + searched + ". Ask the user whether B2M may create one from Revit's family template (call again with "
+                + "project or in " + searched + ". Ask the user whether Plinth may create one from Revit's family template (call again with "
                 + "allow_create: true" + (canCreate ? "" : ", which needs the template that is missing here") + "), or which family file to use "
                 + "(give its folder in search_folders).", new JObject
                 {
@@ -744,12 +744,12 @@ namespace B2M.Revit.Commands.Families
         /// <summary>The searched roots in words, for messages.</summary>
         internal static string Searched(List<FamilyFileSearch.Root> roots, string year) =>
             string.Join(", ", roots.Select(root => root.Kind == "given" ? "search folder " + Path.GetFileName(root.Folder.TrimEnd('\\', '/'))
-                : root.Kind == "b2m" ? "the B2M families folder" : "the Revit " + year + " content library"));
+                : root.Kind == "plinth" ? "the Plinth families folder" : "the Revit " + year + " content library"));
 
         internal static IEnumerable<string> Words(string name) =>
             System.Text.RegularExpressions.Regex.Split(name.ToLowerInvariant(), "[^a-z0-9]+").Where(w => w.Length >= 2);
 
-        /// <summary>CREATE (allow_create only): build the family from Revit's template, save it in B2M's folder and load it.</summary>
+        /// <summary>CREATE (allow_create only): build the family from Revit's template, save it in Plinth's folder and load it.</summary>
         private static CommandResult Create(UIApplication app, EnsureRequest r, string templatePath, string year)
         {
             if (!File.Exists(templatePath))
@@ -757,14 +757,14 @@ namespace B2M.Revit.Commands.Families
                     + "expected (see expected_path), so family '" + r.FamilyName + "' cannot be created. Install the Revit " + year
                     + " English family templates, or put " + r.FamilyName + ".rfa in a folder given in search_folders.",
                     new JObject { ["expected_path"] = templatePath });
-            var folder = FamilyFileSearch.B2MFamiliesFolder;
+            var folder = FamilyFileSearch.PlinthFamiliesFolder;
             var fileName = r.FamilyName + ".rfa";
             var savePath = Path.Combine(folder, fileName);
             var extra = new JObject { ["template"] = r.Recipe.TemplateFileName };
             if (r.TypeMark != null && !CheckMarkFree(r, null, out var markFailure)) return markFailure;
             if (r.DryRun) return CommandResult.Ok(With(Result(r, "created", "created", null, null, null, fileName, folder, "existing"), extra));
             if (File.Exists(savePath))
-                return CommandResult.Fail("FILE_EXISTS: " + fileName + " already exists in the B2M families folder but was not found by the search "
+                return CommandResult.Fail("FILE_EXISTS: " + fileName + " already exists in the Plinth families folder but was not found by the search "
                     + "(the folder scan was cut short). Load it with load_family_from_path or remove it.", new JObject { ["folder"] = folder });
 
             try

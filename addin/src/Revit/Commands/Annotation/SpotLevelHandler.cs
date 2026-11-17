@@ -1,4 +1,4 @@
-// New in B2M: level marks in sections and elevations, as the source drawings show them (PL, GL, floor levels).
+// New in Plinth: level marks in sections and elevations, as the source drawings show them (PL, GL, floor levels).
 // A target is an element (a floor, roof or other host object) or a level by name:
 //   - element: a Revit spot elevation (Document.NewSpotElevation) on the element's flat top face, inset_mm in from the
 //     element's end on the chosen side of the view; a label becomes the spot's own "Single/Upper Value Prefix"
@@ -16,20 +16,20 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Core.Drawing;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Core.Drawing;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Annotation
+namespace Plinth.Revit.Commands.Annotation
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     public sealed class SpotLevelHandler : IRevitCommand
     {
         public string Name => "spot_level";
         public string Description =>
-            "New in B2M: level marks in a section/elevation view (view_id, default the active view). targets: [{element_id | level_name, "
+            "New in Plinth: level marks in a section/elevation view (view_id, default the active view). targets: [{element_id | level_name, "
             + "label?}]. An element (floor, roof) gets a spot elevation on its top face, inset_mm (default 300) in from its end on side "
             + "(left|right, default left), label as the spot's prefix. A level gets a spot elevation on a floor at its height (level_mode "
             + "auto), else a text note (label, default the level name, e.g. PL / GL) offset_mm (default 500) beyond the building; level_mode "
@@ -131,7 +131,7 @@ namespace B2M.Revit.Commands.Annotation
 
             var placed = new JArray();
             var skipped = new JArray();
-            using (var group = new TransactionGroup(doc, "B2M: Spot Levels"))
+            using (var group = new TransactionGroup(doc, "Plinth: Spot Levels"))
             {
                 group.Start();
                 try
@@ -139,7 +139,7 @@ namespace B2M.Revit.Commands.Annotation
                     TextNoteType textType = null;
                     if (textPlan != null)
                     {
-                        var typeReason = DrawingSupport.RunItem(doc, "B2M: Text type", () => textType = DrawingSupport.ApplyTextType(textPlan));
+                        var typeReason = DrawingSupport.RunItem(doc, "Plinth: Text type", () => textType = DrawingSupport.ApplyTextType(textPlan));
                         if (typeReason != null)
                         {
                             group.RollBack();
@@ -160,7 +160,7 @@ namespace B2M.Revit.Commands.Annotation
                             SpotDimension spot = null;
                             bool? labelApplied = null;
                             string placeProblem = null;
-                            reason = DrawingSupport.RunItem(doc, "B2M: Spot elevation", () =>
+                            reason = DrawingSupport.RunItem(doc, "Plinth: Spot elevation", () =>
                             {
                                 if (!TryHostPoint(host, view, frame, inset, sign, out var reference, out var point, out placeProblem))
                                     throw new InvalidOperationException(placeProblem);
@@ -204,7 +204,7 @@ namespace B2M.Revit.Commands.Annotation
                         var text = string.IsNullOrEmpty(target.Label) ? target.Level.Name : target.Label;
                         TextNote note = null;
                         var u = SideMath.ChainLine(SideMath.OuterExtent(extent[0], extent[1], sign), sign, offset, 0, 0);
-                        reason = DrawingSupport.RunItem(doc, "B2M: Level mark", () =>
+                        reason = DrawingSupport.RunItem(doc, "Plinth: Level mark", () =>
                         {
                             var options = new TextNoteOptions(textType.Id)
                             {

@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Materials/SetMaterialThermalAssetHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the new asset starts as a copy of the material's current thermal asset, so values not given
+// Modified for Plinth: the new asset starts as a copy of the material's current thermal asset, so values not given
 // are kept (rvt-mcp started from defaults); the shared asset itself is never edited; a taken asset_name is
 // refused and the default name is made unique (rvt-mcp failed on a second run).
 // Duplicate before edit (TypeEditGuard): a material is shared, so it is changed only with duplicate_as (a copy named
@@ -10,10 +10,10 @@
 using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Materials
+namespace Plinth.Revit.Commands.Materials
 {
     public sealed class SetMaterialThermalAssetHandler : IRevitCommand
     {
@@ -64,7 +64,7 @@ namespace B2M.Revit.Commands.Materials
                 asset.Name = assetName;
             }
 
-            using (var tx = new Transaction(doc, "B2M: Set material thermal asset"))
+            using (var tx = new Transaction(doc, "Plinth: Set material thermal asset"))
             {
                 tx.Start();
                 try

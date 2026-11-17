@@ -2,7 +2,7 @@
 // src/shared/Handlers/Graphics/SetFilterOverridesHandler.cs, OverrideElementGraphicsHandler.cs,
 // ClearElementOverridesHandler.cs and Views/SetViewPhaseHandler.cs, commit b44ee0b.
 // Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the view, filter, category, phase, colour and override parsing that rvt-mcp repeated in
+// Modified for Plinth: the view, filter, category, phase, colour and override parsing that rvt-mcp repeated in
 // every graphics handler lives here once; misses return the valid options; the solid fill pattern is found
 // by IsSolidFill (language independent) and its absence is an error, not a silently unset pattern.
 
@@ -11,10 +11,10 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Autodesk.Revit.DB;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Graphics
+namespace Plinth.Revit.Commands.Graphics
 {
     using View = Autodesk.Revit.DB.View;
 

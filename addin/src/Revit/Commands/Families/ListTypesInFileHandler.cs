@@ -1,8 +1,8 @@
-// New in B2M (Step 10, F1): what an installed template (or any project file) offers the fit-out: its loadable family
+// New in Plinth (Step 10, F1): what an installed template (or any project file) offers the fit-out: its loadable family
 // types (category, family, type, placement, Width/Depth/Length/Height/Diameter in mm where the type has them) and its
 // MEP types (pipe, piping system, duct, duct system, conduit, cable tray, distribution system, voltage). The file is
 // opened in the background and closed without saving (SourceDocument); the full listing is cached per file and Revit
-// year in %LOCALAPPDATA%\B2M\cache\file-types (TypeListCache), so later calls do not open it again. Only the response
+// year in %LOCALAPPDATA%\Plinth\cache\file-types (TypeListCache), so later calls do not open it again. Only the response
 // is filtered. Ids are the source file's own, for copy_types_from_file's source_id.
 
 using System;
@@ -10,11 +10,11 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Core.Families;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Core.Families;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Families
+namespace Plinth.Revit.Commands.Families
 {
     public sealed class ListTypesInFileHandler : IRevitCommand
     {

@@ -1,18 +1,18 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Parameters/CreateSharedParameterHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: no silent default file (rvt-mcp created %LOCALAPPDATA%\Bimwright\rvt-mcp\shared-parameters.txt when
+// Modified for Plinth: no silent default file (rvt-mcp created %LOCALAPPDATA%\Bimwright\rvt-mcp\shared-parameters.txt when
 // Revit had none set); a missing file is created only with createFileIfMissing: true (default now false), as an empty
 // file Revit initialises itself; the user's configured shared parameter file is restored on every path (rvt-mcp's
 // early returns left it pointing at the custom file); data types resolve to real Revit specs (rvt-mcp passed
-// unversioned ids such as "autodesk.spec.aec:int"); a name clash in any group is reported; default group is "B2M".
+// unversioned ids such as "autodesk.spec.aec:int"); a name clash in any group is reported; default group is "Plinth".
 
 using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Parameters
+namespace Plinth.Revit.Commands.Parameters
 {
     public sealed class CreateSharedParameterHandler : IRevitCommand
     {
@@ -40,7 +40,7 @@ namespace B2M.Revit.Commands.Parameters
             var name = (p.Value<string>("name") ?? "").Trim();
             if (name.Length == 0) return CommandResult.Fail("INVALID_PARAMS: name must not be empty.");
             if (!ParametersHelpers.TryDataType(p.Value<string>("dataTypeId"), out var spec, out var failure)) return failure;
-            var groupName = string.IsNullOrWhiteSpace(p.Value<string>("groupName")) ? "B2M" : p.Value<string>("groupName").Trim();
+            var groupName = string.IsNullOrWhiteSpace(p.Value<string>("groupName")) ? "Plinth" : p.Value<string>("groupName").Trim();
             var guid = Guid.NewGuid();
             if (p["guid"] != null && !ParametersHelpers.TryGuid(p.Value<string>("guid"), out guid, out failure)) return failure;
 

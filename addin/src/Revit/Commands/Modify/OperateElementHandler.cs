@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Elements/OperateElementHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: missing IDs and elements the active view cannot hide are reported instead of throwing; hide,
+// Modified for Plinth: missing IDs and elements the active view cannot hide are reported instead of throwing; hide,
 // isolate and setcolor check that the active view allows them (not a schedule or sheet without graphics overrides);
 // hide, unhide and setcolor take an optional view_id to act in that view instead of the active one (the drawing set
 // hides the template's own levels in its sections without switching views; isolate stays on the active view, where
@@ -10,10 +10,10 @@
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Modify
+namespace Plinth.Revit.Commands.Modify
 {
     public sealed class OperateElementHandler : IRevitCommand
     {

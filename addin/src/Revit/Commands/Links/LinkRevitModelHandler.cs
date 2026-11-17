@@ -1,18 +1,18 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Links/LinkRevitModelHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the path must be absolute (drive or UNC), an existing .rvt, and not the open document;
+// Modified for Plinth: the path must be absolute (drive or UNC), an existing .rvt, and not the open document;
 // only that file is read; reuse_existing_type compares full paths and skips types without a file reference
-// (rvt-mcp threw on them); the transaction is "B2M: ..." and rolled back only while open; the result reads
+// (rvt-mcp threw on them); the transaction is "Plinth: ..." and rolled back only while open; the result reads
 // back the new instance's transform in mm.
 
 using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Links
+namespace Plinth.Revit.Commands.Links
 {
     public sealed class LinkRevitModelHandler : IRevitCommand
     {
@@ -56,7 +56,7 @@ namespace B2M.Revit.Commands.Links
 
             ElementId typeId;
             RevitLinkInstance instance;
-            using (var tx = new Transaction(doc, "B2M: Link Revit model"))
+            using (var tx = new Transaction(doc, "Plinth: Link Revit model"))
             {
                 tx.Start();
                 try

@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Export/ExportDwfHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: either one DWF/DWFx per view (file_name for a single view, else file_name_prefix +
+// Modified for Plinth: either one DWF/DWFx per view (file_name for a single view, else file_name_prefix +
 // "number - name") or, with combine, one multi-page file named file_name; every file goes through a staging
 // folder and is moved into place, an existing file is replaced only with overwrite, output_folder is created
 // when missing. rvt-mcp's ExportTransaction is replaced by ExportHelpers.RunRolledBack (the DWF exporter needs
@@ -12,10 +12,10 @@ using System.IO;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Export
+namespace Plinth.Revit.Commands.Export
 {
     using View = Autodesk.Revit.DB.View;
 
@@ -101,12 +101,12 @@ namespace B2M.Revit.Commands.Export
             if (dwfx)
             {
                 var options = new DWFXExportOptions { MergedViews = true };
-                ok = ExportHelpers.RunRolledBack(doc, "B2M: Export DWFx (rolled back)", () => doc.Export(folder, "export", set, options));
+                ok = ExportHelpers.RunRolledBack(doc, "Plinth: Export DWFx (rolled back)", () => doc.Export(folder, "export", set, options));
             }
             else
             {
                 var options = new DWFExportOptions { MergedViews = true };
-                ok = ExportHelpers.RunRolledBack(doc, "B2M: Export DWF (rolled back)", () => doc.Export(folder, "export", set, options));
+                ok = ExportHelpers.RunRolledBack(doc, "Plinth: Export DWF (rolled back)", () => doc.Export(folder, "export", set, options));
             }
             if (!ok) throw new InvalidOperationException("Revit reported that the export did not succeed.");
         }

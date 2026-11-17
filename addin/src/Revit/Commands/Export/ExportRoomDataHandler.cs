@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Rooms/ExportRoomDataHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: read-only (rvt-mcp listed it as a write, but it only ever returned data; its unused
+// Modified for Plinth: read-only (rvt-mcp listed it as a write, but it only ever returned data; its unused
 // "output" parameter is dropped, use export_elements_data or export_schedule_csv for files); perimeter in mm
 // through Mm, area in m2 and volume in m3; unplaced and unenclosed rooms are counted instead of silently
 // skipped; paged with start_index / max_results so large projects stay under the response cap.
@@ -10,10 +10,10 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Architecture;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Export
+namespace Plinth.Revit.Commands.Export
 {
     public sealed class ExportRoomDataHandler : IRevitCommand
     {

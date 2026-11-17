@@ -4,7 +4,7 @@ Status: proposal for review, 2026-11-17. Nothing here is built yet.
 
 ## Goal
 
-A BIM user signs up on a web portal, downloads B2M, installs the Revit add-in and works with B2M by talking to
+A BIM user signs up on a web portal, downloads Plinth, installs the Revit add-in and works with Plinth by talking to
 Claude Desktop through MCP. Access is per user, can be withdrawn, and does not get in the way.
 
 ## The original idea
@@ -23,7 +23,7 @@ Sign-up, a download page, a credential the user can reset, and the add-in checki
 | Problem | Why it matters |
 |---|---|
 | The key sits in plain text in `claude_desktop_config.json` | That file gets copied, shared and pasted into screenshots and support chats. A leaked key works on any PC until someone notices. |
-| The MCP does not need its own key | The MCP server runs on the user's PC and only talks to the local B2M service, which talks to Revit. If the add-in has signed in, the MCP can rely on that. A second copy of the secret doubles the places it can leak. |
+| The MCP does not need its own key | The MCP server runs on the user's PC and only talks to the local Plinth service, which talks to Revit. If the add-in has signed in, the MCP can rely on that. A second copy of the secret doubles the places it can leak. |
 | Typing an email and a long key into Revit | Friction, and people end up keeping keys in a notepad file. |
 | A reset breaks two places at once | After a reset the user must update both the add-in and the Claude Desktop config. |
 
@@ -38,14 +38,14 @@ Sign-up, a download page, a credential the user can reset, and the add-in checki
 
 ### 2. One signed installer
 
-- `B2M-Setup.exe` installs the add-in for each Revit year found on the PC (2024–2027), the local B2M service,
+- `Plinth-Setup.exe` installs the add-in for each Revit year found on the PC (2024–2027), the local Plinth service,
   and the Claude Desktop extension (see 4).
 - The installer and the add-in DLL are **code-signed** (Authenticode). Revit warns about unsigned add-ins, and
   offices often block unsigned software.
 
 ### 3. Sign in through the browser, not by typing a key
 
-1. The B2M tab in Revit shows **Sign in**.
+1. The Plinth tab in Revit shows **Sign in**.
 2. It opens the portal in the browser; the user signs in and clicks **Approve this PC**.
 3. The PC receives its own token, stored in **Windows Credential Manager** (encrypted for that Windows user), never in
    a text file.
@@ -58,7 +58,7 @@ the others. That replaces "reset key".
 
 - The MCP server ships as a **Claude Desktop extension**: one click to install, and it shows in Claude Desktop's
   settings.
-- It talks only to the local B2M service on the same PC, using a **local token** created at install and readable
+- It talks only to the local Plinth service on the same PC, using a **local token** created at install and readable
   only by that Windows user. The user never sees or types a key.
 - The MCP server stays local (stdio): it has to reach Revit on the user's PC, which a server on the internet cannot.
 
@@ -87,19 +87,19 @@ This keeps the original idea for the cases that need it.
 - **Developer mode** (running code inside Revit) stays off and cannot be switched on through the add-in in customer
   builds.
 - **Say plainly what leaves the PC.** The Revit model and the drawings stay local; only sign-in, licence and update
-  checks go to the B2M server. With Claude Desktop, the conversation goes to Anthropic under the user's own Claude
+  checks go to the Plinth server. With Claude Desktop, the conversation goes to Anthropic under the user's own Claude
   account. Offices will ask.
 - **Signed updates.** A signed update check, so fixes can be pushed and a bad version withdrawn.
 - **No Anthropic API key on users' PCs.** Today the brief agent calls Claude with `ANTHROPIC_API_KEY`. With Claude
   Desktop the user's own Claude does the reasoning, so the service should not need a key. If a feature still does,
-  the B2M server holds it, never the user's PC.
+  the Plinth server holds it, never the user's PC.
 
 ## The user's experience, end to end
 
-1. Sign up on the portal, verify the email, download `B2M-Setup.exe`.
+1. Sign up on the portal, verify the email, download `Plinth-Setup.exe`.
 2. Run it: the add-in, the service and the Claude Desktop extension are installed.
-3. Open Revit → B2M tab → **Sign in** → approve in the browser.
-4. Open Claude Desktop: the B2M tools are already there.
+3. Open Revit → Plinth tab → **Sign in** → approve in the browser.
+4. Open Claude Desktop: the Plinth tools are already there.
 5. Laptop lost or replaced: portal → **My devices** → **Sign out this PC**.
 
 ## Recommendation

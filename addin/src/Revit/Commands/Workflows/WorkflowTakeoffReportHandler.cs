@@ -1,12 +1,12 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Workflows/WorkflowTakeoffReportHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the default categories are BuiltInCategory names (rvt-mcp used English names, which fail in
+// Modified for Plinth: the default categories are BuiltInCategory names (rvt-mcp used English names, which fail in
 // other Revit languages) and an unknown category is an error listing the valid ones (rvt-mcp warned and skipped);
 // output_path goes through Export/OutputFile (exact path, no overwrite unless overwrite: true); the inline
 // per-element quantity rows are capped at 2000 in total (the file gets every row) so the response stays under
 // 1 MiB; the "Area"/"Volume" fallback parameters are used only when their data type is area/volume; material cost
 // also reads the built-in Cost parameter; rvt-mcp's output=file SQLite spill is dropped (no spill infrastructure
-// in B2M). The command only reads the model; ReadOnly is false because it can write a file.
+// in Plinth). The command only reads the model; ReadOnly is false because it can write a file.
 
 using System;
 using System.Collections.Generic;
@@ -14,10 +14,10 @@ using System.Globalization;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Workflows
+namespace Plinth.Revit.Commands.Workflows
 {
     public sealed class WorkflowTakeoffReportHandler : IRevitCommand
     {

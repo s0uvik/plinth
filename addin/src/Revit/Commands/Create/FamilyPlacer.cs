@@ -1,4 +1,4 @@
-// New in B2M (Step 10, F5): one placement routine for create_point_based_element, create_lighting_fixture and
+// New in Plinth (Step 10, F5): one placement routine for create_point_based_element, create_lighting_fixture and
 // create_air_terminal. It places a family type in the way PlacementRules chooses: free at a level point (rotation,
 // height); hosted by a wall at a distance along it, at a height, on a chosen side; face-based on a wall's side face,
 // on a ceiling's bottom face or a floor's top face; or, for a work-plane-based family with no host (a light or fan where
@@ -11,11 +11,11 @@ using System;
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
-using B2M.Revit.Bridge;
-using B2M.Revit.Core.Families;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Core.Families;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Create
+namespace Plinth.Revit.Commands.Create
 {
     internal static class FamilyPlacer
     {
@@ -210,7 +210,7 @@ namespace B2M.Revit.Commands.Create
                 return false;
             }
 
-            using (var tx = new Transaction(doc, "B2M: Place " + what))
+            using (var tx = new Transaction(doc, "Plinth: Place " + what))
             {
                 tx.Start();
                 try
@@ -340,7 +340,7 @@ namespace B2M.Revit.Commands.Create
             if (down ? plane.Normal.Z > 0 : plane.Normal.Z < 0) plane.Flip();
             if ((down ? -plane.Normal.Z : plane.Normal.Z) < 0.999)
                 throw new InvalidOperationException("could not make a horizontal reference plane facing " + (down ? "down." : "up."));
-            plane.Name = "B2M fit-out " + RevitCompat.GetId(plane.Id);
+            plane.Name = "Plinth fit-out " + RevitCompat.GetId(plane.Id);
             return plane;
         }
 

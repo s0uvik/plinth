@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Geometry/FindElementsInVolumeHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: mm through Mm; the volume's min and max points are checked field by field; an
+// Modified for Plinth: mm through Mm; the volume's min and max points are checked field by field; an
 // unknown category is an error listing valid names (rvt-mcp ignored it and searched every category);
 // the room itself is left out of its own results; limit must be 1 to 500.
 
@@ -8,10 +8,10 @@ using System.Collections.Generic;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Architecture;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Geometry
+namespace Plinth.Revit.Commands.Geometry
 {
     using View = Autodesk.Revit.DB.View;
 

@@ -3,10 +3,10 @@ from pathlib import Path
 
 import pytest
 
-from b2m.revit.client import RevitClient, RevitError, RevitTimeout
-from b2m.revit.discovery import Target
+from plinth.revit.client import RevitClient, RevitError, RevitTimeout
+from plinth.revit.discovery import Target
 
-TARGET = Target(Path("x.json"), 42, 2026, "0.1.0", "pipe", "B2M.Revit.42", None, "tok")
+TARGET = Target(Path("x.json"), 42, 2026, "0.1.0", "pipe", "Plinth.Revit.42", None, "tok")
 
 HEALTH = {"protocol_version": 1, "addin_version": "0.1.0", "commands": [{"name": "create_level", "read_only": False}]}
 
@@ -117,6 +117,6 @@ def test_closed_idle_connection_is_reopened_before_sending(monkeypatch):
         def send_line(self, line):
             raise BrokenPipeError()
     fresh = FakeConnection([ok({"v": 1})])
-    monkeypatch.setattr("b2m.revit.client.open_connection", lambda target: fresh)
+    monkeypatch.setattr("plinth.revit.client.open_connection", lambda target: fresh)
     client = RevitClient(TARGET, Broken())
     assert client.call("health") == {"v": 1}

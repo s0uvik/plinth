@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Sheets/ListTitleblocksHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: a limit outside 1..10000 is an error (rvt-mcp clamped it); results are ordered by family
+// Modified for Plinth: a limit outside 1..10000 is an error (rvt-mcp clamped it); results are ordered by family
 // and type name and flag the project's default title block; total counts every match before the limit;
 // the camelCase aliases are gone.
 // Step 9 T10b: each title block type reports its sheet size (sheet_width_mm, sheet_height_mm, sheet_size_source), from
@@ -14,10 +14,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Sheets
+namespace Plinth.Revit.Commands.Sheets
 {
     public sealed class ListTitleblocksHandler : IRevitCommand
     {

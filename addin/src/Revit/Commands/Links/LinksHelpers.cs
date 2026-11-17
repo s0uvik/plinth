@@ -1,7 +1,7 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp), files
 // src/shared/Handlers/Links/*.cs and src/shared/Handlers/Documents/GetProjectCoordinateSystemHandler.cs, commit b44ee0b.
 // Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the per-handler copies of link lookup, path checks, point/transform DTOs and the
+// Modified for Plinth: the per-handler copies of link lookup, path checks, point/transform DTOs and the
 // coordinate-system snapshot are gathered here; lengths go through Mm; link misses return valid_links.
 
 using System;
@@ -9,10 +9,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Autodesk.Revit.DB;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Links
+namespace Plinth.Revit.Commands.Links
 {
     internal static class LinksHelpers
     {

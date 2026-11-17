@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from b2m.estimate import (DrawingObservation, Opening, ProjectInfo, Quantities, Railing, Storey, build_estimate,
+from plinth.estimate import (DrawingObservation, Opening, ProjectInfo, Quantities, Railing, Storey, build_estimate,
                           compare_workbooks, crosscheck, load_rules, write_xlsx)
 
 SAMPLE = Path(__file__).resolve().parents[1] / "fixtures" / "samples" / "g4-sample"

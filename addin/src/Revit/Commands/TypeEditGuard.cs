@@ -1,4 +1,4 @@
-// New in B2M: the Revit side of "duplicate before edit" (decision in addin/src/Core/Safety/SharedEditRule.cs). Every
+// New in Plinth: the Revit side of "duplicate before edit" (decision in addin/src/Core/Safety/SharedEditRule.cs). Every
 // command that can change an existing type (any ElementType), material or loaded family goes through here:
 //   1. before any transaction: TryPlan counts who uses each shared thing, applies the rule to duplicate_as /
 //      confirm_edit_all, and checks that every copy name is free; a refusal changes nothing;
@@ -17,13 +17,13 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
-using B2M.Revit.Bridge;
-using B2M.Revit.Commands.Families;
-using B2M.Revit.Commands.Materials;
-using B2M.Revit.Core.Safety;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Commands.Families;
+using Plinth.Revit.Commands.Materials;
+using Plinth.Revit.Core.Safety;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands
+namespace Plinth.Revit.Commands
 {
     /// <summary>One shared thing a command will change, with the elements the command names that use it.</summary>
     internal sealed class SharedEdit

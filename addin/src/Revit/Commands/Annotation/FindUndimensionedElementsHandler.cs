@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Annotations/FindUndimensionedElementsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: a category is matched exactly by name or built-in name (rvt-mcp also took any OST_ name ending
+// Modified for Plinth: a category is matched exactly by name or built-in name (rvt-mcp also took any OST_ name ending
 // with the input) and a miss lists close matches; dimension references are read through Dimension.References
 // directly (the reflection fallback is gone); a dimension whose references cannot be read is counted in
 // unreadable_dimensions instead of being skipped silently; limit must be 1 to 500.
@@ -10,12 +10,12 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Annotation
+namespace Plinth.Revit.Commands.Annotation
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     public sealed class FindUndimensionedElementsHandler : IRevitCommand

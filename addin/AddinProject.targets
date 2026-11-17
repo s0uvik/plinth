@@ -1,12 +1,12 @@
 <Project>
   <!--
-    Common body of every year project (B2M.Revit.R24 to R27). Each year project sets
+    Common body of every year project (Plinth.Revit.R24 to R27). Each year project sets
     TargetFramework, RevitYear and RevitApiVersion, then imports this file.
     Pattern follows rvt-mcp's per-year projects compiling one shared source tree.
   -->
   <PropertyGroup>
-    <RootNamespace>B2M.Revit</RootNamespace>
-    <AssemblyName>B2M.Revit</AssemblyName>
+    <RootNamespace>Plinth.Revit</RootNamespace>
+    <AssemblyName>Plinth.Revit</AssemblyName>
     <UseWPF>false</UseWPF>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <DefineConstants>$(DefineConstants);REVIT$(RevitYear)</DefineConstants>
@@ -14,7 +14,7 @@
 
   <ItemGroup>
     <Compile Include="$(AddinSrc)**\*.cs" LinkBase="src" />
-    <None Include="$(MSBuildThisFileDirectory)B2M.Revit.addin" Link="B2M.Revit.addin" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(MSBuildThisFileDirectory)Plinth.Revit.addin" Link="Plinth.Revit.addin" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
@@ -32,16 +32,16 @@
   <Target Name="DeployAddin" AfterTargets="Build" Condition="'$(Deploy)' == 'true'">
     <PropertyGroup>
       <AddinsDir>$(APPDATA)\Autodesk\Revit\Addins\$(RevitYear)\</AddinsDir>
-      <DeployDir>$(AddinsDir)B2M\</DeployDir>
+      <DeployDir>$(AddinsDir)Plinth\</DeployDir>
     </PropertyGroup>
     <ItemGroup>
-      <DeployFiles Include="$(OutDir)B2M.Revit.dll;$(OutDir)B2M.Revit.pdb;$(OutDir)Newtonsoft.Json.dll" />
+      <DeployFiles Include="$(OutDir)Plinth.Revit.dll;$(OutDir)Plinth.Revit.pdb;$(OutDir)Newtonsoft.Json.dll" />
       <!-- Roslyn and, on net48, its System.* support assemblies (wildcards: whatever this framework copies). -->
       <DeployFiles Include="$(OutDir)Microsoft.CodeAnalysis*.dll;$(OutDir)System.*.dll" />
     </ItemGroup>
     <MakeDir Directories="$(DeployDir)" />
     <Copy SourceFiles="@(DeployFiles)" DestinationFolder="$(DeployDir)" />
-    <Copy SourceFiles="$(MSBuildThisFileDirectory)B2M.Revit.addin" DestinationFolder="$(AddinsDir)" />
-    <Message Importance="high" Text="B2M.Revit deployed to $(DeployDir)" />
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)Plinth.Revit.addin" DestinationFolder="$(AddinsDir)" />
+    <Message Importance="high" Text="Plinth.Revit deployed to $(DeployDir)" />
   </Target>
 </Project>

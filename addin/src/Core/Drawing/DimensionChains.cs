@@ -1,4 +1,4 @@
-// New in B2M: the Revit-free half of the drawing-set annotation commands (auto_dimension_plan,
+// New in Plinth: the Revit-free half of the drawing-set annotation commands (auto_dimension_plan,
 // auto_dimension_section, spot_level). Positions are plain numbers along one axis in any unit (the Revit side uses
 // millimetres); nothing here knows about references, it carries an opaque Key the caller maps back to one.
 //   ChainBuilder  - sorts the candidate stops of one dimension chain, merges stops that coincide (a zero-length
@@ -12,7 +12,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 
-namespace B2M.Revit.Core.Drawing
+namespace Plinth.Revit.Core.Drawing
 {
     /// <summary>One possible stop of a dimension chain.</summary>
     public sealed class ChainStop

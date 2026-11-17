@@ -1,5 +1,5 @@
-// New in B2M (Step 10, fit-out, 2026-11-17): the Revit-free parts of create_box_family. When no family suits a fit-out
-// item and the user says so (their loaded bed set was 3.5 m wide and fitted no bedroom), B2M makes a plain box family
+// New in Plinth (Step 10, fit-out, 2026-11-17): the Revit-free parts of create_box_family. When no family suits a fit-out
+// item and the user says so (their loaded bed set was 3.5 m wide and fitted no bedroom), Plinth makes a plain box family
 // for it: one extrusion W x D x H with type parameters Width, Depth and Height and a Material parameter, its origin at
 // the middle of its back edge (back on +Y, front facing -Y, the fit-out's convention), its base at the level. Names,
 // sizes, the template per category and the box about its origin are decided here, so they are unit-tested.
@@ -9,13 +9,13 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 
-namespace B2M.Revit.Core.Families
+namespace Plinth.Revit.Core.Families
 {
     public static class BoxFamily
     {
         public const double MaxSizeMm = 20000;
         public const int MaxNameLength = 120;
-        public const string TypeSuffix = "(B2M)";
+        public const string TypeSuffix = "(Plinth)";
 
         /// <summary>The template used when the category has none of its own (the family category is then set).</summary>
         public const string GenericTemplate = "Metric Generic Model.rft";
@@ -58,7 +58,7 @@ namespace B2M.Revit.Core.Families
             return null;
         }
 
-        /// <summary>"1500 x 2000 x 450mm (B2M)": width, depth, height.</summary>
+        /// <summary>"1500 x 2000 x 450mm (Plinth)": width, depth, height.</summary>
         public static string DefaultTypeName(double widthMm, double depthMm, double heightMm) =>
             Number(widthMm) + " x " + Number(depthMm) + " x " + Number(heightMm) + "mm " + TypeSuffix;
 

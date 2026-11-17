@@ -1,10 +1,10 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Security/ErrorSanitizer.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: namespace only.
+// Modified for Plinth: namespace only.
 
 using System.Text.RegularExpressions;
 
-namespace B2M.Revit.Core.Security
+namespace Plinth.Revit.Core.Security
 {
     /// <summary>
     /// Strips absolute paths from error strings before they reach a response or log,

@@ -2,8 +2,8 @@
 // src/shared/Handlers/Documents/DocumentLifecycleSupport.cs and src/shared/Documents/DocumentModeClassifier.cs,
 // FileVersionStatus.cs, DocumentFormatPolicy.cs, SaveAsPathPolicy.cs, CheckpointIndex.cs, CheckpointPlanner.cs,
 // CheckpointNaming.cs and CheckpointFiles.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: one small helper instead of the checkpoint index/lock/planner/registry classes. Checkpoints live
-// under %LOCALAPPDATA%\B2M\checkpoints\<model>-<path hash> with a manifest.json (rvt-mcp wrote a <model>.checkpoints
+// Modified for Plinth: one small helper instead of the checkpoint index/lock/planner/registry classes. Checkpoints live
+// under %LOCALAPPDATA%\Plinth\checkpoints\<model>-<path hash> with a manifest.json (rvt-mcp wrote a <model>.checkpoints
 // folder next to the model); the backup-limit registry and the cross-process index lock are not ported (the add-in
 // serves one Revit process and runs commands one at a time on its main thread).
 
@@ -14,11 +14,11 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using Autodesk.Revit.DB;
-using B2M.Revit.Core;
+using Plinth.Revit.Core;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Documents
+namespace Plinth.Revit.Commands.Documents
 {
     internal static class DocumentsHelpers
     {
@@ -52,10 +52,10 @@ namespace B2M.Revit.Commands.Documents
             switch (mode)
             {
                 case null: return "WORKSHARED_CENTRAL_UNKNOWN: the central model of this workshared document cannot be determined.";
-                case "cloud": return "CLOUD_MODEL_UNSUPPORTED: cloud models are saved and versioned by Autodesk Docs, not by B2M.";
+                case "cloud": return "CLOUD_MODEL_UNSUPPORTED: cloud models are saved and versioned by Autodesk Docs, not by Plinth.";
                 case "unsaved": return "DOCUMENT_NEVER_SAVED: this document has no file yet; save it once with save_document and save_as_path.";
                 case "template": return "TEMPLATE_SAVE_AS_REQUIRED: this is an opened template (.rte); save it to a new .rvt with save_as_path.";
-                case "workshared_central": return "CENTRAL_OPEN_DIRECTLY: this is a central model opened directly; B2M never saves a central file. Work in a local copy.";
+                case "workshared_central": return "CENTRAL_OPEN_DIRECTLY: this is a central model opened directly; Plinth never saves a central file. Work in a local copy.";
                 default: return null;
             }
         }
@@ -121,7 +121,7 @@ namespace B2M.Revit.Commands.Documents
             using (var sha = SHA256.Create())
                 hash = BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(full.ToLowerInvariant()))).Replace("-", "").Substring(0, 12).ToLowerInvariant();
             var stem = new string(Path.GetFileNameWithoutExtension(full).Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c).ToArray());
-            return Path.Combine(B2MPaths.Root, "checkpoints", stem + "-" + hash);
+            return Path.Combine(PlinthPaths.Root, "checkpoints", stem + "-" + hash);
         }
 
         public static string ManifestPath(string folder) => Path.Combine(folder, "manifest.json");

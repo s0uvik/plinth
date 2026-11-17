@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Structural/CreateStructuralColumnHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: level (by name) and column type (type_id, or type_name + family_name) are required and a miss lists
+// Modified for Plinth: level (by name) and column type (type_id, or type_name + family_name) are required and a miss lists
 // the options (rvt-mcp used the first column type and the lowest level); x and y are required (rvt-mcp defaulted to 0);
 // z_mm dropped: the column stands on the level plus base_offset; the top is top_level + top_offset, or height above the
 // base (rvt-mcp's height_mm wrote the top offset only, whatever the top level was); a top that cannot be set rolls back;
@@ -10,10 +10,10 @@ using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Structural
+namespace Plinth.Revit.Commands.Structural
 {
     public sealed class CreateStructuralColumnHandler : IRevitCommand
     {
@@ -60,7 +60,7 @@ namespace B2M.Revit.Commands.Structural
                 return CommandResult.Fail("INVALID_HEIGHT: the column top (top_level + top_offset) must be above its base (level + base_offset).");
 
             var point = new XYZ(Mm.ToFeet(p.Value<double>("x")), Mm.ToFeet(p.Value<double>("y")), level.ProjectElevation);
-            using (var tx = new Transaction(doc, "B2M: Create Structural Column"))
+            using (var tx = new Transaction(doc, "Plinth: Create Structural Column"))
             {
                 tx.Start();
                 try

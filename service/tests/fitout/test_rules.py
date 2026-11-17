@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from b2m.cad.project import Location, LocationRequired
-from b2m.fitout import rules
+from plinth.cad.project import Location, LocationRequired
+from plinth.fitout import rules
 
 RULESETS = Path(rules.__file__).parent / "rulesets"
 

@@ -1,7 +1,7 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // files src/shared/Transport/PipeTransportServer.cs, TcpTransportServer.cs and TransportResponseWriter.cs,
 // commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the per-connection loop both transports duplicated (bounded line reads, token
+// Modified for Plinth: the per-connection loop both transports duplicated (bounded line reads, token
 // check, rate limit, health, dispatch with timeout) now lives here once; the tool-catalog handshake
 // is gone; the rate limit is raised from 20 to 200 requests per 10 s so a full build plan plus
 // read-back fits; malformed JSON gets an error reply instead of silence.
@@ -12,12 +12,12 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using B2M.Revit.Core.Execution;
-using B2M.Revit.Core.Security;
+using Plinth.Revit.Core.Execution;
+using Plinth.Revit.Core.Security;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Core.Transport
+namespace Plinth.Revit.Core.Transport
 {
     /// <summary>
     /// Wire protocol: one JSON object per line in each direction.

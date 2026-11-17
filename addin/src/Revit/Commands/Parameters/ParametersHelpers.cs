@@ -3,7 +3,7 @@
 // src/shared/Handlers/Parameters/CreateSharedParameterHandler.cs (data type aliases) and
 // src/shared/Handlers/Parameters/BindSharedParameterHandler.cs (category lookup), commit b44ee0b.
 // Licensed under the Apache License, Version 2.0.
-// Modified for B2M: one place for parameter values in wire units (mm, m2, m3, degrees; lengths through Mm),
+// Modified for Plinth: one place for parameter values in wire units (mm, m2, m3, degrees; lengths through Mm),
 // shared parameter file access that always restores the user's configured file, and lookups that
 // return the valid options on a miss. rvt-mcp converted area and volume with mm-based factors under
 // m2/m3 labels; this uses Revit's own unit conversion.
@@ -15,10 +15,10 @@ using System.IO;
 using System.Linq;
 using Autodesk.Revit.ApplicationServices;
 using Autodesk.Revit.DB;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Parameters
+namespace Plinth.Revit.Commands.Parameters
 {
     internal static class ParametersHelpers
     {

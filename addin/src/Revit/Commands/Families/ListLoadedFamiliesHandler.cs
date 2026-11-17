@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Families/ListLoadedFamiliesHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: ids are integers (system families carry their first type's id as type_id instead of a
+// Modified for Plinth: ids are integers (system families carry their first type's id as type_id instead of a
 // "system:<id>" string); category_filter also takes built-in names such as OST_Doors; instance counts come
 // from one pass over the model instead of one collector per family; rows carry builtInCategory.
 
@@ -9,10 +9,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Families
+namespace Plinth.Revit.Commands.Families
 {
     public sealed class ListLoadedFamiliesHandler : IRevitCommand
     {

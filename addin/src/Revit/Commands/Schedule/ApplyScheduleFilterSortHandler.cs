@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Schedules/ApplyScheduleFilterSortHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: every entry is checked (shape, unknown keys, field, operator, value) before the transaction,
+// Modified for Plinth: every entry is checked (shape, unknown keys, field, operator, value) before the transaction,
 // so a bad entry no longer leaves a half-applied schedule; a field miss lists the schedule's fields; sort order
 // accepts ascending/order/sortOrder through ScheduleSortInput like create_schedule; showFooter also shows the
 // footer title; showGrandTotal also shows its title; filter numbers on length/area/volume/angle fields are
@@ -12,10 +12,10 @@ using System;
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Schedule
+namespace Plinth.Revit.Commands.Schedule
 {
     public sealed class ApplyScheduleFilterSortHandler : IRevitCommand
     {
@@ -108,7 +108,7 @@ namespace B2M.Revit.Commands.Schedule
             }
 
             int filtersCleared = 0, sortCleared = 0, settingsApplied = 0;
-            using (var tx = new Transaction(doc, "B2M: Apply Schedule Filter/Sort"))
+            using (var tx = new Transaction(doc, "Plinth: Apply Schedule Filter/Sort"))
             {
                 tx.Start();
                 try

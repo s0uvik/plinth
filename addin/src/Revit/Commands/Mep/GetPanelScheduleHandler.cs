@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Mep/GetPanelScheduleHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: rvt-mcp's ResponsePaging helper replaced by inline paging; a panel name miss or ambiguity lists
+// Modified for Plinth: rvt-mcp's ResponsePaging helper replaced by inline paging; a panel name miss or ambiguity lists
 // the panels; circuits are sorted by circuit number; load and voltage are converted from Revit's internal units to
 // VA and V explicitly; IDs are numbers; errors are "CODE: message".
 
@@ -10,10 +10,10 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Electrical;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Mep
+namespace Plinth.Revit.Commands.Mep
 {
     public sealed class GetPanelScheduleHandler : IRevitCommand
     {

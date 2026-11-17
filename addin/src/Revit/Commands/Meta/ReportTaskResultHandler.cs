@@ -1,7 +1,7 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Reports/ReportTaskResultHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the report (title, summary, status, optional details, timestamp, document title, Revit year) is
-// appended to %LOCALAPPDATA%\B2M\reports.jsonl and its summary shown in a Revit TaskDialog. rvt-mcp's WPF Reports
+// Modified for Plinth: the report (title, summary, status, optional details, timestamp, document title, Revit year) is
+// appended to %LOCALAPPDATA%\Plinth\reports.jsonl and its summary shown in a Revit TaskDialog. rvt-mcp's WPF Reports
 // window, SQLite store, change buffer, call-id binding, element resolution and toasts are not ported.
 // Cannot run inside batch_execute (BatchExecutor).
 
@@ -9,10 +9,10 @@ using System;
 using System.Globalization;
 using System.IO;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Meta
+namespace Plinth.Revit.Commands.Meta
 {
     public sealed class ReportTaskResultHandler : IRevitCommand
     {
@@ -21,7 +21,7 @@ namespace B2M.Revit.Commands.Meta
         private const int MaxDetails = 20000;
 
         public string Name => "report_task_result";
-        public string Description => "Record the result of a finished task (title, summary, status) in the B2M report history "
+        public string Description => "Record the result of a finished task (title, summary, status) in the Plinth report history "
             + "and show the summary to the user in a Revit dialog. Revit waits until the user closes it.";
         public string ParametersSchema => @"{""type"":""object"",""properties"":{
             ""title"":{""type"":""string""},
@@ -65,7 +65,7 @@ namespace B2M.Revit.Commands.Meta
                 return CommandResult.Fail("REPORT_SAVE_FAILED: reports.jsonl could not be written: " + ex.Message + " The report was not shown.");
             }
 
-            var dialog = new TaskDialog("B2M report")
+            var dialog = new TaskDialog("Plinth report")
             {
                 MainInstruction = title,
                 MainContent = summary,

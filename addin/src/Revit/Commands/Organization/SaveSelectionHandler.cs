@@ -1,18 +1,18 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Organization/SaveSelectionHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: missing IDs fail with the missing list as data; duplicates are collapsed; at most 5000
+// Modified for Plinth: missing IDs fail with the missing list as data; duplicates are collapsed; at most 5000
 // IDs; a name already taken by a rule-based (parameter) filter is refused up front (FilterElement.IsNameUnique);
 // snake_case include_element_ids / max_element_id_results became includeElementIds / maxElementIdResults
-// to match the other fields; "B2M: ..." transaction with a commit-status check.
+// to match the other fields; "Plinth: ..." transaction with a commit-status check.
 
 using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Organization
+namespace Plinth.Revit.Commands.Organization
 {
     public sealed class SaveSelectionHandler : IRevitCommand
     {
@@ -80,7 +80,7 @@ namespace B2M.Revit.Commands.Organization
                 return CommandResult.Fail("NAME_IN_USE: a view filter named '" + name + "' already exists; saved selections share names with view filters.");
 
             SelectionFilterElement filter;
-            using (var tx = new Transaction(doc, "B2M: Save selection"))
+            using (var tx = new Transaction(doc, "Plinth: Save selection"))
             {
                 tx.Start();
                 try

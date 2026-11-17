@@ -1,7 +1,7 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp), files
 // src/shared/Handlers/Workflows/SurveyChangeImpactHandler.cs, src/shared/Survey/SurveyContract.cs and
 // src/shared/Survey/SurveyEngine.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: a compact one-pass survey instead of rvt-mcp's 1,400-line engine. Kept: explicit targets (max 25),
+// Modified for Plinth: a compact one-pass survey instead of rvt-mcp's 1,400-line engine. Kept: explicit targets (max 25),
 // scopeThreshold with no default, changeKind, per-relation counts with capped ID lists, the stop flags
 // (touchesType, touchesGroup, touchesLevelOrGrid, overThreshold, requiresDiscussion) and an explicit blindSpots list.
 // Relations: type, host, join, connector, group, datum, annotations, dependents, proximity, presentation (owner view only).
@@ -13,10 +13,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Query
+namespace Plinth.Revit.Commands.Query
 {
     public sealed class SurveyChangeImpactHandler : IRevitCommand
     {

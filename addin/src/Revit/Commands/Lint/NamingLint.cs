@@ -2,7 +2,7 @@
 // src/shared/Lint/ViewNamingAnalyzer.cs, src/shared/Lint/FirmProfile.cs and src/shared/Lint/FirmProfileLibrary.cs,
 // and the library-folder code in src/shared/Handlers/Lint/DetectFirmProfileHandler.cs, commit b44ee0b.
 // Licensed under the Apache License, Version 2.0.
-// Modified for B2M: profiles load from %LOCALAPPDATA%\B2M\firm-profiles\*.json only (rvt-mcp also read a
+// Modified for Plinth: profiles load from %LOCALAPPDATA%\Plinth\firm-profiles\*.json only (rvt-mcp also read a
 // firm-profiles folder beside the DLL, which it shipped empty, and %LOCALAPPDATA%\Bimwright\...); unreadable profile
 // files are reported instead of skipped silently; profile regexes run with a timeout; Suggest fills a pattern's
 // {NN} and {Name} slots from the current name (rvt-mcp returned the bare pattern, e.g. "L{NN}-{Name}", as the suggestion).
@@ -13,10 +13,10 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
-using B2M.Revit.Core;
+using Plinth.Revit.Core;
 using Newtonsoft.Json;
 
-namespace B2M.Revit.Commands.Lint
+namespace Plinth.Revit.Commands.Lint
 {
     internal static class NamingLint
     {
@@ -29,7 +29,7 @@ namespace B2M.Revit.Commands.Lint
             "3D", "Plan", "Section", "Sheet", "Elevation", "Detail", "Area", "RCP"
         };
 
-        public static string ProfileFolder => Path.Combine(B2MPaths.Root, "firm-profiles");
+        public static string ProfileFolder => Path.Combine(PlinthPaths.Root, "firm-profiles");
 
         /// <summary>A name as a pattern: digits become {NN}, words {Name}, L01 becomes L{NN}; reserved words and delimiters stay.</summary>
         public static string Tokenize(string name)

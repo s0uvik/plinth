@@ -1,16 +1,16 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Elements/SetWallTopHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the level comes from Lookup.TryLevel (a miss lists the valid levels); mm through Mm; a wall
+// Modified for Plinth: the level comes from Lookup.TryLevel (a miss lists the valid levels); mm through Mm; a wall
 // whose top cannot be set fails the whole call through the transaction wrapper; all checks still run before any change.
 
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Modify
+namespace Plinth.Revit.Commands.Modify
 {
     public sealed class SetWallTopHandler : IRevitCommand
     {

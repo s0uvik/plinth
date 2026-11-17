@@ -11,12 +11,12 @@ import sys
 
 from PIL import Image, ImageDraw
 
-from b2m.engine import catalog
-from b2m.engine.floors import build_floor
-from b2m.engine.site import envelope
-from b2m.engine.templates import plan_plate
-from b2m.engine import generate
-from b2m.spec import BuildingSpec
+from plinth.engine import catalog
+from plinth.engine.floors import build_floor
+from plinth.engine.site import envelope
+from plinth.engine.templates import plan_plate
+from plinth.engine import generate
+from plinth.spec import BuildingSpec
 
 COLOURS = {"living": (255, 236, 179), "kitchen": (200, 230, 201), "toilet": (179, 229, 252), "bedroom": (248, 187, 208),
            "bedroom_master": (244, 143, 177), "lobby": (224, 224, 224), "lift": (158, 158, 158)}

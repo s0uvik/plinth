@@ -1,9 +1,9 @@
-// New in B2M: the Revit-free half of set_grid_heads. A grid's line in a plan view is cut (or stretched) to a box around
+// New in Plinth: the Revit-free half of set_grid_heads. A grid's line in a plan view is cut (or stretched) to a box around
 // the building, so its heads sit just outside the building at both ends whatever length the grid was modelled with.
 
 using System;
 
-namespace B2M.Revit.Core.Drawing
+namespace Plinth.Revit.Core.Drawing
 {
     /// <summary>A 2D segment from (X0, Y0) to (X1, Y1).</summary>
     public sealed class Segment2

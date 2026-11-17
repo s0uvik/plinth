@@ -1,8 +1,8 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp), files
 // src/shared/ToolBaker/BakedToolRegistry.cs and src/shared/ToolBaker/BakedToolRecord.cs, commit b44ee0b.
 // Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the registry is a folder of JSON files (%LOCALAPPDATA%\B2M\baked-tools\<name>.json), one per
-// tool, in the format the B2M service writes when a bake suggestion is accepted (name, description, parameters_schema,
+// Modified for Plinth: the registry is a folder of JSON files (%LOCALAPPDATA%\Plinth\baked-tools\<name>.json), one per
+// tool, in the format the Plinth service writes when a bake suggestion is accepted (name, description, parameters_schema,
 // code, source, created_utc). It is read fresh on every call. SQLite storage, compiled DLL caching, usage stats,
 // lifecycle states, compat maps and version history are not ported; suggestions live in the service.
 
@@ -11,12 +11,12 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
-using B2M.Revit.Core;
-using B2M.Revit.Core.Security;
+using Plinth.Revit.Core;
+using Plinth.Revit.Core.Security;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.ToolBaker
+namespace Plinth.Revit.Commands.ToolBaker
 {
     internal sealed class BakedTool
     {
@@ -39,18 +39,18 @@ namespace B2M.Revit.Commands.ToolBaker
     }
 
     /// <summary>
-    /// File format, one tool per file named after the tool (written by service/b2m/gateway.py or by hand):
+    /// File format, one tool per file named after the tool (written by service/plinth/gateway.py or by hand):
     /// {"name": "tag_doors", "description": "...", "parameters_schema": {"type": "object", "properties": {...}},
     ///  "code": "...", "source": "...", "created_utc": "..."}. The code follows the send_code_to_revit contract.
     /// The service's bookkeeping files in the same folder (suggested-*.json, .dismissed.json) are not tools.
     /// </summary>
     internal static class BakedToolRegistry
     {
-        public const string FolderHint = "%LOCALAPPDATA%\\B2M\\baked-tools";
+        public const string FolderHint = "%LOCALAPPDATA%\\Plinth\\baked-tools";
         private const long MaxFileBytes = 1024 * 1024;
         private static readonly Regex ValidName = new Regex("^[A-Za-z0-9_]{1,64}$", RegexOptions.CultureInvariant);
 
-        public static string Folder => Path.Combine(B2MPaths.Root, "baked-tools");
+        public static string Folder => Path.Combine(PlinthPaths.Root, "baked-tools");
 
         public static bool IsValidName(string name) => name != null && ValidName.IsMatch(name);
 

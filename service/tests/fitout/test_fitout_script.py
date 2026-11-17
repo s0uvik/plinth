@@ -3,8 +3,8 @@ default; with --build, built as its own run on top of the building's run."""
 
 import json
 
-from b2m.revit.types import TypeMap
-from b2m.runs import RunStore
+from plinth.revit.types import TypeMap
+from plinth.runs import RunStore
 from scripts import fitout_build
 from tests.fitout.test_measured import ANSWERS, building, revit
 

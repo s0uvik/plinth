@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Families/ExportFamilyToPathHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the family is saved into a private staging folder and then moved to the exact output path
+// Modified for Plinth: the family is saved into a private staging folder and then moved to the exact output path
 // (Export/OutputFile), so Revit's backup copies never land next to the target and an existing file is replaced only
 // with overwrite_existing; the output folder is created when missing; non-editable families are refused before
 // EditFamily; failures are errors instead of success with exported=false; family_id is an integer.
@@ -9,11 +9,11 @@ using System;
 using System.IO;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Commands.Export;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Commands.Export;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Families
+namespace Plinth.Revit.Commands.Families
 {
     public sealed class ExportFamilyToPathHandler : IRevitCommand
     {

@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Geometry/AnalyzeGeometryComplexityHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: a separate max_scan (default 2000, up to 20000) bounds how many elements are
+// Modified for Plinth: a separate max_scan (default 2000, up to 20000) bounds how many elements are
 // analysed, and limit (1-500) only bounds how many ranked rows come back (rvt-mcp used limit for
 // both, so the ranking only covered the first few elements); missing element ids and unknown
 // categories are reported, not skipped silently; same score formula.
@@ -10,10 +10,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Geometry
+namespace Plinth.Revit.Commands.Geometry
 {
     using View = Autodesk.Revit.DB.View;
 

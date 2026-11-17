@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Families/LoadFamilyFromPathHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: failures are errors ("CODE: message") instead of success with loaded=false; the path must be
+// Modified for Plinth: failures are errors ("CODE: message") instead of success with loaded=false; the path must be
 // an absolute .rfa path; overwrite_existing now defaults to false, so a family already in the project is reported
 // as FAMILY_ALREADY_LOADED with its id instead of being silently reloaded; ids are integers; the reflection
 // fallback for Family.Symbols is gone.
@@ -15,12 +15,12 @@ using System.IO;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Commands.Parameters;
-using B2M.Revit.Core.Safety;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Commands.Parameters;
+using Plinth.Revit.Core.Safety;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Families
+namespace Plinth.Revit.Commands.Families
 {
     public sealed class LoadFamilyFromPathHandler : IRevitCommand
     {
@@ -70,7 +70,7 @@ namespace B2M.Revit.Commands.Families
 
             var options = new FamilyLoadOptions(overwrite && reloadedInstances.HasValue, overwriteValues);
             Family family = null;
-            using (var tx = new Transaction(doc, "B2M: Load family"))
+            using (var tx = new Transaction(doc, "Plinth: Load family"))
             {
                 tx.Start();
                 try

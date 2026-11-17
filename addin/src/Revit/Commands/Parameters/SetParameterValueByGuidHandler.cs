@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Parameters/SetParameterValueByGuidHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: values use the shared rules (lengths in mm through Mm; m2, m3 and degrees through Revit's unit
+// Modified for Plinth: values use the shared rules (lengths in mm through Mm; m2, m3 and degrees through Revit's unit
 // conversion; rvt-mcp converted "m2" and "m3" with mm-squared/cubed factors, a factor of 10^6 / 10^9 off); value may
 // be a JSON number, boolean or string; valueType "display" still uses Revit's display-string parser; per-element
 // failures with allOrNothing: false are reported as failedCount so batch_execute sees them; a type shared by
@@ -14,10 +14,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Parameters
+namespace Plinth.Revit.Commands.Parameters
 {
     public sealed class SetParameterValueByGuidHandler : IRevitCommand
     {
@@ -108,7 +108,7 @@ namespace B2M.Revit.Commands.Parameters
             if (!TypeEditGuard.TryPlan(doc, p, edits, out var plan, out failure)) return failure;
 
             var updated = new JArray();
-            using (var tx = new Transaction(doc, "B2M: Set parameter by GUID"))
+            using (var tx = new Transaction(doc, "Plinth: Set parameter by GUID"))
             {
                 tx.Start();
                 try

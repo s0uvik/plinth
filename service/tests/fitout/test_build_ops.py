@@ -5,9 +5,9 @@ made goes, types the project already had stay untouched."""
 import pytest
 from pydantic import ValidationError
 
-from b2m.plan import BuildPlan
-from b2m.revit import commands
-from b2m.runner import Runner, plan_batches
+from plinth.plan import BuildPlan
+from plinth.revit import commands
+from plinth.runner import Runner, plan_batches
 from tests.fitout.fake_revit import FitoutRevit
 
 TEMPLATE = "C:\\ProgramData\\Autodesk\\RVT 2026\\Templates\\English\\Residential-Default_Metric.rte"
@@ -53,9 +53,9 @@ def _plan(**over):
             {"kind": "pipe_system_type", "name": "Sanitary"},
             {"kind": "conduit_type", "name": "Rigid Nonmetallic Conduit (RNC Sch 40)"}]},
         {"op": "family_type_copy", "key": "FIT-TYPE-BED-1800", "category": "OST_Furniture", "family": "M_Bed-Standard",
-         "base_type": "1525x2032mm", "name": "1800x2000mm (B2M)", "values_mm": {"Width": 1800, "Depth": 2000}},
+         "base_type": "1525x2032mm", "name": "1800x2000mm (Plinth)", "values_mm": {"Width": 1800, "Depth": 2000}},
         {"op": "family", "key": "FIT-BED", "category": "OST_Furniture", "family": "M_Bed-Standard",
-         "type": "1800x2000mm (B2M)", "level": "L1", "point": (2000, 3000), "rotation_deg": 90, "room_key": "R1",
+         "type": "1800x2000mm (Plinth)", "level": "L1", "point": (2000, 3000), "rotation_deg": 90, "room_key": "R1",
          "source": "furniture: bed"},
         {"op": "family", "key": "FIT-CHAIR", "category": "OST_Furniture", "family": "M_Chair", "type": "Standard",
          "level": "L1", "point": (1000, 1000)},
@@ -114,7 +114,7 @@ def test_fitout_ops_map_to_the_addin_commands():
     ids = {"W-S": WALL_ID, "FIT-BASIN": 1, "FIT-SOIL": 2, "FIT-LIGHT": 3, "FIT-DB": 4}
     bed = commands.to_command(by_key["FIT-BED"], by_key, ids)
     assert bed == {"command": "create_point_based_element", "params": {
-        "level": "L1", "x": 2000, "y": 3000, "typeName": "1800x2000mm (B2M)", "familyName": "M_Bed-Standard",
+        "level": "L1", "x": 2000, "y": 3000, "typeName": "1800x2000mm (Plinth)", "familyName": "M_Bed-Standard",
         "builtInCategory": "OST_Furniture", "rotation": 90}}
     basin = commands.to_command(by_key["FIT-BASIN"], by_key, ids)["params"]
     assert basin["host_id"] == WALL_ID and (basin["towardX"], basin["towardY"]) == (4000, 1000) and basin["offset"] == 800
@@ -205,7 +205,7 @@ def test_a_size_copy_of_a_project_type_finds_its_id_in_the_project():
                                 "dims": {"width": 1200, "depth": 600}}])
     plan = BuildPlan.model_validate({"ops": [
         {"op": "family_type_copy", "key": "T", "category": "OST_Furniture", "family": "M_Table", "base_type": "1200x600",
-         "name": "1000x500 (B2M)", "values_mm": {"Width": 1000, "Depth": 500}}]})
+         "name": "1000x500 (Plinth)", "values_mm": {"Width": 1000, "Depth": 500}}]})
     result = Runner(revit).build(plan)
     assert result.status == "built" and list(result.created) == ["T"]
     assert revit.elements[result.created["T"]]["dims"] == {"width": 1000, "depth": 500}

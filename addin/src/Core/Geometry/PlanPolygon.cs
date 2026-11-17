@@ -1,11 +1,11 @@
-// New in B2M: Revit-free checks on a closed plan outline of [x, y] points in mm (create_foundation_slab), so a bad
+// New in Plinth: Revit-free checks on a closed plan outline of [x, y] points in mm (create_foundation_slab), so a bad
 // outline is refused with a clear message before Revit is asked (Revit would throw or warn, and a warning rolls back).
 
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 
-namespace B2M.Revit.Core.Geometry
+namespace Plinth.Revit.Core.Geometry
 {
     public static class PlanPolygon
     {

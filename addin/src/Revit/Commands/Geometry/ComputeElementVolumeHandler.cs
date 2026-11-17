@@ -1,15 +1,15 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Geometry/ComputeElementVolumeHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: m3 = ft3 * 0.0283168466; shared solid walk; camelCase aliases dropped.
+// Modified for Plinth: m3 = ft3 * 0.0283168466; shared solid walk; camelCase aliases dropped.
 
 using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Geometry
+namespace Plinth.Revit.Commands.Geometry
 {
     public sealed class ComputeElementVolumeHandler : IRevitCommand
     {

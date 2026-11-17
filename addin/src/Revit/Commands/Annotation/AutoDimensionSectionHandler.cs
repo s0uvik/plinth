@@ -1,4 +1,4 @@
-// New in B2M: vertical dimension chains in a section or elevation, as the source sections show them (2700 floor to
+// New in Plinth: vertical dimension chains in a section or elevation, as the source sections show them (2700 floor to
 // floor, 150 slabs, 900 parapet, plinth and ground). References are live: level planes (Level.GetPlaneReference) and,
 // for "slabs", the horizontal top and bottom faces of the floors in the view (HostObjectUtils.GetTopFaces /
 // GetBottomFaces). Chains, nearest to the building first: "slabs" (levels plus slab faces, so a 2700 storey reads
@@ -25,13 +25,13 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Core.Drawing;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Core.Drawing;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Annotation
+namespace Plinth.Revit.Commands.Annotation
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     public sealed class AutoDimensionSectionHandler : IRevitCommand
@@ -40,7 +40,7 @@ namespace B2M.Revit.Commands.Annotation
 
         public string Name => "auto_dimension_section";
         public string Description =>
-            "New in B2M: vertical dimension chains in a section/elevation view (view_id, default the active view). include: levels "
+            "New in Plinth: vertical dimension chains in a section/elevation view (view_id, default the active view). include: levels "
             + "(level to level), slabs (levels plus floor top/bottom faces, e.g. 2550 + 150), beams (levels plus top/bottom faces of "
             + "structural framing the section cuts, e.g. 2250 + 450), foundation (ground level and levels below it plus foundation and "
             + "below-ground floor top/bottom faces; ground_level names the ground level, default the level nearest 0), openings "
@@ -242,7 +242,7 @@ namespace B2M.Revit.Commands.Annotation
                     new JObject { ["skipped"] = skipped });
 
             var created = new JArray();
-            using (var group = new TransactionGroup(doc, "B2M: Auto Dimension Section"))
+            using (var group = new TransactionGroup(doc, "Plinth: Auto Dimension Section"))
             {
                 group.Start();
                 try
@@ -256,7 +256,7 @@ namespace B2M.Revit.Commands.Annotation
                         var array = new ReferenceArray();
                         foreach (var s in chain.Stops) array.Append(refs[s.Key]);
                         Dimension dim = null;
-                        var reason = DrawingSupport.RunItem(doc, "B2M: Dimension chain", () =>
+                        var reason = DrawingSupport.RunItem(doc, "Plinth: Dimension chain", () =>
                         {
                             dim = dimType != null ? doc.Create.NewDimension(view, line, array, dimType) : doc.Create.NewDimension(view, line, array);
                             if (dim == null) throw new InvalidOperationException("Revit returned no dimension.");

@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Materials/SetMaterialIdentityHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: all or nothing (rvt-mcp committed when at least one field was set and reported the rest);
+// Modified for Plinth: all or nothing (rvt-mcp committed when at least one field was set and reported the rest);
 // fields are found by built-in parameter only (URL via ALL_MODEL_URL, not a name lookup that fails in other
 // languages); cost is a number; description is added; SetValueString guessing is dropped.
 // Duplicate before edit (TypeEditGuard): a material is shared, so it is changed only with duplicate_as (a copy named
@@ -11,10 +11,10 @@ using System;
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Materials
+namespace Plinth.Revit.Commands.Materials
 {
     public sealed class SetMaterialIdentityHandler : IRevitCommand
     {
@@ -70,7 +70,7 @@ namespace B2M.Revit.Commands.Materials
             if (!TypeEditGuard.TryPlan(doc, p, new[] { new SharedEdit(mat) }, out var plan, out failure)) return failure;
 
             var result = new JObject { ["material_id"] = RevitCompat.GetId(mat.Id), ["name"] = mat.Name };
-            using (var tx = new Transaction(doc, "B2M: Set material identity"))
+            using (var tx = new Transaction(doc, "Plinth: Set material identity"))
             {
                 tx.Start();
                 try

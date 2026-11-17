@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Views/ActivateViewHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: ReadOnly (switching the active view is UI state: no transaction, nothing in the model
+// Modified for Plinth: ReadOnly (switching the active view is UI state: no transaction, nothing in the model
 // changes, Undo has nothing to record); a name shared by several views is an error listing them (rvt-mcp
 // took the first); a miss lists the valid views; passing neither view_id nor view_name is an error (there is
 // no fallback); refuses cleanly while the document has an open transaction, where Revit cannot switch views;
@@ -8,12 +8,12 @@
 
 using System;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.View
+namespace Plinth.Revit.Commands.View
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     public sealed class ActivateViewHandler : IRevitCommand

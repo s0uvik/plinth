@@ -1,4 +1,4 @@
-// New in B2M (Step 10, F1): copies chosen family types (their family comes with them) and MEP types from a template or
+// New in Plinth (Step 10, F1): copies chosen family types (their family comes with them) and MEP types from a template or
 // project file into the active project as NEW types. Duplicate before edit: a type the project already has (same kind
 // and name; for a family type, same family and category) is reported "already_there" with its id and nothing is
 // copied for it; anything else Revit brings along (fitting families of a pipe type's routing, materials) uses the
@@ -13,10 +13,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Families
+namespace Plinth.Revit.Commands.Families
 {
     public sealed class CopyTypesFromFileHandler : IRevitCommand
     {
@@ -87,7 +87,7 @@ namespace B2M.Revit.Commands.Families
 
                 var before = AllIds(doc);
                 var handler = new UseDestinationTypes();
-                using (var tx = new Transaction(doc, "B2M: Copy types from " + System.IO.Path.GetFileName(fullPath)))
+                using (var tx = new Transaction(doc, "Plinth: Copy types from " + System.IO.Path.GetFileName(fullPath)))
                 {
                     tx.Start();
                     try

@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Structural/TagStructuralFramingHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the tag type is chosen by tag_type_id or tag_type_name (+ tag_family_name), else Revit's default
+// Modified for Plinth: the tag type is chosen by tag_type_id or tag_type_name (+ tag_family_name), else Revit's default
 // structural framing tag (rvt-mcp took the first tag type found); view templates are refused; members already tagged in
 // the view are skipped; element_ids that are not framing are reported instead of dropped; per-element failures carry
 // the reason; when nothing could be tagged the transaction rolls back and the command fails.
@@ -10,10 +10,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Structural
+namespace Plinth.Revit.Commands.Structural
 {
     using View = Autodesk.Revit.DB.View;
 
@@ -100,7 +100,7 @@ namespace B2M.Revit.Commands.Structural
 
             var tagIds = new List<long>();
             var failed = new List<object>();
-            using (var tx = new Transaction(doc, "B2M: Tag Structural Framing"))
+            using (var tx = new Transaction(doc, "Plinth: Tag Structural Framing"))
             {
                 tx.Start();
                 try

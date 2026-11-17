@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Export/ExportGbxmlHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: written to the exact path asked for (output_path, or output_folder + file_name) through a
+// Modified for Plinth: written to the exact path asked for (output_path, or output_folder + file_name) through a
 // staging folder; an existing file is replaced only with overwrite; output_folder is created when missing;
 // errors are coded failures. On Revit 2026 and later the exporter needs a modifiable document, so it runs in
 // a transaction that is always rolled back (ExportHelpers.RunRolledBack); earlier years open none.
@@ -8,10 +8,10 @@
 using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Export
+namespace Plinth.Revit.Commands.Export
 {
     public sealed class ExportGbxmlHandler : IRevitCommand
     {
@@ -37,7 +37,7 @@ namespace B2M.Revit.Commands.Export
                 using (var options = new GBXMLExportOptions())
                 {
 #if REVIT2026 || REVIT2027
-                    var ok = ExportHelpers.RunRolledBack(doc, "B2M: Export gbXML (rolled back)", () => doc.Export(staging, "export", options));
+                    var ok = ExportHelpers.RunRolledBack(doc, "Plinth: Export gbXML (rolled back)", () => doc.Export(staging, "export", options));
 #else
                     var ok = doc.Export(staging, "export", options);
 #endif

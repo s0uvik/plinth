@@ -1,19 +1,19 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Workflows/WorkflowNamingNormalizationHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: ids are applied before the limit (rvt-mcp cut the collection at limit first, so ids past it
+// Modified for Plinth: ids are applied before the limit (rvt-mcp cut the collection at limit first, so ids past it
 // were silently missed) and ids not in the target scope are an error listing them (rvt-mcp warned); the unused
 // profile field is dropped (rvt-mcp only echoed it); {ElevationMm} goes through Mm; the proposal lists are capped
-// by limit (at most 1000); the rename transaction is "B2M: ..." and any Revit warning rolls it back (FailureScope).
+// by limit (at most 1000); the rename transaction is "Plinth: ..." and any Revit warning rolls it back (FailureScope).
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Workflows
+namespace Plinth.Revit.Commands.Workflows
 {
     using View = Autodesk.Revit.DB.View;
 
@@ -99,7 +99,7 @@ namespace B2M.Revit.Commands.Workflows
 
             var applied = new JArray();
             var modified = new List<long>();
-            using (var tx = new Transaction(doc, "B2M: Workflow naming normalization"))
+            using (var tx = new Transaction(doc, "Plinth: Workflow naming normalization"))
             {
                 tx.Start();
                 try

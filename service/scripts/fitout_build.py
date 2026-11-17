@@ -11,8 +11,8 @@ counts. With --build it builds the plan as its own run on top of the building's 
 --answers: a JSON file (or inline JSON) of fit-out answers, e.g. {"fitout:family:sofa": {"family": "...", "type":
 "..."}, "fitout:family:side_table": "skip"}; an answer may add "types" (preferred first), "front" (-y, +y, -x, +x:
 which way the family's front faces in its own coordinates) and "includes" (items the family already has). The answer
-{"create": "box"} (optionally "name", "size_mm": [w, d, h], "material") is the user's OK for B2M to create a plain box
-family for the item (default "B2M <Label>" at the rule's first size, type "<w> x <d> x <h>mm (B2M)"): the plan gets a
+{"create": "box"} (optionally "name", "size_mm": [w, d, h], "material") is the user's OK for Plinth to create a plain box
+family for the item (default "Plinth <Label>" at the rule's first size, type "<w> x <d> x <h>mm (Plinth)"): the plan gets a
 family_create pre-step (the add-in's create_box_family; a family of that name already in the project is used as it is),
 the item is laid out at the box's size with no measuring, and the family is removed with the fit-out run.
 --measurements: boxes measured earlier (measure_family_types' shape), used instead of measuring now (an add-in
@@ -32,14 +32,14 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Callable
 
-from b2m import logs
-from b2m.builds import BuildService
-from b2m.fitout import families, rooms, rules, to_plan
-from b2m.plan import BuildPlan, LevelOp
-from b2m.revit import RevitClient
-from b2m.revit.commands import BOX_FAMILY_COMMAND, REQUIRED_COMMANDS
-from b2m.revit.types import TypeMap
-from b2m.runs import RunStore
+from plinth import logs
+from plinth.builds import BuildService
+from plinth.fitout import families, rooms, rules, to_plan
+from plinth.plan import BuildPlan, LevelOp
+from plinth.revit import RevitClient
+from plinth.revit.commands import BOX_FAMILY_COMMAND, REQUIRED_COMMANDS
+from plinth.revit.types import TypeMap
+from plinth.runs import RunStore
 
 # What planning reads in the document (measure_family_types is used when the add-in has it).
 PLAN_COMMANDS = ["get_available_family_types", "get_type_parameters", "list_template_files", "list_types_in_file"]

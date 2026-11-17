@@ -1,18 +1,18 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Sheets/ViewportSheetSupport.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: feet/mm conversion goes through Mm; sheet resolution moved to Lookup.TrySheet (a miss
-// now lists the valid sheets); the saved-position check uses B2M's REVIT2026/REVIT2027 constants; the
+// Modified for Plinth: feet/mm conversion goes through Mm; sheet resolution moved to Lookup.TrySheet (a miss
+// now lists the valid sheets); the saved-position check uses Plinth's REVIT2026/REVIT2027 constants; the
 // snapshot and overflow DTOs used only by rvt-mcp's unported sheet-layout tools are dropped.
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 
-namespace B2M.Revit.Commands.Sheets
+namespace Plinth.Revit.Commands.Sheets
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     /// <summary>One viewport's geometry on a sheet, in feet, with the reasons any rectangle is unavailable.</summary>

@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Sheets/PlaceViewOnSheetHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the viewport centre is given in sheet mm (x_mm, y_mm), defaulting to the centre of the
+// Modified for Plinth: the viewport centre is given in sheet mm (x_mm, y_mm), defaulting to the centre of the
 // title block (rvt-mcp used a fixed point of 1 ft, 0.75 ft); the sheet must exist (create_sheet makes
 // one; rvt-mcp silently created a sheet with the first title block) and is found by sheet_id or
 // sheet_number; params are snake_case like the other sheet tools; a view already on a sheet names that
@@ -15,12 +15,12 @@ using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Sheets
+namespace Plinth.Revit.Commands.Sheets
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     public sealed class PlaceViewOnSheetHandler : IRevitCommand
@@ -83,7 +83,7 @@ namespace B2M.Revit.Commands.Sheets
                         + ") on sheet " + sheet.SheetNumber + "; empty legend or drafting views cannot be placed.");
             }
 
-            using (var tx = new Transaction(doc, "B2M: Place View On Sheet"))
+            using (var tx = new Transaction(doc, "Plinth: Place View On Sheet"))
             {
                 tx.Start();
                 try

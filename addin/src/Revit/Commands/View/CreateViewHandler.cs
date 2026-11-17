@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Views/CreateViewHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M (PRD: drawing set views): adds ceiling plans, building sections (a plan line in mm,
+// Modified for Plinth (PRD: drawing set views): adds ceiling plans, building sections (a plan line in mm,
 // far-clip depth and bottom/top heights build the section box) and elevations (an ElevationMarker at a
 // point on the level's floor plan, looking north/south/east/west); optional name, view type name,
 // scale, detail level and a plan crop rectangle in mm; an unknown level is an error with the valid
@@ -23,13 +23,13 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Core.Drawing;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Core.Drawing;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.View
+namespace Plinth.Revit.Commands.View
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     public sealed class CreateViewHandler : IRevitCommand
@@ -210,7 +210,7 @@ namespace B2M.Revit.Commands.View
                         + "create one with viewType floor_plan first.");
             }
 
-            using (var tx = new Transaction(doc, "B2M: Create View"))
+            using (var tx = new Transaction(doc, "Plinth: Create View"))
             {
                 tx.Start();
                 try

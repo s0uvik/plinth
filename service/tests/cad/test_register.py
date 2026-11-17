@@ -4,9 +4,9 @@ import math
 
 import pytest
 
-from b2m.cad import register
-from b2m.cad.register import Features, FLine, FPoint
-from b2m.cad.structure import recognise_set
+from plinth.cad import register
+from plinth.cad.register import Features, FLine, FPoint
+from plinth.cad.structure import recognise_set
 
 
 def _features(name, pts, transform=lambda p: p):

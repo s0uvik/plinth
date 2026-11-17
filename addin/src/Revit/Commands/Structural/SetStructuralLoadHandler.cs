@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Structural/SetStructuralLoadHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the action field and its "create" stub (which returned not_implemented) are dropped: the command
+// Modified for Plinth: the action field and its "create" stub (which returned not_implemented) are dropped: the command
 // updates; values are kN and kN*m converted to Revit's internal units (rvt-mcp wrote the raw numbers as internal units);
 // only point loads are accepted, since LOAD_FORCE_* are point-load parameters (rvt-mcp silently changed nothing on line
 // and area loads); a component that cannot be set rolls back instead of being skipped; the result reads the load back.
@@ -9,10 +9,10 @@ using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Structural
+namespace Plinth.Revit.Commands.Structural
 {
     public sealed class SetStructuralLoadHandler : IRevitCommand
     {
@@ -51,7 +51,7 @@ namespace B2M.Revit.Commands.Structural
             if (!(element is PointLoad load)) return CommandResult.Fail("NOT_A_LOAD: element " + loadId + " is not a structural point load.");
 
             var changed = 0;
-            using (var tx = new Transaction(doc, "B2M: Update Structural Load"))
+            using (var tx = new Transaction(doc, "Plinth: Update Structural Load"))
             {
                 tx.Start();
                 try

@@ -1,7 +1,7 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp), the parameter-setting and category code
 // repeated in src/shared/Handlers/Parameters/SetElementParameterValuesHandler.cs, SetTypeParameterValuesHandler.cs and
 // src/shared/Handlers/Graphics/ColorElementsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: one copy for the modify toolset; doubles convert by the parameter's unit (length mm via Mm, area m2,
+// Modified for Plinth: one copy for the modify toolset; doubles convert by the parameter's unit (length mm via Mm, area m2,
 // volume m3, angle degrees; rvt-mcp took mm2 and mm3 through literal factors); one transaction wrapper that commits
 // only when the body succeeds and checks the commit status.
 
@@ -9,10 +9,10 @@ using System;
 using System.Globalization;
 using System.Linq;
 using Autodesk.Revit.DB;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Modify
+namespace Plinth.Revit.Commands.Modify
 {
     internal static class ModifyHelpers
     {
@@ -21,7 +21,7 @@ namespace B2M.Revit.Commands.Modify
         /// <summary>Runs body in one transaction; commits when it returns success, rolls back otherwise.</summary>
         public static CommandResult InTransaction(Document doc, string name, Func<CommandResult> body)
         {
-            using (var tx = new Transaction(doc, "B2M: " + name))
+            using (var tx = new Transaction(doc, "Plinth: " + name))
             {
                 try
                 {

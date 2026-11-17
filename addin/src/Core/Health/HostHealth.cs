@@ -1,7 +1,7 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // files src/shared/Infrastructure/HostHealthSnapshot.cs and RuntimeIdentity.cs, commit b44ee0b.
 // Licensed under the Apache License, Version 2.0.
-// Modified for B2M: one small snapshot with add-in version, Revit year, process ID, transport,
+// Modified for Plinth: one small snapshot with add-in version, Revit year, process ID, transport,
 // protocol version and the command list the client checks at startup; script and update fields removed.
 
 using System;
@@ -9,7 +9,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Core.Health
+namespace Plinth.Revit.Core.Health
 {
     /// <summary>
     /// What <c>health</c> returns. Answered on a transport thread, so it never calls the Revit API;
@@ -30,7 +30,7 @@ namespace B2M.Revit.Core.Health
             using (var process = Process.GetCurrentProcess())
                 _identity = new JObject
                 {
-                    ["product"] = "b2m-revit",
+                    ["product"] = "plinth-revit",
                     ["addin_version"] = addinVersion,
                     ["protocol_version"] = ProtocolVersion,
                     ["revit_year"] = int.TryParse(revitYear, out var y) ? new JValue(y) : JValue.CreateNull(),

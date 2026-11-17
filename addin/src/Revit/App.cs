@@ -1,7 +1,7 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/plugin-r26/App.cs (one copy per Revit year in rvt-mcp), commit b44ee0b.
 // Licensed under the Apache License, Version 2.0.
-// Modified for B2M: one App for every year; the year is read from Revit at runtime; the ribbon,
+// Modified for Plinth: one App for every year; the year is read from Revit at runtime; the ribbon,
 // toasts, history, settings, reports, baked tools, localization and update checker are not ported.
 // Revit 2024 (.NET Framework 4.8) listens on loopback TCP; later years on a named pipe.
 
@@ -9,15 +9,15 @@ using System;
 using System.Reflection;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Events;
-using B2M.Revit.Bridge;
-using B2M.Revit.Commands;
-using B2M.Revit.Core;
-using B2M.Revit.Core.Health;
-using B2M.Revit.Core.Logging;
-using B2M.Revit.Core.Security;
-using B2M.Revit.Core.Transport;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Commands;
+using Plinth.Revit.Core;
+using Plinth.Revit.Core.Health;
+using Plinth.Revit.Core.Logging;
+using Plinth.Revit.Core.Security;
+using Plinth.Revit.Core.Transport;
 
-namespace B2M.Revit
+namespace Plinth.Revit
 {
     public sealed class App : IExternalApplication
     {
@@ -43,7 +43,7 @@ namespace B2M.Revit
         {
             var year = application.ControlledApplication.VersionNumber;
             AddinLog.Initialize(year);
-            AddinLog.Write("App", "Starting B2M.Revit " + AddinVersion + " in Revit " + year);
+            AddinLog.Write("App", "Starting Plinth.Revit " + AddinVersion + " in Revit " + year);
             try
             {
                 var dispatcher = CommandCatalog.Create();
@@ -60,7 +60,7 @@ namespace B2M.Revit
                 application.ControlledApplication.FailuresProcessing += FailureScope.OnFailuresProcessing;
                 application.Idling += OnIdling;
 
-                var publisher = new DiscoveryPublisher(B2MPaths.Discovery, year, AddinVersion, m => AddinLog.Write("Discovery", m));
+                var publisher = new DiscoveryPublisher(PlinthPaths.Discovery, year, AddinVersion, m => AddinLog.Write("Discovery", m));
 #if NETFRAMEWORK
                 _transport = new TcpTransportServer(publisher, m => AddinLog.Write("Transport", m));
 #else

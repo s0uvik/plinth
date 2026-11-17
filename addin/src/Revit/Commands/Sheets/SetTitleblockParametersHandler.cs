@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Sheets/SetTitleblockParametersHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: sheet and title block resolution shared with get_titleblock_parameters (a miss lists the
+// Modified for Plinth: sheet and title block resolution shared with get_titleblock_parameters (a miss lists the
 // valid sheets; several title blocks need title_block_id); a parameter that is only read-only where it was
 // found is an error and nothing changes (rvt-mcp skipped it and could report success having set nothing);
 // a missing parameter lists the writable ones; values must have the parameter's JSON type (rvt-mcp parsed
@@ -14,10 +14,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Sheets
+namespace Plinth.Revit.Commands.Sheets
 {
     public sealed class SetTitleblockParametersHandler : IRevitCommand
     {
@@ -84,7 +84,7 @@ namespace B2M.Revit.Commands.Sheets
                 : new SharedEdit[0];
             if (!TypeEditGuard.TryPlan(doc, p, typeEdits, out var guard, out failure)) return failure;
 
-            using (var tx = new Transaction(doc, "B2M: Set Title Block Parameters"))
+            using (var tx = new Transaction(doc, "Plinth: Set Title Block Parameters"))
             {
                 tx.Start();
                 try

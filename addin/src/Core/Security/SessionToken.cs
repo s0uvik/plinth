@@ -1,12 +1,12 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Security/AuthToken.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: one token instance per listener instead of process-wide static state;
+// Modified for Plinth: one token instance per listener instead of process-wide static state;
 // discovery publishing moved to DiscoveryPublisher.
 
 using System;
 using System.Security.Cryptography;
 
-namespace B2M.Revit.Core.Security
+namespace Plinth.Revit.Core.Security
 {
     /// <summary>A random 256-bit token one listener accepts. Compared in constant time.</summary>
     public sealed class SessionToken

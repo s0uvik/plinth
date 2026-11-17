@@ -1,7 +1,7 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp), files
 // src/shared/Handlers/Documents/ManageCheckpointsHandler.cs and src/shared/Documents/CheckpointStore.cs and
 // CheckpointPlanner.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: reads the B2M checkpoint folder and manifest (see save_checkpoint); keeps list, a dry-run prune
+// Modified for Plinth: reads the Plinth checkpoint folder and manifest (see save_checkpoint); keeps list, a dry-run prune
 // whose plan_hash must be passed back to delete (deletion re-checks each file's size and time), and restore as a new
 // file next to the model that never overwrites anything; the cross-process index lock is not ported; restore's
 // next_steps no longer name rvt-mcp tools.
@@ -14,10 +14,10 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Documents
+namespace Plinth.Revit.Commands.Documents
 {
     public sealed class ManageCheckpointsHandler : IRevitCommand
     {

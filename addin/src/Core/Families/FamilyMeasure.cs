@@ -1,4 +1,4 @@
-// New in B2M (Step 10, fit-out families first): the Revit-free parts of measure_family_types and of placing a
+// New in Plinth (Step 10, fit-out families first): the Revit-free parts of measure_family_types and of placing a
 // level-based family at its height. Some level-based families take the point's z (the level's elevation plus the
 // offset asked for) as their offset above the level, so they stand the level's elevation too high. measure_family_types
 // reports that as base_offset_mm; FamilyPlacer puts such an instance back at the height asked for.
@@ -7,7 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace B2M.Revit.Core.Families
+namespace Plinth.Revit.Core.Families
 {
     public static class FamilyMeasure
     {

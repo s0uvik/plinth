@@ -2,7 +2,7 @@
 
 import pytest
 
-from b2m.cad.sections import recognise_section
+from plinth.cad.sections import recognise_section
 from tests.cad import synthetic
 
 

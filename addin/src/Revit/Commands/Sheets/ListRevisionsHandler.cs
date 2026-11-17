@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Sheets/ListRevisionsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: revisions come in sequence order (Revision.GetAllRevisionIds); each listed sheet also
+// Modified for Plinth: revisions come in sequence order (Revision.GetAllRevisionIds); each listed sheet also
 // says whether the revision is an additional (manually assigned) one or comes from clouds, and its number on
 // that sheet; rows that fail are reported with their error; the silent revision-lookup fallbacks are gone.
 
@@ -9,10 +9,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Sheets
+namespace Plinth.Revit.Commands.Sheets
 {
     public sealed class ListRevisionsHandler : IRevitCommand
     {

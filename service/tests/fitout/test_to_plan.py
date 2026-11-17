@@ -5,12 +5,12 @@ the project already had stay."""
 
 import pytest
 
-from b2m.builds import BuildService
-from b2m.fitout import furniture, rooms, to_plan
-from b2m.plan import BuildPlan
-from b2m.revit.types import TypeMap
-from b2m.runner import Runner, plan_batches
-from b2m.runs import RunStore
+from plinth.builds import BuildService
+from plinth.fitout import furniture, rooms, to_plan
+from plinth.plan import BuildPlan
+from plinth.revit.types import TypeMap
+from plinth.runner import Runner, plan_batches
+from plinth.runs import RunStore
 from tests.fitout.conftest import box_walls, plan_of
 from tests.fitout.fake_revit import FitoutRevit
 
@@ -87,10 +87,10 @@ def test_a_furnished_plan_is_built_read_back_and_removed_as_its_own_run(tmp_path
     assert [(i.family, i.name) for i in by_key["FIT-TYPES-RESIDENTIAL-DEFAULT-METRIC"].items] == [
         ("M_Bed-Standard", "King 1830x2032mm"), ("M_Desk", "1200 x 600mm")]
     copies = {op.family: (op.base_type, op.name, op.values_mm) for op in plan.ops if op.op == "family_type_copy"}
-    assert copies == {"M_Bed-Standard": ("King 1830x2032mm", "1500x2000mm (B2M)", {"Width": 1500.0}),
-                      "M_Desk": ("1200 x 600mm", "1000x600mm (B2M)", {"Width": 1000.0})}
+    assert copies == {"M_Bed-Standard": ("King 1830x2032mm", "1500x2000mm (Plinth)", {"Width": 1500.0}),
+                      "M_Desk": ("1200 x 600mm", "1000x600mm (Plinth)", {"Width": 1000.0})}
     bed, table = by_key["FIT-BED-bed-1"], by_key["FIT-BED-side_table-1"]
-    assert (bed.type, bed.point, bed.rotation_deg, bed.host_key) == ("1500x2000mm (B2M)", (3700.0, 2100.0), -90.0, None)
+    assert (bed.type, bed.point, bed.rotation_deg, bed.host_key) == ("1500x2000mm (Plinth)", (3700.0, 2100.0), -90.0, None)
     assert (table.family, table.type) == ("M_Table-Night Stand", "450 x 450mm")  # the project's own
     basin = by_key["FIT-TLT-basin-1"]  # face-based: on the toilet's wall, on the room's side
     assert (basin.host_key, basin.toward, basin.rotation_deg) == ("tW", (5325.0, 925.0), 0)

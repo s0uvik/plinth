@@ -11,8 +11,8 @@ from collections import Counter
 import pytest
 from shapely.geometry import Point, Polygon
 
-from b2m.fitout import rooms
-from b2m.imported.selfcheck import Tolerances, polygon_area_m2
+from plinth.fitout import rooms
+from plinth.imported.selfcheck import Tolerances, polygon_area_m2
 from tests.fitout.conftest import box_walls, plan_of
 
 TYPICAL = "2.PLAN 1st to 4th.dxf"
@@ -202,7 +202,7 @@ def test_thickness_from_the_type_op_or_name_else_asked(wb_rules):
     assert [q.id for q in model.questions] == ["fitout:wall_thickness:Partition"]
     answered = rooms.build(unknown, wb_rules, {"fitout:wall_thickness:Partition": 100})
     assert answered.rooms[0].area_m2 == pytest.approx(2.9 * 2.9) and answered.questions == []
-    assert rooms.type_thickness("B2M 250mm Exterior") == 250 and rooms.type_thickness("Brick 115") == 115
+    assert rooms.type_thickness("Plinth 250mm Exterior") == 250 and rooms.type_thickness("Brick 115") == 115
     assert rooms.type_thickness("Generic") is None and rooms.type_size("door-1025-sliding") == (1025, None)
 
 

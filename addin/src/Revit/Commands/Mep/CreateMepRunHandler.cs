@@ -1,4 +1,4 @@
-// New in B2M (Step 10, F5): create_mep_run draws a pipe, duct, conduit or cable tray run along a polyline of 3D points
+// New in Plinth (Step 10, F5): create_mep_run draws a pipe, duct, conduit or cable tray run along a polyline of 3D points
 // in one transaction: one segment per leg (points on a straight line are merged, RunPath), an elbow at every bend, and
 // optionally each end joined to an element: a fixture's or equipment's nearest free connector of the run's domain whose
 // system classification fits (ConnectorMatch), a pipe's or duct's free end, or the middle of a pipe or duct (the main is
@@ -15,11 +15,11 @@ using Autodesk.Revit.DB.Electrical;
 using Autodesk.Revit.DB.Mechanical;
 using Autodesk.Revit.DB.Plumbing;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Core.Mep;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Core.Mep;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Mep
+namespace Plinth.Revit.Commands.Mep
 {
     public sealed class CreateMepRunHandler : IRevitCommand
     {
@@ -160,7 +160,7 @@ namespace B2M.Revit.Commands.Mep
             var connections = new JArray();
             var failed = new JArray();
 
-            using (var tx = new Transaction(doc, "B2M: Create " + kind.Name + " run"))
+            using (var tx = new Transaction(doc, "Plinth: Create " + kind.Name + " run"))
             {
                 tx.Start();
                 try

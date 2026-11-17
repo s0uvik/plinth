@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Graphics/CreateViewFilterHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: B2M supports Revit 2024 and later, so rule factories are called directly instead of probed
+// Modified for Plinth: Plinth supports Revit 2024 and later, so rule factories are called directly instead of probed
 // by reflection; rule parameters resolve against the parameters Revit can filter on for all the chosen
 // categories (by built-in name such as WALL_BASE_OFFSET, label or shared/project name), with the value type
 // taken from the parameter's storage instead of guessed; every rule must build or nothing is created (rvt-mcp
@@ -14,10 +14,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Graphics
+namespace Plinth.Revit.Commands.Graphics
 {
     public sealed class CreateViewFilterHandler : IRevitCommand
     {
@@ -109,7 +109,7 @@ namespace B2M.Revit.Commands.Graphics
                     return CommandResult.Fail("RULE_INVALID: Revit does not accept these rules for these categories; nothing was created.");
             }
 
-            using (var tx = new Transaction(doc, "B2M: Create View Filter"))
+            using (var tx = new Transaction(doc, "Plinth: Create View Filter"))
             {
                 tx.Start();
                 try

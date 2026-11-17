@@ -1,4 +1,4 @@
-// New in B2M: shared lookups for the rooms toolset commands ported in Step 8 (get_room_openings,
+// New in Plinth: shared lookups for the rooms toolset commands ported in Step 8 (get_room_openings,
 // create_room_separator, create_area, create_space, list_areas, compute_room_finishes, tag_all_areas).
 // Logic follows the rvt-mcp handlers (https://github.com/bimwright/rvt-mcp, commit b44ee0b,
 // Apache License 2.0) that each repeated it; misses here return the valid options.
@@ -8,10 +8,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Rooms
+namespace Plinth.Revit.Commands.Rooms
 {
     internal static class RoomsHelpers
     {

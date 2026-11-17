@@ -1,17 +1,17 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Views/SetViewScaleHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: scale is limited to 1..24000 as in create_view; view templates are refused through
-// Lookup.TryView with the B2M error codes; a view template that controls the scale is named in the error.
+// Modified for Plinth: scale is limited to 1..24000 as in create_view; view templates are refused through
+// Lookup.TryView with the Plinth error codes; a view template that controls the scale is named in the error.
 
 using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.View
+namespace Plinth.Revit.Commands.View
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     public sealed class SetViewScaleHandler : IRevitCommand
@@ -36,7 +36,7 @@ namespace B2M.Revit.Commands.View
             if (!ViewHelpers.TryResolveView(uidoc, p.Value<long?>("view_id"), null, false, out var view, out var failure)) return failure;
 
             var previous = view.Scale;
-            using (var tx = new Transaction(doc, "B2M: Set View Scale"))
+            using (var tx = new Transaction(doc, "Plinth: Set View Scale"))
             {
                 tx.Start();
                 try

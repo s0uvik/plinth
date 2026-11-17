@@ -1,12 +1,12 @@
 import pytest
 from pydantic import ValidationError
 
-from b2m.examples import two_storey_house
-from b2m.plan import BuildPlan
-from b2m.revit import commands
-from b2m.revit.client import RevitError, RevitTimeout
-from b2m.revit.types import TypeMap
-from b2m.runner import Runner, plan_batches
+from plinth.examples import two_storey_house
+from plinth.plan import BuildPlan
+from plinth.revit import commands
+from plinth.revit.client import RevitError, RevitTimeout
+from plinth.revit.types import TypeMap
+from plinth.runner import Runner, plan_batches
 
 HOUSE = two_storey_house("Door 900", "Window 1200")
 
@@ -188,7 +188,7 @@ def test_remove_counts_elements_the_user_already_undid_as_gone_not_failed():
 
 
 def test_type_map_converts_logical_names_and_passes_unknown_ones_through():
-    from b2m.revit.types import TypeMap
+    from plinth.revit.types import TypeMap
     types = TypeMap.from_dict({"walls": {"Brick 230": "Muro de 25cm"},
                                "doors": {"Door 900": {"family": "Puerta", "type": "0.90 x 2.10"}}})
     by_key = HOUSE.by_key()
@@ -202,15 +202,15 @@ def test_type_map_converts_logical_names_and_passes_unknown_ones_through():
 
 
 def test_type_map_loads_the_users_standards_file(tmp_path, monkeypatch):
-    from b2m.revit.types import TypeMap
-    monkeypatch.setenv("B2M_HOME", str(tmp_path))
+    from plinth.revit.types import TypeMap
+    monkeypatch.setenv("PLINTH_HOME", str(tmp_path))
     assert TypeMap.load() == TypeMap()
     (tmp_path / "standards.json").write_text('{"floors": {"RCC 150": "Losa 15"}}', encoding="utf-8")
     assert TypeMap.load().floor("RCC 150") == "Losa 15"
 
 
 def test_translate_moves_every_coordinate_and_nothing_else():
-    from b2m.plan import translate
+    from plinth.plan import translate
     moved = translate(HOUSE, 1000, -500)
     a, b = HOUSE.by_key(), moved.by_key()
     assert b["F0-WS"].start == (a["F0-WS"].start[0] + 1000, a["F0-WS"].start[1] - 500)

@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Lint/SuggestViewNameCorrectionsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: suggestions fill the pattern's {NN}/{Name} slots from the current name (rvt-mcp returned the pattern
+// Modified for Plinth: suggestions fill the pattern's {NN}/{Name} slots from the current name (rvt-mcp returned the pattern
 // itself, e.g. "L{NN}-{Name}"); a name that cannot be mapped gets suggested null with a reason; a suggestion that
 // another view already uses is flagged; an unknown profile is an error listing the available ones (rvt-mcp returned
 // success with an error field); the 50-suggestion cap is a parameter (max_suggestions, at most 200). Nothing is renamed.
@@ -10,10 +10,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Lint
+namespace Plinth.Revit.Commands.Lint
 {
     using View = Autodesk.Revit.DB.View;
 
@@ -21,7 +21,7 @@ namespace B2M.Revit.Commands.Lint
     {
         public string Name => "suggest_view_name_corrections";
         public string Description => "Propose new names for views that nearly follow the project's dominant naming pattern, or the viewName rule "
-            + "of a firm profile (profile id from %LOCALAPPDATA%\\B2M\\firm-profiles). Only proposes; renames nothing.";
+            + "of a firm profile (profile id from %LOCALAPPDATA%\\Plinth\\firm-profiles). Only proposes; renames nothing.";
         public string ParametersSchema => @"{""type"":""object"",""properties"":{
             ""profile"":{""type"":""string""},
             ""max_suggestions"":{""type"":""integer""}}}";

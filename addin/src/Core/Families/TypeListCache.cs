@@ -1,5 +1,5 @@
-// New in B2M (Step 10, F1): listing the types in a template means opening it in Revit (seconds for the large Systems
-// templates), so list_types_in_file keeps its full answer in %LOCALAPPDATA%\B2M\cache\file-types, one JSON file per
+// New in Plinth (Step 10, F1): listing the types in a template means opening it in Revit (seconds for the large Systems
+// templates), so list_types_in_file keeps its full answer in %LOCALAPPDATA%\Plinth\cache\file-types, one JSON file per
 // source file. The key covers the full path, the file's size and last write time, the Revit year (an older file is
 // upgraded on open, so ids and names can differ per year) and this format's version, so a changed file is read again.
 
@@ -10,14 +10,14 @@ using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Core.Families
+namespace Plinth.Revit.Core.Families
 {
     public static class TypeListCache
     {
         /// <summary>Bumped whenever the cached listing's shape changes, so old entries are ignored.</summary>
         public const int FormatVersion = 1;
 
-        public static string DefaultFolder => Path.Combine(B2MPaths.Root, "cache", "file-types");
+        public static string DefaultFolder => Path.Combine(PlinthPaths.Root, "cache", "file-types");
 
         public static string Key(string fullPath, long sizeBytes, DateTime lastWriteUtc, string revitYear)
         {

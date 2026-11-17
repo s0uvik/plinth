@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Geometry/MeshShapeFile.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: internal to the geometry toolset; mapped network drives are detected with
+// Modified for Plinth: internal to the geometry toolset; mapped network drives are detected with
 // DriveInfo (rvt-mcp's OpenModelLocalPolicy is not ported); everything else (limits, name rules,
 // degenerate-face and quad handling, closed-shell check) is unchanged.
 
@@ -10,7 +10,7 @@ using System.IO;
 using System.Linq;
 using Newtonsoft.Json;
 
-namespace B2M.Revit.Commands.Geometry
+namespace Plinth.Revit.Commands.Geometry
 {
     internal sealed class MeshMaterialSpec
     {

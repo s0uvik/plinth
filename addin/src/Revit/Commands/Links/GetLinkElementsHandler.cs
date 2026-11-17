@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Links/GetLinkElementsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: category is a built-in category name (OST_Walls...), language independent, and an
+// Modified for Plinth: category is a built-in category name (OST_Walls...), language independent, and an
 // unknown name is an error (rvt-mcp matched localized display names and fell back to a name filter);
 // limit defaults to 200, max 2000 (rvt-mcp 500/5000); offset added for paging; boxes in host mm via Mm.
 
@@ -9,10 +9,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Links
+namespace Plinth.Revit.Commands.Links
 {
     public sealed class GetLinkElementsHandler : IRevitCommand
     {

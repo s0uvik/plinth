@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Graphics/ClearElementOverridesHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: all or nothing (rvt-mcp committed what worked and listed the rest): missing ids fail before
+// Modified for Plinth: all or nothing (rvt-mcp committed what worked and listed the rest): missing ids fail before
 // the transaction and any element Revit refuses rolls back the call; explicit lists hold at most 5000 ids and
 // the view scan clears at most max_elements (default 20000), reporting truncation; the response lists up to
 // 100 cleared ids; failures are errors with codes.
@@ -10,10 +10,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Graphics
+namespace Plinth.Revit.Commands.Graphics
 {
     public sealed class ClearElementOverridesHandler : IRevitCommand
     {
@@ -76,7 +76,7 @@ namespace B2M.Revit.Commands.Graphics
 
             if (targets.Count > 0)
             {
-                using (var tx = new Transaction(doc, "B2M: Clear Element Overrides"))
+                using (var tx = new Transaction(doc, "Plinth: Clear Element Overrides"))
                 {
                     tx.Start();
                     var current = ElementId.InvalidElementId;

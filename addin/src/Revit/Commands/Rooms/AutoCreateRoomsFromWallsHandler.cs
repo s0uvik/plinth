@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Rooms/AutoCreateRoomsFromWallsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: a room that fails to place is counted in failedCount (rvt-mcp only added a
+// Modified for Plinth: a room that fails to place is counted in failedCount (rvt-mcp only added a
 // warning, so batch_execute kept a partial result); dry_run defaults to true as before; the level
 // miss lists valid levels; room area and centroid are read after commit as before.
 
@@ -10,10 +10,10 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Architecture;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Rooms
+namespace Plinth.Revit.Commands.Rooms
 {
     public sealed class AutoCreateRoomsFromWallsHandler : IRevitCommand
     {
@@ -48,7 +48,7 @@ namespace B2M.Revit.Commands.Rooms
 
             // Plan topology may update Revit's cached topology, so it shares one transaction with
             // room placement; a dry run rolls that back.
-            using (var tx = new Transaction(doc, "B2M: Auto Create Rooms"))
+            using (var tx = new Transaction(doc, "Plinth: Auto Create Rooms"))
             {
                 tx.Start();
                 try

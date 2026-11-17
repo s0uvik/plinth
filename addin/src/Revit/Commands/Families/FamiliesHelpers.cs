@@ -1,7 +1,7 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp), the family lookup repeated in
 // src/shared/Handlers/Families/UnloadFamilyHandler.cs, GetFamilyInstancesHandler.cs, ListFamilyTypesInFamilyHandler.cs
 // and ExportFamilyToPathHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: one lookup by integer id or name whose misses carry the valid families; no reflection fallbacks
+// Modified for Plinth: one lookup by integer id or name whose misses carry the valid families; no reflection fallbacks
 // (Family.GetFamilySymbolIds exists in every supported year). The family load options and the type-parameter setter
 // (from LoadFamilyFromPathHandler.cs and DuplicateFamilyTypeHandler.cs) live here so ensure_family_type reuses them.
 
@@ -9,11 +9,11 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
-using B2M.Revit.Bridge;
-using B2M.Revit.Commands.Parameters;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Commands.Parameters;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Families
+namespace Plinth.Revit.Commands.Families
 {
     internal static class FamiliesHelpers
     {

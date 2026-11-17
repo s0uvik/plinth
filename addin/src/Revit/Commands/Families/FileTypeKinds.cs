@@ -1,4 +1,4 @@
-// New in B2M (Step 10, F1): the kinds of type list_types_in_file reports and copy_types_from_file copies: loadable
+// New in Plinth (Step 10, F1): the kinds of type list_types_in_file reports and copy_types_from_file copies: loadable
 // family types (with their family) and the MEP system families' types the fit-out needs. One table, so both commands
 // name a kind the same way.
 
@@ -9,10 +9,10 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Electrical;
 using Autodesk.Revit.DB.Mechanical;
 using Autodesk.Revit.DB.Plumbing;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Families
+namespace Plinth.Revit.Commands.Families
 {
     internal static class FileTypeKinds
     {

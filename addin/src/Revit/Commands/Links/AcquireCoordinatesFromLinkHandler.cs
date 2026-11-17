@@ -1,18 +1,18 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Links/AcquireCoordinatesFromLinkHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: confirm is required and must be true (unchanged gate); the result carries a full
+// Modified for Plinth: confirm is required and must be true (unchanged gate); the result carries a full
 // coordinate snapshot before and after (base points, survey point, every project location, site) plus a
 // "changes" list and a plain-language summary of what changed, instead of only the project base point;
-// misses return valid_links and valid_cad_links; transaction "B2M: ..." rolled back only while open.
+// misses return valid_links and valid_cad_links; transaction "Plinth: ..." rolled back only while open.
 
 using System;
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Links
+namespace Plinth.Revit.Commands.Links
 {
     public sealed class AcquireCoordinatesFromLinkHandler : IRevitCommand
     {
@@ -61,7 +61,7 @@ namespace B2M.Revit.Commands.Links
             var warnings = new List<string>();
             var before = LinksHelpers.CoordinateSystem(doc, warnings);
 
-            using (var tx = new Transaction(doc, "B2M: Acquire coordinates from link"))
+            using (var tx = new Transaction(doc, "Plinth: Acquire coordinates from link"))
             {
                 tx.Start();
                 try

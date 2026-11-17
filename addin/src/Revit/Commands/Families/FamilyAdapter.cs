@@ -1,4 +1,4 @@
-// New in B2M: the ADAPT step of ensure_family_type. When no family has the asked name, a related family of the same
+// New in Plinth: the ADAPT step of ensure_family_type. When no family has the asked name, a related family of the same
 // category is used instead: one whose name has every word group of the recipe (structural_framing: Concrete +
 // Rectangular/Rect + Beam; structural_column: Concrete + Rectangular/Rect + Column), loaded in the project first,
 // then on disk in search order (metric M_ names first). A loaded one whose types already carry b/h (or Width/Depth)
@@ -6,7 +6,7 @@
 // its category and parameters, closed without saving, then loaded. When the family itself would need editing (b/h
 // or the material are instance parameters), the original is never modified: a copy (EditFamily for a loaded one,
 // the opened file otherwise) has those parameters made type parameters and is saved as <family_name>.rfa in
-// %LOCALAPPDATA%\B2M\families, closed, and loaded. Every family document opened here is closed again.
+// %LOCALAPPDATA%\Plinth\families, closed, and loaded. Every family document opened here is closed again.
 
 using System;
 using System.Collections.Generic;
@@ -14,11 +14,11 @@ using System.IO;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Core.Logging;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Core.Logging;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Families
+namespace Plinth.Revit.Commands.Families
 {
     internal static class FamilyAdapter
     {
@@ -126,7 +126,7 @@ namespace B2M.Revit.Commands.Families
                 Close(doc);
             }
 
-            var folder = FamilyFileSearch.B2MFamiliesFolder;
+            var folder = FamilyFileSearch.PlinthFamiliesFolder;
             var extra = Extra(r, sourceName, inspection.NeedsEdit ? inspection.Edits : null);
             if (inspection.NeedsEdit)
             {
@@ -205,21 +205,21 @@ namespace B2M.Revit.Commands.Families
             parameters.FirstOrDefault(p => p.Definition.Name == name)
             ?? parameters.FirstOrDefault(p => string.Equals(p.Definition.Name, name, StringComparison.OrdinalIgnoreCase));
 
-        /// <summary>Edits the opened copy and saves it as family_name in B2M's folder. Returns a failure, or null with the path.</summary>
+        /// <summary>Edits the opened copy and saves it as family_name in Plinth's folder. Returns a failure, or null with the path.</summary>
         private static CommandResult SaveEditedCopy(Document doc, Inspection inspection, EnsureRequest r, string sourceName, out string path)
         {
             var fileName = r.FamilyName + ".rfa";
-            path = Path.Combine(FamilyFileSearch.B2MFamiliesFolder, fileName);
+            path = Path.Combine(FamilyFileSearch.PlinthFamiliesFolder, fileName);
             if (File.Exists(path))
             {
                 path = null;
-                return CommandResult.Fail("FILE_EXISTS: " + fileName + " already exists in the B2M families folder but was not found by the search "
+                return CommandResult.Fail("FILE_EXISTS: " + fileName + " already exists in the Plinth families folder but was not found by the search "
                     + "(the folder scan was cut short). Load it with load_family_from_path or remove it." + EnsureFamilyTypeHandler.Unchanged);
             }
             var step = "edit the copy";
             try
             {
-                using (var tx = new Transaction(doc, "B2M: Adapt family copy"))
+                using (var tx = new Transaction(doc, "Plinth: Adapt family copy"))
                 {
                     tx.Start();
                     foreach (var parameter in inspection.ToMakeType) doc.FamilyManager.MakeType(parameter);
@@ -242,7 +242,7 @@ namespace B2M.Revit.Commands.Families
             var kept = path != null && !EnsureFamilyTypeHandler.DeleteQuietly(path);
             path = null;
             return CommandResult.Fail("ADAPT_FAILED: making a copy of '" + sourceName + "' failed at step '" + step + "': " + message + "."
-                + EnsureFamilyTypeHandler.Unchanged + (kept ? " A partial copy could not be deleted from the B2M families folder." : ""),
+                + EnsureFamilyTypeHandler.Unchanged + (kept ? " A partial copy could not be deleted from the Plinth families folder." : ""),
                 new JObject { ["step"] = step, ["adapted_from"] = sourceName });
         }
 

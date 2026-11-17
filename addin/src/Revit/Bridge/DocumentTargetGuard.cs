@@ -1,7 +1,7 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // files src/shared/Infrastructure/Execution/DocumentTargetGuard.cs and src/shared/Infrastructure/ToolReadPolicy.cs
 // (DocumentRejection), commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: the write rule lives next to the token it checks; messages name the B2M confirm step.
+// Modified for Plinth: the write rule lives next to the token it checks; messages name the Plinth confirm step.
 
 using System;
 using System.Collections.Generic;
@@ -11,7 +11,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Bridge
+namespace Plinth.Revit.Bridge
 {
     /// <summary>
     /// Gives each open document a random token for its lifetime in this Revit session. A client

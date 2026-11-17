@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Schedules/CreateScheduleHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M (PRD: door, window and room area schedules): trimmed to parameter fields. The category
+// Modified for Plinth (PRD: door, window and room area schedules): trimmed to parameter fields. The category
 // is a BuiltInCategory name (OST_Doors) instead of a localised category name; a field is a BuiltInParameter
 // name (ROOM_AREA) or a parameter name, as a string or {parameterName, columnHeading, hidden, total};
 // total shows the column's totals in group footers and the grand total; showGrandTotals is new; phase is
@@ -13,10 +13,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Schedule
+namespace Plinth.Revit.Commands.Schedule
 {
     public sealed class CreateScheduleHandler : IRevitCommand
     {
@@ -82,7 +82,7 @@ namespace B2M.Revit.Commands.Schedule
                         new JObject { ["valid_phases"] = new JArray(phases.Select(ph => ph.Name)) });
             }
 
-            using (var tx = new Transaction(doc, "B2M: Create Schedule"))
+            using (var tx = new Transaction(doc, "Plinth: Create Schedule"))
             {
                 tx.Start();
                 try

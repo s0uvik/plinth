@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Sheets/ListSheetsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: include_viewports now works (rvt-mcp declared it and ignored it): it adds each sheet's
+// Modified for Plinth: include_viewports now works (rvt-mcp declared it and ignored it): it adds each sheet's
 // viewports with their views; sheets are ordered by number; a limit outside 1..10000 is an error (rvt-mcp
 // clamped it); every title block on a sheet is listed; rows that fail are reported with their error rather
 // than only counted; the revision lookup no longer falls back silently; the camelCase aliases are gone.
@@ -10,12 +10,12 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Sheets
+namespace Plinth.Revit.Commands.Sheets
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     public sealed class ListSheetsHandler : IRevitCommand

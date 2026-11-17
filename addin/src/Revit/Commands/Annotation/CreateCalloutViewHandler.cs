@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Views/CreateCalloutViewHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: registered in the annotation toolset; with no view_family_type_id the parent view's own view
+// Modified for Plinth: registered in the annotation toolset; with no view_family_type_id the parent view's own view
 // type is used (rvt-mcp took the first Detail, Section or FloorPlan type in the project, which Revit rejects when
 // its family does not match the parent); a type that is neither a Detail type nor of the parent's family is refused
 // with the valid ones listed; in plan parents the rectangle is model X/Y in mm (other parents: mm along the view's
@@ -10,12 +10,12 @@ using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Annotation
+namespace Plinth.Revit.Commands.Annotation
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     public sealed class CreateCalloutViewHandler : IRevitCommand
@@ -73,7 +73,7 @@ namespace B2M.Revit.Commands.Annotation
             // A name already used by a view of the same type makes Revit throw; that rolls the callout back.
             var name = p.Value<string>("name")?.Trim();
             View callout;
-            using (var tx = new Transaction(doc, "B2M: Create Callout View"))
+            using (var tx = new Transaction(doc, "Plinth: Create Callout View"))
             {
                 tx.Start();
                 try

@@ -1,16 +1,16 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Sheets/PlaceScheduleOnSheetHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: mm go through Mm (no literal 304.8); sheet and schedule misses list the valid options;
+// Modified for Plinth: mm go through Mm (no literal 304.8); sheet and schedule misses list the valid options;
 // failures are errors rather than a success with placed=false; the camelCase aliases are gone (the
 // schema rejects them); the response reads the placed point and the schedule's box on the sheet back.
 
 using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Sheets
+namespace Plinth.Revit.Commands.Sheets
 {
     public sealed class PlaceScheduleOnSheetHandler : IRevitCommand
     {
@@ -48,7 +48,7 @@ namespace B2M.Revit.Commands.Sheets
                 return CommandResult.Fail("CANNOT_PLACE: a keynote legend cannot be placed on a sheet with this command.");
 
             var point = new XYZ(Mm.ToFeet(xMm), Mm.ToFeet(yMm), 0);
-            using (var tx = new Transaction(doc, "B2M: Place Schedule On Sheet"))
+            using (var tx = new Transaction(doc, "Plinth: Place Schedule On Sheet"))
             {
                 tx.Start();
                 try

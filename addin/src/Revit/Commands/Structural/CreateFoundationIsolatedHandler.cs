@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Structural/CreateFoundationIsolatedHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: level (by name) and foundation type (type_id, or type_name + family_name) are required and a miss lists
+// Modified for Plinth: level (by name) and foundation type (type_id, or type_name + family_name) are required and a miss lists
 // the options (rvt-mcp used the first foundation type and the lowest level); the position is x/y or host_column_id, not
 // both, and a host_column_id that is not a point-placed structural column is an error (rvt-mcp silently fell back to
 // x/y); z defaults to the level elevation (rvt-mcp used 0).
@@ -9,10 +9,10 @@ using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Structural
+namespace Plinth.Revit.Commands.Structural
 {
     public sealed class CreateFoundationIsolatedHandler : IRevitCommand
     {
@@ -61,7 +61,7 @@ namespace B2M.Revit.Commands.Structural
                 point = new XYZ(Mm.ToFeet(p.Value<double>("x")), Mm.ToFeet(p.Value<double>("y")), z);
             }
 
-            using (var tx = new Transaction(doc, "B2M: Create Isolated Foundation"))
+            using (var tx = new Transaction(doc, "Plinth: Create Isolated Foundation"))
             {
                 tx.Start();
                 try

@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Geometry/MeasureDistanceBetweenElementsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: mm through Mm; misses are ELEMENT_NOT_FOUND errors; curve-to-curve distance
+// Modified for Plinth: mm through Mm; misses are ELEMENT_NOT_FOUND errors; curve-to-curve distance
 // uses Curve.ComputeClosestPoints when Revit offers it (rvt-mcp only projected end points), falling
 // back to the end-point projections.
 
@@ -8,10 +8,10 @@ using System;
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Geometry
+namespace Plinth.Revit.Commands.Geometry
 {
     public sealed class MeasureDistanceBetweenElementsHandler : IRevitCommand
     {

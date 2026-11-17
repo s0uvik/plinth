@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Documents/AnalyzeModelStatisticsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M (PRD improvement, replaces the planned get_build_counts): groupByLevel splits
+// Modified for Plinth (PRD improvement, replaces the planned get_build_counts): groupByLevel splits
 // counts per level; elementIds counts only those elements, exactly and uncapped, and lists the ones
 // that no longer exist, so a build can be checked against its plan in a project that already has
 // other elements; categories carry builtInCategory so results do not depend on Revit's language.
@@ -9,10 +9,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Query
+namespace Plinth.Revit.Commands.Query
 {
     public sealed class AnalyzeModelStatisticsHandler : IRevitCommand
     {

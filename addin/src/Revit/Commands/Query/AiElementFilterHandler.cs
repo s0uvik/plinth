@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Elements/AiElementFilterHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: category accepts OST_ names as well as display names and a miss lists the valid ones; numbers
+// Modified for Plinth: category accepts OST_ names as well as display names and a miss lists the valid ones; numbers
 // compare in wire units (length mm, area m2, volume m3, angle degrees; rvt-mcp used mm2/mm3 via literal factors);
 // numeric equals has a unit-sized tolerance; parameterName without parameterValue now fails instead of being ignored;
 // an unparsable number for greaterthan/lessthan fails instead of matching nothing; numbers parse invariantly.
@@ -10,10 +10,10 @@ using System.Globalization;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Query
+namespace Plinth.Revit.Commands.Query
 {
     public sealed class AiElementFilterHandler : IRevitCommand
     {

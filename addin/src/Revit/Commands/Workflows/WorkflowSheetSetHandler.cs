@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Workflows/WorkflowSheetSetHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: each sheet is made by create_sheet, views placed by place_view_on_sheet and schedules by
+// Modified for Plinth: each sheet is made by create_sheet, views placed by place_view_on_sheet and schedules by
 // place_schedule_on_sheet (called in-process, inside one transaction group), so the title block default and
 // lookups match those tools; the title block is title_block_type_id or title_block_name (rvt-mcp:
 // titleblock_type_id, else the first title block found); views and schedules go on a grid inside the title
@@ -14,11 +14,11 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
-using B2M.Revit.Commands.Sheets;
+using Plinth.Revit.Bridge;
+using Plinth.Revit.Commands.Sheets;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Workflows
+namespace Plinth.Revit.Commands.Workflows
 {
     using View = Autodesk.Revit.DB.View;
 
@@ -108,7 +108,7 @@ namespace B2M.Revit.Commands.Workflows
             var hadFailure = false;
             var partial = false;
             var rollback = WorkflowsHelpers.Rollback("TransactionGroup", false, "Committed.");
-            using (var group = new TransactionGroup(doc, "B2M: Workflow sheet set"))
+            using (var group = new TransactionGroup(doc, "Plinth: Workflow sheet set"))
             {
                 group.Start();
                 foreach (var spec in specs.Where(s => !invalid.Contains(s.Number)))
@@ -286,7 +286,7 @@ namespace B2M.Revit.Commands.Workflows
             var updates = new JArray();
             if (spec.Parameters.Count > 0)
             {
-                using (var tx = new Transaction(doc, "B2M: Set sheet parameters"))
+                using (var tx = new Transaction(doc, "Plinth: Set sheet parameters"))
                 {
                     tx.Start();
                     try

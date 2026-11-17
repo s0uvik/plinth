@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Mep/CreateConduitHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: level (by name) and conduit type (by id or name) are required and a miss lists the options
+// Modified for Plinth: level (by name) and conduit type (by id or name) are required and a miss lists the options
 // (rvt-mcp used the first ConduitType and the level nearest start_z); a diameter the type cannot take rolls back
 // instead of being ignored; errors are "CODE: message".
 
@@ -8,10 +8,10 @@ using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Electrical;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Mep
+namespace Plinth.Revit.Commands.Mep
 {
     public sealed class CreateConduitHandler : IRevitCommand
     {
@@ -38,7 +38,7 @@ namespace B2M.Revit.Commands.Mep
                     "conduit", "conduit_type_id", "conduit_type_name", out var conduitType, out failure)) return failure;
             var diameter = p.Value<double?>("diameter");
 
-            using (var tx = new Transaction(doc, "B2M: Create Conduit"))
+            using (var tx = new Transaction(doc, "Plinth: Create Conduit"))
             {
                 tx.Start();
                 try

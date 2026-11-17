@@ -1,8 +1,8 @@
-// New in B2M (Step 10, F5): create_point_based_element, create_lighting_fixture and create_air_terminal place a family
+// New in Plinth (Step 10, F5): create_point_based_element, create_lighting_fixture and create_air_terminal place a family
 // in one of seven ways, chosen from the family's placement type (Revit's FamilyPlacementType name), the kind of host
 // given and the options asked for. This is the Revit-free choice, so every refused combination is unit-tested.
 
-namespace B2M.Revit.Core.Families
+namespace Plinth.Revit.Core.Families
 {
     public static class PlacementRules
     {

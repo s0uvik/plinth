@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Graphics/OverrideElementGraphicsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: all or nothing (rvt-mcp committed the elements that worked and listed the rest): missing
+// Modified for Plinth: all or nothing (rvt-mcp committed the elements that worked and listed the rest): missing
 // elements and element types fail before the transaction, and any element Revit refuses rolls back the whole
 // call; at most 5000 ids; failures are errors with codes; the solid fill pattern is found by IsSolidFill.
 
@@ -9,10 +9,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Graphics
+namespace Plinth.Revit.Commands.Graphics
 {
     public sealed class OverrideElementGraphicsHandler : IRevitCommand
     {
@@ -51,7 +51,7 @@ namespace B2M.Revit.Commands.Graphics
                 return CommandResult.Fail("ELEMENT_IS_TYPE: " + types.Count + " id(s) are element types, which have no per-view overrides; nothing changed.",
                     new JObject { ["type_ids"] = new JArray(types.Take(GraphicsHelpers.MaxReported)) });
 
-            using (var tx = new Transaction(doc, "B2M: Override Element Graphics"))
+            using (var tx = new Transaction(doc, "Plinth: Override Element Graphics"))
             {
                 tx.Start();
                 var current = ElementId.InvalidElementId;

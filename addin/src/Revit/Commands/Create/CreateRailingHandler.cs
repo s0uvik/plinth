@@ -1,4 +1,4 @@
-// New in B2M (PRD "New tools"): rvt-mcp cannot make railings. create_railing either puts railings on every side of
+// New in Plinth (PRD "New tools"): rvt-mcp cannot make railings. create_railing either puts railings on every side of
 // a stair (Revit's own stair railing placement, on treads or on stringers) or draws one railing along an open
 // polyline on a level, for balconies, terraces and stair wells. A stair that already has railings is refused with
 // their ids, never given a second set. It needs only an ordinary transaction, so it also runs inside batch_execute
@@ -9,10 +9,10 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Architecture;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Create
+namespace Plinth.Revit.Commands.Create
 {
     public sealed class CreateRailingHandler : IRevitCommand
     {
@@ -124,7 +124,7 @@ namespace B2M.Revit.Commands.Create
 
         private static CommandResult InTransaction(Document doc, Func<CommandResult> body)
         {
-            using (var tx = new Transaction(doc, "B2M: Create Railing"))
+            using (var tx = new Transaction(doc, "Plinth: Create Railing"))
             {
                 try
                 {

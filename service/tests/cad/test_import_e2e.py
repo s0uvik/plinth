@@ -18,16 +18,16 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from b2m import builds
-from b2m.api import create_app
-from b2m.builds import BuildService
-from b2m.cad import plan_bridge
-from b2m.cad.building import RecognisedBuilding
-from b2m.cad.project import ImportStore
-from b2m.imported.to_plan import ImportPlan
-from b2m.revit.commands import RAILINGS
-from b2m.revit.types import TypeMap
-from b2m.runs import RunStore
+from plinth import builds
+from plinth.api import create_app
+from plinth.builds import BuildService
+from plinth.cad import plan_bridge
+from plinth.cad.building import RecognisedBuilding
+from plinth.cad.project import ImportStore
+from plinth.imported.to_plan import ImportPlan
+from plinth.revit.commands import RAILINGS
+from plinth.revit.types import TypeMap
+from plinth.runs import RunStore
 from tests.cad.conftest import SAMPLE, SAMPLE_DXF
 from tests.cad.test_import_drawings import FakeRevit as DrawingRevit
 from tests.selfcheck_readback import perfect_readback

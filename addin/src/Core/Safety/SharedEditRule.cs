@@ -1,4 +1,4 @@
-// New in B2M. "Duplicate before edit": a type (any ElementType), a material or a loaded family is shared, so changing
+// New in Plinth. "Duplicate before edit": a type (any ElementType), a material or a loaded family is shared, so changing
 // it changes every element that uses it. No command may change one unless the caller explicitly chose either
 //   duplicate_as: "<new name>"  - copy it, change only the copy, and move only the elements the command names onto it;
 //   confirm_edit_all: N         - change it in place, where N must equal the current number of users exactly.
@@ -19,7 +19,7 @@ using System.Globalization;
 using System.Linq;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Core.Safety
+namespace Plinth.Revit.Core.Safety
 {
     public enum SharedKind
     {

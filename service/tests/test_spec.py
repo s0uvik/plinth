@@ -1,4 +1,4 @@
-from b2m.spec import BuildingSpec, parse_spec
+from plinth.spec import BuildingSpec, parse_spec
 
 PRD_EXAMPLE = {
     "schema_version": "1.0",

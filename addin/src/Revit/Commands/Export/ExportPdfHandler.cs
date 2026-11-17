@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Export/ExportPdfHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M (PRD: drawing set PDF): always one combined PDF at output_folder\file_name.pdf, written
+// Modified for Plinth (PRD: drawing set PDF): always one combined PDF at output_folder\file_name.pdf, written
 // through a staging folder inside output_folder and then moved into place, so nothing outside that folder
 // is touched and an existing file is replaced only with overwrite (rvt-mcp exported straight into the
 // folder and reported files by timestamp); output_folder is created when missing; without view_ids every
@@ -13,12 +13,12 @@ using System.IO;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Export
+namespace Plinth.Revit.Commands.Export
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     public sealed class ExportPdfHandler : IRevitCommand

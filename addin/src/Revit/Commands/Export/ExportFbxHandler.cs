@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Export/ExportFbxHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: written to the exact path asked for (output_path, or output_folder + file_name) through a
+// Modified for Plinth: written to the exact path asked for (output_path, or output_folder + file_name) through a
 // staging folder; an existing file is replaced only with overwrite; output_folder is created when missing; an
 // unavailable FBX exporter fails with EXPORTER_NOT_AVAILABLE; a non-3D view fails with the 3D views to pick
 // from. No transaction is opened.
@@ -9,10 +9,10 @@ using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Export
+namespace Plinth.Revit.Commands.Export
 {
     public sealed class ExportFbxHandler : IRevitCommand
     {

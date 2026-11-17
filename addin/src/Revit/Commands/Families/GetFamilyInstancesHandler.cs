@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Families/GetFamilyInstancesHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: mm conversion through Mm (no local 304.8); family_id is an integer and ids are returned as
+// Modified for Plinth: mm conversion through Mm (no local 304.8); family_id is an integer and ids are returned as
 // integers; misses list the valid families or the family's type names; the Mark is read from the built-in
 // parameter so it works in every Revit language.
 
@@ -9,10 +9,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Families
+namespace Plinth.Revit.Commands.Families
 {
     public sealed class GetFamilyInstancesHandler : IRevitCommand
     {

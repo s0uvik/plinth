@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Structural/CreateStructuralWallHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: level (by name) is required (rvt-mcp used the lowest level); an unknown wall type is an error listing
+// Modified for Plinth: level (by name) is required (rvt-mcp used the lowest level); an unknown wall type is an error listing
 // the options (rvt-mcp ignored it and kept the default type); without a type the project's default wall type is used and
 // reported; the wall is created with its type and height in one call at the level's elevation (rvt-mcp drew it at z=0);
 // base_offset added; lines shorter than Revit allows are refused.
@@ -8,10 +8,10 @@
 using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Structural
+namespace Plinth.Revit.Commands.Structural
 {
     public sealed class CreateStructuralWallHandler : IRevitCommand
     {
@@ -53,7 +53,7 @@ namespace B2M.Revit.Commands.Structural
                 return CommandResult.Fail("LINE_TOO_SHORT: start and end are closer than Revit's shortest allowed line ("
                     + Mm.FromFeet(app.Application.ShortCurveTolerance) + " mm).");
 
-            using (var tx = new Transaction(doc, "B2M: Create Structural Wall"))
+            using (var tx = new Transaction(doc, "Plinth: Create Structural Wall"))
             {
                 tx.Start();
                 try

@@ -3,11 +3,11 @@ assume step, readiness."""
 
 import pytest
 
-from b2m.cad import answers, assumptions, crosssheet, questions, readiness
-from b2m.cad.answers import AnswerError
-from b2m.cad.building import (Evidence, Finding, Level, Opening, PlanRecognition, RecognisedBuilding, Registration,
+from plinth.cad import answers, assumptions, crosssheet, questions, readiness
+from plinth.cad.answers import AnswerError
+from plinth.cad.building import (Evidence, Finding, Level, Opening, PlanRecognition, RecognisedBuilding, Registration,
                               Room, SectionRecognition, Shaft, Wall)
-from b2m.cad.project import ImportProject, LocationRequired
+from plinth.cad.project import ImportProject, LocationRequired
 
 FRAME, GROUND = "typ.dxf", "ground.dxf"
 

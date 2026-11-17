@@ -7,8 +7,8 @@ Run with Revit open on a SCRATCH project:
 
     .venv\\Scripts\\python scripts\\step2_gate.py --title "<scratch project title>" [--types standards.json] [--only 01,14] [--keep]
 
-A project without the B2M template types needs a standards file mapping the logical types
-(Brick 230, Brick 115, RCC 150, the door and window names in b2m/engine/catalog.py) to its own.
+A project without the Plinth template types needs a standards file mapping the logical types
+(Brick 230, Brick 115, RCC 150, the door and window names in plinth/engine/catalog.py) to its own.
 """
 
 from __future__ import annotations
@@ -19,13 +19,13 @@ import sys
 import time
 from pathlib import Path
 
-from b2m import logs
-from b2m.builds import BuildService
-from b2m.engine import generate
-from b2m.plan import translate
-from b2m.revit.types import TypeMap
-from b2m.runs import RunStore
-from b2m.spec import BuildingSpec
+from plinth import logs
+from plinth.builds import BuildService
+from plinth.engine import generate
+from plinth.plan import translate
+from plinth.revit.types import TypeMap
+from plinth.runs import RunStore
+from plinth.spec import BuildingSpec
 
 SPECS = Path(__file__).resolve().parent.parent / "tests" / "golden" / "specs"
 OFFSET = (300000, 0)  # mm: well clear of a typical existing model

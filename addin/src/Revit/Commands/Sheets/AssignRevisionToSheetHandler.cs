@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Sheets/AssignRevisionToSheetHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: an unknown revision lists the valid ones; unknown sheet ids/numbers are one error listing
+// Modified for Plinth: an unknown revision lists the valid ones; unknown sheet ids/numbers are one error listing
 // all misses with the valid sheets; placeholder sheets are refused; an issued revision is refused before the
 // transaction (Revit locks issued revisions on sheets); failures are errors rather than a success with
 // updated=false; the silent revision-lookup fallbacks and camelCase aliases are gone.
@@ -10,10 +10,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Sheets
+namespace Plinth.Revit.Commands.Sheets
 {
     public sealed class AssignRevisionToSheetHandler : IRevitCommand
     {
@@ -88,7 +88,7 @@ namespace B2M.Revit.Commands.Sheets
                 return CommandResult.Fail("SHEET_IS_PLACEHOLDER: placeholder sheet(s) " + string.Join(", ", placeholders) + " cannot carry revisions.");
 
             var rows = new JArray();
-            using (var tx = new Transaction(doc, "B2M: Assign Revision To Sheets"))
+            using (var tx = new Transaction(doc, "Plinth: Assign Revision To Sheets"))
             {
                 tx.Start();
                 try

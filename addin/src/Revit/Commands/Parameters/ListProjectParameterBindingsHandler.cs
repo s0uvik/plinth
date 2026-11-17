@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Parameters/ListProjectParameterBindingsHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: rows are ordered without "dynamic"; limit outside 1-5000 is an error; the parameter element is
+// Modified for Plinth: rows are ordered without "dynamic"; limit outside 1-5000 is an error; the parameter element is
 // taken from the binding's InternalDefinition only (rvt-mcp fell back to a name match); categories carry
 // builtInCategory; family documents are refused.
 
@@ -8,10 +8,10 @@ using System;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Parameters
+namespace Plinth.Revit.Commands.Parameters
 {
     public sealed class ListProjectParameterBindingsHandler : IRevitCommand
     {

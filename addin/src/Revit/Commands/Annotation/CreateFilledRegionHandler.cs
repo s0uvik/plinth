@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Annotations/CreateFilledRegionHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: in plan views the points are model X/Y in mm (other views: mm along the view's right/up from
+// Modified for Plinth: in plan views the points are model X/Y in mm (other views: mm along the view's right/up from
 // its origin, as before); with no filled_region_type_id the project's default filled region type is used and a
 // miss lists the valid types (rvt-mcp took the first type found); each point is checked here because the schema
 // checker stops at the top level; points closer than Revit's short-curve tolerance are an error; mm via Mm.
@@ -10,12 +10,12 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Annotation
+namespace Plinth.Revit.Commands.Annotation
 {
-    // B2M.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
+    // Plinth.Revit.Commands.View is a namespace; this alias keeps "View" meaning the Revit class.
     using View = Autodesk.Revit.DB.View;
 
     public sealed class CreateFilledRegionHandler : IRevitCommand
@@ -71,7 +71,7 @@ namespace B2M.Revit.Commands.Annotation
                         + " are too close; remove repeated points (do not repeat the first point at the end).");
 
             FilledRegion region;
-            using (var tx = new Transaction(doc, "B2M: Create Filled Region"))
+            using (var tx = new Transaction(doc, "Plinth: Create Filled Region"))
             {
                 tx.Start();
                 try

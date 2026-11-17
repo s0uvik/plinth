@@ -1,0 +1,981 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plinth Drawings to Model</title>
+<style>
+  :root {
+    --grey-50: hsl(210 20% 98%); --grey-100: hsl(210 18% 95%); --grey-200: hsl(210 16% 89%);
+    --grey-400: hsl(210 10% 62%); --grey-600: hsl(210 10% 40%); --grey-800: hsl(210 18% 18%);
+    --blue-50: hsl(214 90% 96%); --blue-600: hsl(214 75% 45%); --blue-700: hsl(216 75% 38%);
+    --green-50: hsl(145 60% 95%); --green-700: hsl(145 63% 26%);
+    --amber-50: hsl(42 95% 94%); --amber-800: hsl(32 80% 28%);
+    --red-50: hsl(0 85% 96%); --red-700: hsl(0 65% 40%);
+    --magenta-600: hsl(326 100% 42%);
+    --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px;
+    --t-xs: 12px; --t-sm: 13px; --t-base: 15px; --t-lg: 18px; --t-xl: 24px;
+    --radius: 6px;
+    --shadow-1: 0 1px 2px hsl(210 20% 20% / .08), 0 1px 3px hsl(210 20% 20% / .06);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--grey-100); color: var(--grey-800);
+         font: var(--t-base)/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { max-width: 1440px; margin: 0 auto; padding: var(--s6) var(--s5) var(--s4);
+           display: flex; justify-content: space-between; align-items: baseline; gap: var(--s4); flex-wrap: wrap; }
+  h1 { font-size: var(--t-xl); line-height: 1.2; margin: 0; letter-spacing: -0.01em; }
+  header p { margin: var(--s1) 0 0; color: var(--grey-600); max-width: 65ch; }
+  header a { color: var(--grey-600); font-size: var(--t-sm); }
+  .wrap { max-width: 1440px; margin: 0 auto; padding: 0 var(--s5); }
+  main { max-width: 1440px; margin: 0 auto; padding: var(--s5) var(--s5) var(--s7);
+         display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: var(--s5); align-items: start; }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+  section { background: white; border-radius: var(--radius); box-shadow: var(--shadow-1); padding: var(--s5); }
+  section + section { margin-top: var(--s5); }
+  h2 { font-size: var(--t-lg); line-height: 1.3; margin: 0 0 var(--s3); }
+  h3 { font-size: var(--t-sm); font-weight: 600; text-transform: uppercase; letter-spacing: .05em;
+       color: var(--grey-600); margin: var(--s5) 0 var(--s2); }
+  input[type=text] { width: 100%; font: inherit; color: inherit; padding: var(--s2) var(--s3);
+       border: 1px solid var(--grey-200); border-radius: var(--radius); background: var(--grey-50); }
+  input:focus { outline: 2px solid var(--blue-600); outline-offset: 1px; background: white; }
+  label { display: block; font-weight: 600; margin-bottom: var(--s1); }
+  label .opt { font-weight: 400; color: var(--grey-600); }
+  .field + .field { margin-top: var(--s3); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
+  .grid2 .field + .field { margin-top: 0; }
+  .hint { color: var(--grey-600); font-size: var(--t-sm); margin: var(--s1) 0 0; }
+  .actions { display: flex; gap: var(--s3); align-items: center; margin-top: var(--s4); flex-wrap: wrap; }
+  button { font: inherit; font-weight: 600; border-radius: var(--radius); padding: var(--s2) var(--s4); cursor: pointer;
+           border: 1px solid transparent; }
+  button.primary { background: var(--blue-600); color: white; }
+  button.primary:hover { background: var(--blue-700); }
+  button.secondary { background: var(--blue-50); color: var(--blue-700); }
+  button.small { font-size: var(--t-sm); padding: var(--s1) var(--s3); }
+  button.link { background: none; color: var(--blue-700); padding: 0; font-weight: 600; font-size: var(--t-sm); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.working { cursor: progress; }
+  .muted { color: var(--grey-600); }
+  .small { font-size: var(--t-sm); }
+  .note { padding: var(--s3) var(--s4); border-radius: var(--radius); border-left: 4px solid; margin-top: var(--s3); }
+  .note.warn { background: var(--amber-50); color: var(--amber-800); border-color: var(--amber-800); }
+  .note.error { background: var(--red-50); color: var(--red-700); border-color: var(--red-700); }
+  .note.ok { background: var(--green-50); color: var(--green-700); border-color: var(--green-700); }
+  .note ul { margin: var(--s1) 0 0; padding-left: var(--s4); }
+  .bar { height: 8px; background: var(--grey-100); border-radius: 4px; overflow: hidden; margin: var(--s2) 0; }
+  .bar div { height: 100%; background: var(--blue-600); width: 0; transition: width .3s; }
+  .hidden { display: none !important; }
+  .empty { color: var(--grey-600); }
+
+  /* import bar */
+  .importbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--s3); align-items: end; }
+  .steps { display: flex; gap: var(--s5); margin-top: var(--s4); font-size: var(--t-sm); color: var(--grey-400); flex-wrap: wrap; }
+  .steps span::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+                        background: var(--grey-200); margin-right: var(--s2); vertical-align: 1px; }
+  .steps .done { color: var(--grey-600); }
+  .steps .done::before { background: var(--green-700); }
+  .steps .now { color: var(--grey-800); font-weight: 600; }
+  .steps .now::before { background: var(--blue-600); }
+
+  /* sheets */
+  .sheets { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--s2); }
+  .sheet { text-align: left; font-weight: 400; background: var(--grey-50); border: 1px solid var(--grey-200);
+           padding: var(--s2) var(--s3); line-height: 1.4; }
+  .sheet:hover { border-color: var(--grey-400); }
+  .sheet.active { background: var(--blue-50); border-color: var(--blue-600); }
+  .sheet strong { display: block; font-size: var(--t-sm); }
+  .sheet span { display: block; font-size: var(--t-xs); color: var(--grey-600); }
+
+  /* overlay viewer */
+  .viewer { position: relative; height: 68vh; min-height: 420px; margin-top: var(--s4); border-radius: var(--radius);
+            background: var(--grey-50); box-shadow: inset 0 1px 3px hsl(210 20% 20% / .12); overflow: hidden;
+            cursor: grab; user-select: none; }
+  .viewer.dragging { cursor: grabbing; }
+  .viewer svg { width: 100%; height: 100%; display: block; }
+  .viewer .source { pointer-events: none; }
+  .viewer [data-id] { cursor: pointer; }
+  .viewer .sel { stroke: var(--magenta-600) !important; stroke-width: 4px !important; vector-effect: non-scaling-stroke;
+                 fill-opacity: .7 !important; }
+  .viewer .hit { stroke: var(--magenta-600) !important; stroke-width: 3px !important; vector-effect: non-scaling-stroke; }
+  .viewer rect.evidence.on { visibility: visible; }
+  .viewer.no-source .source, .viewer.no-recognised .recognised { display: none; }
+  .viewer-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--grey-600); padding: var(--s5);
+                  text-align: center; }
+  .toolbar { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; margin-top: var(--s4); }
+  .toolbar .spacer { flex: 1; }
+  .toolbar label { display: inline-flex; gap: var(--s1); align-items: center; font-weight: 400; font-size: var(--t-sm);
+                   margin: 0 var(--s3) 0 0; color: var(--grey-600); }
+  .details { margin-top: var(--s4); min-height: 64px; }
+  .details dl { display: grid; grid-template-columns: max-content 1fr; gap: var(--s1) var(--s4); margin: var(--s2) 0 0;
+                font-size: var(--t-sm); }
+  .details dt { color: var(--grey-600); }
+  .details dd { margin: 0; }
+  .mono { font-family: ui-monospace, Consolas, monospace; font-size: var(--t-xs); word-break: break-all; }
+  .counts { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s4); font-size: var(--t-sm); color: var(--grey-600); margin-top: var(--s2); }
+  .counts b { color: var(--grey-800); font-variant-numeric: tabular-nums; }
+
+  /* questions */
+  .group-head { display: flex; justify-content: space-between; align-items: baseline; margin: var(--s5) 0 var(--s2); }
+  .group-head:first-child { margin-top: 0; }
+  .group-head h3 { margin: 0; }
+  .group-head.blocking h3 { color: var(--red-700); }
+  .q { padding: var(--s3) 0; border-top: 1px solid var(--grey-100); }
+  .q:first-of-type { border-top: 0; }
+  .q-text { margin: 0; }
+  .q-meta { display: flex; gap: var(--s3); align-items: baseline; font-size: var(--t-xs); color: var(--grey-600);
+            margin-top: var(--s1); flex-wrap: wrap; }
+  .q-opts { display: flex; gap: var(--s2); flex-wrap: wrap; margin-top: var(--s2); }
+  .q-input { display: flex; gap: var(--s2); margin-top: var(--s2); }
+  .q-input input { padding: var(--s1) var(--s2); font-size: var(--t-sm); flex: 1; min-width: 0; width: auto; }
+  .q-opts button[aria-pressed=true] { box-shadow: inset 0 0 0 2px var(--blue-600); }
+  /* answer forms: built from the answer's shape; labels lighter than the values typed */
+  .q-form { margin-top: var(--s3); padding: var(--s4); background: var(--grey-50); border-radius: var(--radius);
+            border: 1px solid var(--grey-200); }
+  .q-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: var(--s3); }
+  .q-fields .wide { grid-column: 1 / -1; }
+  .q-form label { font-size: var(--t-xs); font-weight: 600; color: var(--grey-600); margin-bottom: var(--s1);
+                  text-transform: none; }
+  .q-form input, .q-form select, .q-form textarea { width: 100%; font: inherit; font-size: var(--t-sm); color: var(--grey-800);
+       padding: var(--s1) var(--s2); border: 1px solid var(--grey-200); border-radius: var(--radius); background: white; }
+  .q-form textarea { font-family: ui-monospace, Consolas, monospace; font-size: var(--t-xs); min-height: 72px; resize: vertical; }
+  .q-form fieldset { border: 0; padding: 0; margin: 0; }
+  .q-form legend { font-size: var(--t-xs); font-weight: 600; color: var(--grey-600); padding: 0; margin-bottom: var(--s2); }
+  .q-row { display: flex; gap: var(--s3); align-items: end; padding: var(--s3) 0; border-top: 1px solid var(--grey-200); }
+  .q-row:first-child { border-top: 0; padding-top: 0; }
+  .q-row .q-fields { flex: 1; }
+  .q-form .actions { margin-top: var(--s4); }
+  .q-json { margin-top: var(--s2); }
+  .pill { display: inline-block; font-size: var(--t-xs); font-weight: 600; border-radius: 999px; padding: 0 var(--s2);
+          letter-spacing: .02em; }
+  .pill.user { background: var(--green-50); color: var(--green-700); }
+  .pill.assumed { background: var(--amber-50); color: var(--amber-800); }
+  .answer { margin-top: var(--s2); font-size: var(--t-sm); display: flex; gap: var(--s2); align-items: baseline; flex-wrap: wrap; }
+  .assumptions li { font-size: var(--t-sm); }
+  ul.plain { list-style: none; padding: 0; margin: 0; }
+  ul.plain li { padding: var(--s2) 0; border-top: 1px solid var(--grey-100); }
+  ul.plain li:first-child { border-top: 0; }
+  .accent-top { border-top: 3px solid var(--blue-600); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Drawings to model</h1>
+    <p>Import the office's DWG set, check what Plinth understood on each sheet, answer its questions, then approve and build.
+       Nothing is built until you approve.</p>
+  </div>
+  <a href="/">Brief to model</a>
+</header>
+
+<div class="wrap">
+  <section class="accent-top">
+    <div class="importbar">
+      <div class="field">
+        <label for="folder">Drawing folder</label>
+        <input type="text" id="folder" placeholder="Folder with the DWG or DXF sheets, e.g. D:\Projects\G4 Block\DWG">
+      </div>
+      <button class="primary" id="start">Import drawings</button>
+    </div>
+    <div class="actions" style="margin-top: var(--s3)">
+      <span class="muted small" id="earlier-label">Or open an earlier import:</span>
+      <select id="earlier" class="small" style="font: inherit; font-size: var(--t-sm); padding: var(--s1) var(--s2);
+              border: 1px solid var(--grey-200); border-radius: var(--radius); background: var(--grey-50)"></select>
+    </div>
+    <div id="progress" class="hidden">
+      <div class="steps" id="steps"></div>
+      <div id="import-error"></div>
+    </div>
+  </section>
+  <div id="notice"></div>
+</div>
+
+<main id="review" class="hidden">
+  <div>
+    <section>
+      <h2>Sheets</h2>
+      <div class="sheets" id="sheets"></div>
+      <div class="toolbar">
+        <strong id="sheet-title">Pick a sheet</strong>
+        <span class="spacer"></span>
+        <label><input type="checkbox" id="show-source" checked> Source drawing</label>
+        <label><input type="checkbox" id="show-recognised" checked> What Plinth understood</label>
+        <button class="secondary small" id="fit">Fit</button>
+      </div>
+      <div class="viewer" id="viewer"><div class="viewer-empty" id="viewer-empty">Pick a sheet to see the drawing with what Plinth understood drawn over it.
+        Scroll to zoom, drag to pan, click an element for its details.</div></div>
+      <div class="details" id="details"><p class="empty small">Click a coloured element on the drawing to see what Plinth read: its id, kind, mark, size and the drawing entities it came from.</p></div>
+    </section>
+  </div>
+
+  <aside>
+    <section>
+      <h2>Project location</h2>
+      <p class="hint" style="margin-top: 0">Plinth assumes nothing until it knows where the building is: assumptions come from that location's rules and typical practice.</p>
+      <div class="grid2" style="margin-top: var(--s3)">
+        <div class="field"><label for="loc-city">City</label><input type="text" id="loc-city"></div>
+        <div class="field"><label for="loc-municipality">Municipality <span class="opt">(if known)</span></label><input type="text" id="loc-municipality"></div>
+        <div class="field"><label for="loc-state">State</label><input type="text" id="loc-state"></div>
+        <div class="field"><label for="loc-country">Country</label><input type="text" id="loc-country"></div>
+      </div>
+      <div class="actions"><button class="secondary" id="save-location">Save location</button><span class="muted small" id="loc-status"></span></div>
+    </section>
+
+    <section>
+      <h2>Questions</h2>
+      <div id="questions"><p class="empty">Questions appear here once the drawings are read.</p></div>
+      <div class="actions">
+        <button class="secondary" id="assume" disabled>Assume remaining</button>
+        <span class="muted small" id="assume-why">Set the project location first.</span>
+      </div>
+      <div id="questions-notice"></div>
+    </section>
+
+    <section>
+      <h2>Assumptions</h2>
+      <ul class="plain assumptions" id="assumptions"><li class="empty">None. Plinth assumes only when you ask it to.</li></ul>
+    </section>
+
+    <section>
+      <h2>Review and build</h2>
+      <div id="readiness"></div>
+      <div class="field" style="margin-top: var(--s4)">
+        <label for="approve-note">Note with your approval <span class="opt">(optional)</span></label>
+        <input type="text" id="approve-note" placeholder="e.g. Checked all sheets against the PDF set">
+      </div>
+      <div class="actions"><button class="primary" id="approve" disabled>Approve review</button></div>
+      <div class="field" style="margin-top: var(--s5)">
+        <label for="title">Revit document</label>
+        <input type="text" id="title" placeholder="Title of the open project, e.g. scratch-01">
+        <p class="hint">Nothing is built unless this document is the one open in Revit.</p>
+      </div>
+      <div class="actions"><button class="primary" id="build" disabled>Build in Revit</button></div>
+      <div id="review-notice"></div>
+      <div id="result-body"></div>
+    </section>
+  </aside>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const SEVERITY = {blocking: "Blocking", check: "To check", info: "For information"};
+const ROLE = {floor_plan: "Floor plan", roof_plan: "Roof plan", site_plan: "Site plan", elevation: "Elevation",
+              section: "Section", foundation: "Foundation", beam_layout: "Beam layout", unknown: "Not recognised"};
+const STAGES = [["reading", "Reading drawings"], ["recognising", "Recognising"], ["ready", "Ready for review"]];
+let importId = null, status = null, review = null, poll = null, runId = null, runPoll = null;
+let sheetN = null, elements = {}, vb = null, baseVb = null, pendingEvidence = null, loadSeq = 0;
+
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) k === "class" ? node.className = v : node.setAttribute(k, v);
+  for (const c of children) if (c !== null && c !== undefined) node.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  return node;
+}
+
+async function call(path, body) {
+  const res = await fetch(path, body === undefined ? {} : {
+    method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const d = data.detail;
+    const error = new Error(Array.isArray(d?.errors) ? d.errors.join("\n") : typeof d === "string" ? d : `Request failed (${res.status})`);
+    error.detail = d;
+    throw error;
+  }
+  return data;
+}
+
+// where: the element a failure is shown in (next to the action), the notice under the import bar by default.
+async function busy(button, work, where = $("notice")) {
+  button.disabled = true; button.classList.add("working");
+  clearNotice(); where.replaceChildren();
+  try { await work(); }
+  catch (e) { showNotice(e.message, "error", where); }
+  finally { button.classList.remove("working"); button.disabled = false; updateButtons(); }  // gated buttons re-gate
+}
+
+function showNotice(message, kind = "error", where = $("notice")) {
+  const lines = message.split("\n");
+  const box = el("div", {class: `note ${kind} small`}, lines[0]);
+  if (lines.length > 1) box.append(el("ul", {}, ...lines.slice(1).map(l => el("li", {}, l))));
+  where.replaceChildren(box);
+  box.scrollIntoView({block: "nearest", behavior: "smooth"});
+}
+function clearNotice() { $("notice").replaceChildren(); }
+
+function itemText(i) { return typeof i === "string" ? i : (i.text || i.message || i.name || JSON.stringify(i)); }
+
+// ---- import: start, earlier imports, progress
+
+$("start").onclick = () => busy($("start"), async () => {
+  const folder = $("folder").value.trim();
+  if (!folder) throw new Error("Enter the folder that holds the drawings.");
+  const data = await call("/imports", {folder});
+  openImport(data.import_id);
+});
+
+async function loadEarlier() {
+  const list = await call("/imports").catch(() => []);
+  $("earlier").replaceChildren(el("option", {value: ""}, list.length ? "Choose…" : "None yet"),
+    ...list.map(r => el("option", {value: r.import_id}, `${r.import_id} · ${(r.inputs || []).length} drawings · ${r.status}`)));
+  $("earlier").classList.toggle("hidden", !list.length);
+  $("earlier-label").classList.toggle("hidden", !list.length);
+}
+$("earlier").onchange = () => { if ($("earlier").value) openImport($("earlier").value); };
+
+function openImport(id) {
+  importId = id; status = null; review = null; sheetN = null; runId = null;
+  history.replaceState(null, "", `#${id}`);
+  $("viewer").querySelector("svg")?.remove();
+  $("viewer-empty").classList.remove("hidden");
+  $("result-body").replaceChildren();
+  clearInterval(poll);
+  poll = setInterval(refreshStatus, 1000);
+  refreshStatus();
+}
+
+async function refreshStatus() {
+  let s;
+  try { s = await call(`/imports/${importId}`); } catch (e) { clearInterval(poll); showNotice(e.message); return; }
+  const first = status === null || status.status !== s.status;
+  status = s;
+  showSteps(s);
+  if (!["queued", "reading", "recognising"].includes(s.status)) clearInterval(poll);
+  if (s.sheets.length) {
+    $("review").classList.remove("hidden");
+    showSheets(s);
+    if (first) await refreshReview();
+    if (first && runId === null && (s.runs || []).length) {  // an earlier import: show its latest build
+      runId = s.runs[s.runs.length - 1];
+      refreshRun();
+    }
+    if (sheetN === null) selectSheet(s.sheets[0].n);
+    else if (first) selectSheet(sheetN, null, true);  // recognition finished: redraw with what Plinth understood
+  }
+  updateButtons();
+}
+
+function showSteps(s) {
+  $("progress").classList.remove("hidden");
+  const at = s.status === "ready" ? 3 : s.status === "recognising" ? 1 : s.status === "failed" ? -1 : 0;
+  $("steps").replaceChildren(...STAGES.map(([key, label], i) =>
+    el("span", {class: s.status === "failed" ? (i === 0 && s.sheets.length ? "done" : "") : i < at ? "done" : i === at ? "now" : ""},
+       i === at && at < 2 ? `${label}…` : label)));
+  $("import-error").replaceChildren(...(s.status === "failed" ? [el("div", {class: "note error small"},
+    s.hint ? el("strong", {}, s.hint) : null, el("div", {}, s.error || "The import failed."))] : []));
+}
+
+function showSheets(s) {
+  $("sheets").replaceChildren(...s.sheets.map(sh => {
+    const role = ROLE[sh.role] || sh.role;
+    const storeys = sh.storeys.length ? (sh.storeys.length > 1 ? ` · storeys ${sh.storeys[0]}–${sh.storeys.at(-1)}` : ` · storey ${sh.storeys[0]}`) : "";
+    const meta = [role + storeys, sh.scale ? `1:${sh.scale}` : null, sh.page_number ? `page ${sh.page_number}` : null].filter(Boolean).join(" · ");
+    const counts = Object.entries(sh.recognised || {}).filter(([, v]) => v).slice(0, 4)
+      .map(([k, v]) => `${v} ${v === 1 && k.endsWith("s") ? k.slice(0, -1) : k}`).join(" · ");
+    const b = el("button", {class: `sheet${sh.n === sheetN ? " active" : ""}`, title: sh.title || sh.file},
+      el("strong", {}, sh.title || sh.file), el("span", {}, meta), el("span", {}, counts || (s.status === "ready" ? "nothing recognised" : "")));
+    b.onclick = () => selectSheet(sh.n);
+    return b;
+  }));
+}
+
+// ---- overlay: load, pan/zoom, click for details, question evidence
+
+async function selectSheet(n, evidence = null, reload = false) {
+  pendingEvidence = evidence;
+  if (n === sheetN && $("viewer").querySelector("svg") && !reload) { applyEvidence(); return; }
+  sheetN = n;
+  const seq = ++loadSeq;
+  showSheets(status);
+  const sh = status.sheets.find(x => x.n === n);
+  $("sheet-title").textContent = sh.title || sh.file;
+  $("viewer").querySelector("svg")?.remove();
+  $("viewer-empty").textContent = "Loading the sheet…";
+  $("viewer-empty").classList.remove("hidden");
+  showDetails(null);
+  try {
+    const [res, els] = await Promise.all([fetch(`/imports/${importId}/sheets/${n}/overlay.svg`), call(`/imports/${importId}/sheets/${n}/elements`)]);
+    if (!res.ok) throw new Error(`Could not draw this sheet (${res.status}).`);
+    const text = await res.text();
+    if (seq !== loadSeq) return;  // a newer load started
+    elements = els.elements;
+    const holder = document.createElement("div");
+    holder.innerHTML = text;
+    const svg = holder.querySelector("svg");
+    svg.removeAttribute("width"); svg.removeAttribute("height");
+    svg.setAttribute("preserveAspectRatio", "none");
+    $("viewer").querySelector("svg")?.remove();
+    $("viewer").append(svg);
+    $("viewer-empty").classList.add("hidden");
+    baseVb = svg.getAttribute("viewBox").split(/\s+/).map(Number);
+    fit();
+    applyEvidence();
+  } catch (e) {
+    $("viewer-empty").textContent = e.message;
+  }
+}
+
+function svgEl() { return $("viewer").querySelector("svg"); }
+
+function setVb(x, y, w, h) {
+  vb = [x, y, w, h];
+  svgEl()?.setAttribute("viewBox", vb.join(" "));
+}
+
+// Fit a box (svg units) into the viewer, keeping the viewer's aspect so the drawing is not stretched.
+function fitBox([x, y, w, h], pad = 0.04) {
+  const r = $("viewer").getBoundingClientRect();
+  const aspect = r.width / Math.max(r.height, 1);
+  w *= 1 + pad * 2; h *= 1 + pad * 2; x -= w * pad / (1 + pad * 2); y -= h * pad / (1 + pad * 2);
+  if (w / h > aspect) { const nh = w / aspect; y -= (nh - h) / 2; h = nh; }
+  else { const nw = h * aspect; x -= (nw - w) / 2; w = nw; }
+  setVb(x, y, w, h);
+}
+function fit() { if (baseVb) fitBox(baseVb, 0); }
+$("fit").onclick = fit;
+window.addEventListener("resize", () => { if (vb) fitBox(vb, 0); });
+
+$("viewer").addEventListener("wheel", (e) => {
+  if (!vb) return;
+  e.preventDefault();
+  const r = $("viewer").getBoundingClientRect();
+  const fx = (e.clientX - r.left) / r.width, fy = (e.clientY - r.top) / r.height;
+  const k = Math.exp(Math.sign(e.deltaY) * 0.18);
+  const [x, y, w, h] = vb;
+  const px = x + fx * w, py = y + fy * h;
+  setVb(px - fx * w * k, py - fy * h * k, w * k, h * k);
+}, {passive: false});
+
+let drag = null;
+$("viewer").addEventListener("mousedown", (e) => {
+  if (!vb || e.button !== 0) return;
+  drag = {x: e.clientX, y: e.clientY, vb: [...vb], moved: false};
+});
+window.addEventListener("mousemove", (e) => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if (Math.abs(dx) + Math.abs(dy) > 4) { drag.moved = true; $("viewer").classList.add("dragging"); }
+  if (!drag.moved) return;
+  const r = $("viewer").getBoundingClientRect();
+  const [x, y, w, h] = drag.vb;
+  setVb(x - dx * w / r.width, y - dy * h / r.height, w, h);
+});
+window.addEventListener("mouseup", (e) => {
+  if (!drag) return;
+  const wasClick = !drag.moved;
+  drag = null;
+  $("viewer").classList.remove("dragging");
+  if (wasClick && $("viewer").contains(e.target)) {
+    const shape = e.target.closest("[data-id]");
+    select(shape ? shape.getAttribute("data-id") : null, shape);
+  }
+});
+
+function clearMarks() {
+  svgEl()?.querySelectorAll(".sel, .hit").forEach(n => n.classList.remove("sel", "hit"));
+  svgEl()?.querySelectorAll("rect.evidence.on").forEach(n => n.classList.remove("on"));
+}
+
+function select(id, shape) {
+  clearMarks();
+  if (!id) { showDetails(null); return; }
+  svgEl().querySelectorAll(`[data-id="${CSS.escape(id)}"]`).forEach(n => n.classList.add("sel"));
+  showDetails(elements[id] || {id, kind: "element", handles: (shape?.getAttribute("data-handles") || "").split(" ").filter(Boolean)});
+}
+
+function showDetails(item) {
+  const box = $("details");
+  if (!item) {
+    box.replaceChildren(el("p", {class: "empty small"}, "Click a coloured element on the drawing to see what Plinth read: its id, kind, mark, size and the drawing entities it came from."));
+    return;
+  }
+  const rows = [["Id", item.id], ["Mark", item.mark], ["Size", item.size], ["Height", item.height], ["Area", item.area],
+                ["Swing", item.swing], ["On wall", item.wall], ["Unit", item.unit], ["Severity", item.severity],
+                ["Note", item.note], ["Evidence handles", item.handles?.length ? item.handles.join(" ") : "none"]]
+    .filter(([, v]) => v !== undefined && v !== null && v !== "");
+  const related = allQuestions().filter(q => q.evidence.some(ev => ev.sheet === currentFile() && ev.handles.some(h => item.handles?.includes(h))));
+  box.replaceChildren(
+    el("strong", {}, cap(item.kind)), item.text ? el("p", {class: "small", style: "margin: var(--s1) 0 0"}, item.text) : "",
+    el("dl", {}, ...rows.flatMap(([k, v]) => [el("dt", {}, k), el("dd", {class: k === "Evidence handles" ? "mono" : ""}, v)])),
+    ...(related.length ? [el("p", {class: "small", style: "margin: var(--s2) 0 0"}, "Questions about it: " + related.map(q => q.id).join(", "))] : []));
+}
+
+function cap(s) { return s ? s[0].toUpperCase() + s.slice(1) : ""; }
+function currentFile() { return status?.sheets.find(x => x.n === sheetN)?.file; }
+
+function showEvidence(q) {
+  const ev = q.evidence.find(e => e.handles.length) || q.evidence[0];
+  if (!ev) { showNotice(`${q.id} has no drawing evidence to show.`, "warn"); return; }
+  const sh = status.sheets.find(x => x.file === ev.sheet);
+  if (!sh) { showNotice(`${q.id} refers to ${ev.sheet}, which is not in this import.`, "warn"); return; }
+  selectSheet(sh.n, {question: q.id, handles: q.evidence.filter(e => e.sheet === ev.sheet).flatMap(e => e.handles)});
+  $("viewer").scrollIntoView({block: "nearest", behavior: "smooth"});
+}
+
+function applyEvidence() {
+  const ev = pendingEvidence;
+  if (!ev || !svgEl()) return;
+  pendingEvidence = null;
+  clearMarks();
+  const svg = svgEl();
+  const hits = [...svg.querySelectorAll(`rect.evidence[data-question="${CSS.escape(ev.question)}"]`)];
+  hits.forEach(n => n.classList.add("on"));
+  const wanted = new Set(ev.handles);
+  svg.querySelectorAll("[data-handles]").forEach(n => {
+    if (!n.classList.contains("evidence") && n.getAttribute("data-handles").split(" ").some(h => wanted.has(h))) { n.classList.add("hit"); hits.push(n); }
+  });
+  if (!hits.length) { showNotice(`The evidence for ${ev.question} is not drawn on this sheet (handles ${ev.handles.join(" ") || "none"}).`, "warn"); return; }
+  let box = null;
+  for (const n of hits) {
+    const b = n.getBBox();
+    box = box ? [Math.min(box[0], b.x), Math.min(box[1], b.y), Math.max(box[2], b.x + b.width), Math.max(box[3], b.y + b.height)]
+              : [b.x, b.y, b.x + b.width, b.y + b.height];
+  }
+  const w = Math.max(box[2] - box[0], baseVb[2] / 12), h = Math.max(box[3] - box[1], baseVb[3] / 12);
+  fitBox([(box[0] + box[2] - w) / 2, (box[1] + box[3] - h) / 2, w, h], 0.4);
+}
+
+$("show-source").onchange = () => $("viewer").classList.toggle("no-source", !$("show-source").checked);
+$("show-recognised").onchange = () => $("viewer").classList.toggle("no-recognised", !$("show-recognised").checked);
+
+// ---- questions, location, assumptions, readiness
+
+async function refreshReview() {
+  try { showReview(await call(`/imports/${importId}/questions`)); } catch (e) { showNotice(e.message); }
+}
+
+function allQuestions() { return (review?.groups || []).flatMap(g => g.questions); }
+
+function showReview(data) {
+  review = data;
+  const loc = data.location;
+  for (const k of ["city", "municipality", "state", "country"]) {
+    const input = $(`loc-${k}`);
+    if (document.activeElement !== input) input.value = loc?.[k] || "";
+  }
+  $("loc-status").textContent = loc ? "Saved." : "";
+  const box = $("questions");
+  const groups = data.groups.filter(g => g.questions.length);
+  if (!groups.length) box.replaceChildren(el("p", {class: "empty"}, "No questions: the drawings settled everything Plinth needs."));
+  else box.replaceChildren(...groups.flatMap(g => {
+    const open = g.questions.filter(q => !q.answered_by).length;
+    return [el("div", {class: `group-head ${g.severity}`}, el("h3", {}, SEVERITY[g.severity] || cap(g.severity)),
+                el("span", {class: "muted small"}, open ? `${open} open of ${g.questions.length}` : "all answered")),
+            el("div", {}, ...g.questions.map(questionView))];
+  }));
+  const assumptions = data.assumptions;
+  $("assumptions").replaceChildren(...(assumptions.length ? assumptions.map(a => el("li", {},
+      el("div", {}, a.question ? el("strong", {}, `${a.question} `) : "", a.text), el("div", {class: "muted"}, a.basis)))
+    : [el("li", {class: "empty"}, "None. Plinth assumes only when you ask it to.")]));
+  showReadiness(data);
+  updateButtons();
+  renderStageQuestions();
+}
+
+function questionView(q) {
+  const node = el("div", {class: "q"});
+  const meta = el("div", {class: "q-meta"}, el("span", {}, q.id), el("span", {}, q.topic.replaceAll("_", " ")));
+  const sheets = [...new Set(q.evidence.map(e => e.sheet))];
+  if (sheets.length) {
+    const link = el("button", {class: "link"}, sheets.length > 1 ? `Show on drawing (${sheets.length} sheets)` : "Show on drawing");
+    link.onclick = () => showEvidence(q);
+    meta.append(link);
+  }
+  node.append(el("p", {class: "q-text"}, q.text), meta);
+  if (q.answered_by) {
+    const change = el("button", {class: "link"}, "Change");
+    const row = el("div", {class: "answer"}, el("span", {class: `pill ${q.answered_by}`}, q.answered_by === "user" ? "Answered by you" : "Assumed"),
+                   el("strong", {}, answerText(q.answer)), change);
+    change.onclick = () => row.replaceWith(answerControls(q, q.answer));
+    node.append(row);
+  } else {
+    node.append(answerControls(q));
+  }
+  return node;
+}
+
+// ---- answer controls: option buttons, a form where the answer is structured, free text, and JSON as a fallback.
+// A choice's value is what is sent: a plain option is sent as clicked; a shape (an object, or a list of one object)
+// opens a form built from it. A shape is the answer with blanks: null for a number to give, "" for text, a non-empty
+// string or a boolean for a fixed part (sent as it is), [one object] for rows to add. plan_input questions carry
+// their machine values in key.options_raw; the other shapes mirror plinth.cad.answers (by answer_type) and the
+// estimate's own questions (by id).
+
+const ENUMS = {function: ["interior", "exterior"], kind: ["stair", "verandah", "balcony"]};
+const isNumberKey = (k) => /_mm$/.test(k) || k === "count" || k === "storey";
+const FIELD_LABELS = {thickness_mm: "Thickness (mm)", length_mm: "Length of one (mm)", count: "How many",
+                      storey: "Storey (blank: all)", subkind: "Subkind (e.g. main)", new_marks: "New mark for the other width"};
+
+function fieldLabel(k) {
+  if (/^\d+(\.\d+)?$/.test(k)) return `The ${k} mm wide ones`;  // new_marks: by drawn width
+  return FIELD_LABELS[k] || cap(k.replace(/_mm$/, " (mm)").replaceAll("_", " "));
+}
+
+function choicesFor(q) {
+  const opts = q.options || [], raw = q.key?.options_raw, t = q.answer_type, id = q.id;
+  const plain = opts.map(o => ({label: o, value: o}));
+  const mapped = (test, shape) => opts.map(o => ({label: o, value: test(o) ? shape() : o}));
+  if (Array.isArray(raw) && raw.length && raw.length === opts.length)  // a plain option goes as its words, as before
+    return opts.map((o, i) => ({label: o, value: isShape(raw[i]) ? raw[i] : o}));
+  if (t === "opening_host")
+    return opts.map(o => ({label: o, value: /^skip/i.test(o) ? "skip" : {mode: "new_wall", thickness_mm: null, function: "interior"}}));
+  if (t === "opening_mark") return mapped(o => /new mark/i.test(o), () => ({mark: ""}));
+  if (t === "mark_width") {
+    const others = (q.key?.widths || []).filter(w => w !== q.key?.keep);
+    return mapped(o => /two types|new mark/i.test(o), () => ({split: true, new_marks: Object.fromEntries(others.map(w => [String(w), ""]))}));
+  }
+  if (t === "rooms")
+    return opts.map(o => ({label: o, value: /^one room/i.test(o) ? {one_room: true, name: ""} : /^skip/i.test(o) ? {skip: true}
+      : {lines: Object.fromEntries((q.key?.instances || []).map(i => [i.ref, []]))}}));
+  if (t === "location") return mapped(o => /^another place/i.test(o), () => ({city: "", municipality: "", state: ""}));
+  if (t === "rule_set") return mapped(o => /^other rules/i.test(o), () => ({rule_sets: []}));
+  if (t === "door_height") return [...plain, {label: "Give the height", value: {height_mm: null}}];
+  if (t === "window_size") return [...plain, {label: "Give sill and head", value: {sill_mm: null, head_mm: null}}];
+  if (t === "length") return [...plain, {label: "Give the length", value: {value_mm: null}}];
+  if (id.startsWith("estimate:railings:"))
+    return [...plain, {label: "Give the railings", value: [{kind: id.split(":")[2], subkind: "", length_mm: null, count: null, storey: null}]}];
+  if (id.startsWith("estimate:material:")) {
+    const materials = opts.filter(o => o !== "exclude");
+    return [...plain, {label: "Counts per material", value: Object.fromEntries(materials.map(m => [m, 0]))}];
+  }
+  return plain;
+}
+
+const isShape = (v) => v !== null && typeof v === "object";
+const isFixed = (k, v) => !ENUMS[k] && (typeof v === "boolean" || (typeof v === "string" && v !== ""));
+// A shape with nothing to fill in ({"skip": true}) is sent on click like a plain option.
+const needsForm = (v) => isShape(v) && (Array.isArray(v) || Object.entries(v).some(([k, x]) => !isFixed(k, x)));
+const sameShape = (shape, a) => isShape(a) && Array.isArray(shape) === Array.isArray(a)
+  && (Array.isArray(a) || Object.keys(a).every(k => k in shape));
+
+function answerControls(q, current) {
+  const box = el("div");
+  const choices = choicesFor(q);
+  const free = ["text", "choice_or_text"].includes(q.answer_type) || !choices.length;
+  const formBox = el("div"), errors = el("div");  // a failed answer is shown here, by the question
+  const buttons = [];
+  let form = null;  // the open form: {node, read}
+  const openForm = (choice, initial, button) => {
+    buttons.forEach(b => b.setAttribute("aria-pressed", String(b === button)));
+    form = shapeForm(choice.value, initial);
+    const save = el("button", {class: "primary small"}, "Save answer");
+    save.onclick = () => busy(save, () => answer(q.id, form.read()), errors);
+    formBox.replaceChildren(el("div", {class: "q-form"}, form.node, el("div", {class: "actions"}, save)));
+  };
+  if (choices.length) {
+    const opts = el("div", {class: "q-opts"});
+    for (const c of choices) {
+      const b = el("button", {class: "secondary small"}, c.label);
+      if (needsForm(c.value)) { b.setAttribute("aria-pressed", "false"); b.onclick = () => openForm(c, null, b); buttons.push(b); }
+      else b.onclick = () => busy(b, () => answer(q.id, c.value), errors);
+      opts.append(b);
+    }
+    box.append(opts);
+  }
+  if (free) {
+    const input = el("input", {type: "text", placeholder: "Your answer"});
+    if (typeof current === "string") input.value = current;
+    const save = el("button", {class: "secondary small"}, "Save");
+    save.onclick = () => busy(save, () => {
+      if (!input.value.trim()) throw new Error("Type an answer first.");
+      return answer(q.id, input.value.trim());
+    }, errors);
+    input.onkeydown = (e) => { if (e.key === "Enter") save.click(); };
+    box.append(el("div", {class: "q-input"}, input, save));
+  }
+  box.append(formBox);
+  // An answer being changed opens the form it fits, filled in; a question with nothing but a form opens it at once.
+  const shaped = choices.filter(c => needsForm(c.value));
+  const fits = shaped.find(c => sameShape(c.value, current)) || (!free && choices.length === 1 && shaped.length === 1 ? shaped[0] : null);
+  if (fits) openForm(fits, sameShape(fits.value, current) ? current : null, buttons[shaped.indexOf(fits)]);
+
+  const jsonBox = el("div", {class: "q-json"});
+  const toggle = el("button", {class: "link"}, "Type the answer as JSON");
+  toggle.onclick = () => {
+    if (jsonBox.childElementCount) { jsonBox.replaceChildren(); toggle.textContent = "Type the answer as JSON"; return; }
+    let start = current;
+    try { if (form) start = form.read(); } catch (e) { /* a half-filled form: start from the answer */ }
+    const area = el("textarea", {rows: "4", spellcheck: "false", "aria-label": "Answer as JSON"});
+    area.value = start === undefined || start === null ? "" : JSON.stringify(start, null, 1);
+    const save = el("button", {class: "secondary small"}, "Save JSON answer");
+    save.onclick = () => busy(save, () => {
+      let value;
+      try { value = JSON.parse(area.value); }
+      catch (e) { throw new Error(`That is not valid JSON (${e.message}). Text goes in double quotes: "north".`); }
+      return answer(q.id, value);
+    }, errors);
+    jsonBox.replaceChildren(el("div", {class: "q-form"}, area, el("div", {class: "actions"}, save)));
+    toggle.textContent = "Hide JSON";
+  };
+  if (shaped.length || isShape(current)) box.append(el("div", {class: "q-meta"}, toggle), jsonBox);
+  box.append(errors);
+  return box;
+}
+
+// A form for a shape: {node, read()}. read() gives the answer to send (it throws when a field cannot be read).
+function shapeForm(shape, initial) {
+  if (Array.isArray(shape)) return rowsForm(shape[0], Array.isArray(initial) ? initial : null);
+  const fields = objectFields(shape, initial);
+  return {node: fields.node, read: fields.read};
+}
+
+function rowsForm(rowShape, initial) {
+  const list = el("div");
+  const rows = [];
+  const addRow = (value) => {
+    const fields = objectFields(rowShape, value);
+    const remove = el("button", {class: "link", type: "button"}, "Remove");
+    const row = el("div", {class: "q-row"}, fields.node, remove);
+    const entry = {row, read: fields.read};
+    remove.onclick = () => { rows.splice(rows.indexOf(entry), 1); row.remove(); };
+    rows.push(entry);
+    list.append(row);
+  };
+  (initial && initial.length ? initial : [null]).forEach(addRow);
+  const add = el("button", {class: "link", type: "button"}, "Add another");
+  add.onclick = () => addRow(null);
+  return {node: el("div", {}, list, el("div", {class: "q-meta"}, add)), read: () => rows.map(r => r.read())};
+}
+
+function objectFields(shape, initial) {
+  const grid = el("div", {class: "q-fields"});
+  const readers = [];
+  for (const [k, v] of Object.entries(shape)) {
+    const given = initial && k in initial ? initial[k] : undefined;
+    const id = `f${Math.random().toString(36).slice(2, 9)}`;
+    if (ENUMS[k]) {
+      const values = [...new Set([...ENUMS[k], ...(typeof v === "string" && v ? [v] : []), ...(typeof given === "string" ? [given] : [])])];
+      const select = el("select", {id}, ...values.map(x => el("option", {value: x}, x)));
+      select.value = given ?? v ?? values[0];
+      grid.append(el("div", {}, el("label", {for: id}, fieldLabel(k)), select));
+      readers.push([k, () => select.value]);
+    } else if (isFixed(k, v)) {
+      readers.push([k, () => v]);  // a fixed part of the answer (mode, one_room ...)
+    } else if (isNumberKey(k) || typeof v === "number") {
+      const input = el("input", {id, type: "number", step: "any", min: "0"});
+      if (given !== undefined && given !== null) input.value = given;
+      else if (typeof v === "number" && v) input.value = v;
+      grid.append(el("div", {}, el("label", {for: id}, fieldLabel(k)), input));
+      readers.push([k, () => input.value.trim() === "" ? (typeof v === "number" ? 0 : null) : Number(input.value)]);
+    } else if (isShape(v) && !Array.isArray(v) && Object.keys(v).length) {
+      const inner = objectFields(v, isShape(given) ? given : null);
+      grid.append(el("fieldset", {class: "wide"}, el("legend", {}, fieldLabel(k)), inner.node));
+      readers.push([k, inner.read]);
+    } else if (isShape(v)) {  // a list or map whose items have no shape here (separation lines, rule set ids)
+      const area = el("textarea", {id, rows: "2", spellcheck: "false"});
+      area.value = JSON.stringify(given ?? v);
+      grid.append(el("div", {class: "wide"}, el("label", {for: id}, `${fieldLabel(k)} (JSON)`), area));
+      readers.push([k, () => {
+        try { return JSON.parse(area.value); }
+        catch (e) { throw new Error(`${fieldLabel(k)}: not valid JSON (${e.message}).`); }
+      }]);
+    } else {
+      const input = el("input", {id, type: "text"});
+      if (given !== undefined && given !== null) input.value = given;
+      grid.append(el("div", {}, el("label", {for: id}, fieldLabel(k)), input));
+      readers.push([k, () => input.value.trim() || null]);
+    }
+  }
+  return {node: grid, read: () => Object.fromEntries(readers.map(([k, read]) => [k, read()]))};
+}
+
+// An answer in words: "thickness 125 mm · function interior"; rows on their own lines.
+function answerText(a) {
+  if (a === null || a === undefined) return "";
+  if (Array.isArray(a)) return a.map(answerText).join("; ");
+  if (typeof a !== "object") return String(a);
+  return Object.entries(a).filter(([, v]) => v !== null && v !== "" && !(isShape(v) && !Object.keys(v).length))
+    .map(([k, v]) => /_mm$/.test(k) && typeof v === "number" ? `${k.replace(/_mm$/, "").replaceAll("_", " ")} ${v} mm`
+                     : typeof v === "boolean" ? (v ? k.replaceAll("_", " ") : null)
+                     : `${k.replaceAll("_", " ")} ${isShape(v) ? `(${answerText(v)})` : v}`)
+    .filter(Boolean).join(" · ");
+}
+
+async function answer(questionId, value) {
+  showReview(await call(`/imports/${importId}/answers`, {question_id: questionId, answer: value}));
+}
+
+$("save-location").onclick = () => busy($("save-location"), async () => {
+  const body = {city: $("loc-city").value.trim(), municipality: $("loc-municipality").value.trim() || null,
+                state: $("loc-state").value.trim(), country: $("loc-country").value.trim()};
+  const missing = ["city", "state", "country"].filter(k => !body[k]);
+  if (missing.length) throw new Error(`Enter the ${missing.join(", ")}.`);
+  showReview(await call(`/imports/${importId}/location`, body));
+});
+
+$("assume").onclick = () => busy($("assume"), async () => {
+  const data = await call(`/imports/${importId}/assume`, {question_ids: "all"});
+  showReview(data);
+  const made = data.assumed || [];
+  showNotice(`Plinth assumed ${made.length} answer${made.length === 1 ? "" : "s"} from the location's rules. Every assumption is listed under Assumptions; check each before approving.`, "warn", $("questions-notice"));
+}, $("questions-notice"));
+
+function showReadiness(data) {
+  const r = data.readiness || {ready: false, blocking: []};
+  const box = $("readiness");
+  const approval = [...(data.approvals || [])].reverse().find(a => ["review", "review_withdrawn"].includes(a.what));
+  if (data.approved) {
+    box.replaceChildren(el("div", {class: "note ok"}, `Approved by you, ${approval.at.replace("T", " ").replace("+00:00", " UTC")}.`,
+      approval.note ? el("div", {class: "small"}, approval.note) : ""));
+  } else if (r.ready) {
+    box.replaceChildren(el("div", {class: "note ok"}, "Ready for your approval: no blocking question is open."),
+      ...(approval?.what === "review_withdrawn" ? [el("div", {class: "note warn small"}, `Your earlier approval was withdrawn: ${approval.note}.`)] : []));
+  } else {
+    const items = (r.blocking || []).map(itemText);
+    box.replaceChildren(el("div", {class: "note warn"}, "Not ready to approve yet.",
+      items.length ? el("ul", {class: "small"}, ...items.map(i => el("li", {}, i))) : "",
+      r.error ? el("div", {class: "small"}, r.error) : ""));
+  }
+}
+
+function updateButtons() {
+  const ready = status?.status === "ready";
+  const located = !!review?.location;
+  const open = allQuestions().filter(q => !q.answered_by).length;
+  $("assume").disabled = !located || !open || !ready;
+  $("assume-why").textContent = !located ? "Set the project location first." : !open ? "No open questions." : "Answers the open questions from the location's rules; every one is listed back.";
+  $("approve").disabled = !ready || !review?.readiness?.ready || review?.approved;
+  $("build").disabled = !ready || !review?.approved;
+}
+
+$("approve").onclick = () => busy($("approve"), async () => {
+  showReview(await call(`/imports/${importId}/approve`, {note: $("approve-note").value.trim() || null}));
+  status = await call(`/imports/${importId}`);
+}, $("review-notice"));
+
+// ---- build: the same progress view as the brief page
+
+$("build").onclick = () => busy($("build"), async () => {
+  if (!$("title").value.trim()) throw new Error("Enter the title of the Revit document to build in.");
+  const data = await call(`/imports/${importId}/build`, {document_title: $("title").value.trim()});
+  runId = data.run_id;
+  clearInterval(runPoll);
+  runPoll = setInterval(refreshRun, 1000);
+  refreshRun();
+}, $("review-notice"));
+
+async function refreshRun() {
+  let run;
+  try { run = await call(`/runs/${runId}`); } catch (e) { return; }
+  const parts = [el("h3", {}, "Build"), el("p", {class: "muted small", style: "margin: 0"}, `Run ${run.run_id}`)];
+  const b = run.batches;
+  if (b) {
+    parts.push(el("div", {class: "small"}, `Batch ${b.succeeded} of ${b.total}`),
+               el("div", {class: "bar"}, Object.assign(el("div"), {style: `width:${b.total ? 100 * b.succeeded / b.total : 0}%`})));
+  }
+  const label = {queued: "Waiting for Revit", building: "Building", built: "Built", built_with_issues: "Built, with issues",
+                 failed: "Failed", needs_input: "Needs your answer", unknown: "A batch is still running in Revit", removing: "Removing", removed: "Removed"}[run.status] || run.status;
+  parts.push(el("strong", {}, label));
+  if (run.readback) {
+    const r = run.readback;
+    parts.push(el("div", {class: `note ${r.ok ? "ok" : "warn"} small`},
+      `${r.elements} elements, ${r.warnings_total} Revit warnings` + (r.mismatches.length ? `, ${r.mismatches.length} count mismatches` : "")));
+  }
+  if (run.error) parts.push(el("div", {class: "note error small"}, run.hint ? el("strong", {}, run.hint) : "",
+    el("div", {}, run.error + (run.failed_key ? ` (at ${run.failed_key})` : ""))));
+  if (run.status === "needs_input" && run.question) {
+    const q = run.question;
+    const box = el("div", {class: "note warn small"}, el("strong", {}, q.text));
+    if (q.candidates && q.candidates.length)
+      box.append(el("div", {}, "Closest families found: " + q.candidates.map(c => c.family_name || c.file_name || c).join(", ")));
+    if (q.searched && q.searched.length) box.append(el("div", {class: "muted"}, "Searched: " + q.searched.join("; ")));
+    parts.push(box);
+  }
+  if (["built", "built_with_issues"].includes(run.status)) parts.push(...afterBuild(run));
+  if (run.created && Object.keys(run.created).length && !["removed", "removing", "building", "queued"].includes(run.status)) {
+    const remove = el("button", {class: "secondary small"}, "Remove generated model");
+    remove.onclick = () => busy(remove, async () => { await call(`/runs/${runId}/remove`, {}); refreshRun(); });
+    parts.push(el("div", {class: "actions"}, remove));
+  }
+  $("result-body").replaceChildren(...parts);
+  if (!["queued", "building", "removing"].includes(run.status)) clearInterval(runPoll);
+}
+
+// ---- after the build: self-check, drawing set, estimate (each stage's questions are import questions too)
+
+function link(href, text) { return el("a", {href, target: "_blank", rel: "noopener"}, text); }
+
+function afterBuild(run) {
+  const out = [];
+  const sc = run.selfcheck;
+  if (sc) {
+    const a = sc.accounting || {};
+    out.push(el("h3", {}, "Self-check against the drawings"),
+      el("div", {class: `note ${sc.unexplained ? "warn" : "ok"} small`},
+        el("strong", {}, sc.unexplained ? `${sc.unexplained} difference${sc.unexplained === 1 ? "" : "s"} not explained` : "No unexplained difference"),
+        el("div", {}, `${sc.explained} explained by your answers or documented rules; ${sc.elements_read} elements read back.`),
+        el("div", {}, `Recognised ${a.recognised ?? "?"}: built ${a.planned ?? "?"}, listed as not modelled ${a.not_modelled ?? "?"}, ` +
+                      `accounted for by a rule ${a.explained ?? "?"}, unaccounted ${a.unaccounted ?? "?"}.`),
+        el("div", {}, link(sc.report, "Open the self-check report"))));
+  } else if (run.checks?.error) {
+    out.push(el("div", {class: "note error small"}, `The self-check failed: ${run.checks.error}`));
+  }
+
+  out.push(el("h3", {}, "Drawing set"));
+  const d = run.drawings;
+  const drawBox = el("div", {id: "drawings-body"});
+  // One action at a time: make the set, or once it is made, remake it (Plinth deletes its own sheets first).
+  const drawingsButton = (label, body) => {
+    const b = el("button", {class: "secondary small"}, label);
+    b.onclick = () => {
+      if (body.remake && !confirm(`Remake the drawing set? Plinth deletes the sheets it made for this run (${d.sheets.join(", ")}) ` +
+                                  "and makes them again from the model as it is now.")) return;
+      busy(b, async () => {
+        try { await call(`/imports/${importId}/drawings`, body); }
+        catch (e) { if (e.detail?.questions) await refreshReview(); throw e; }
+        refreshRun();
+      }, $("drawings-notice"));
+    };
+    return el("div", {class: "actions"}, b);
+  };
+  if (d?.sheets?.length) {
+    drawBox.append(el("div", {class: `note ${d.status === "done" ? "ok" : "warn"} small`},
+      `Sheets ${d.sheets.join(", ")}` + (d.failed?.length ? `; ${d.failed.length} steps failed` : ""),
+      el("div", {}, d.pdf ? link(`/runs/${run.run_id}/drawings.pdf`, "PDF") : "", " · ",
+         link(`/runs/${run.run_id}/drawings-comparison.html`, "Comparison with the source sheets"))),
+      drawingsButton("Remake drawing set", {run_id: run.run_id, remake: true}));
+  } else {
+    drawBox.append(drawingsButton("Make drawing set", {run_id: run.run_id}));
+  }
+  out.push(drawBox, el("div", {id: "drawings-notice"}), el("div", {id: "drawings-questions"}));
+
+  out.push(el("h3", {}, "Estimate"));
+  const ref = el("input", {type: "text", id: "reference-xlsx", placeholder: "Optional: the office's own estimate workbook (.xlsx) to compare with"});
+  const make = el("button", {class: "secondary small"}, "Make estimate");
+  make.onclick = () => busy(make, async () => {
+    const data = await call(`/imports/${importId}/estimate`, {run_id: run.run_id, reference_xlsx: ref.value.trim() || null});
+    await refreshReview();
+    showEstimate(data);
+  }, $("estimate-notice"));
+  out.push(el("div", {class: "field"}, ref), el("div", {class: "actions"}, make),
+           el("div", {id: "estimate-notice"}), el("div", {id: "estimate-body"}), el("div", {id: "estimate-questions"}));
+  setTimeout(renderStageQuestions);
+  return out;
+}
+
+function showEstimate(data) {
+  const c = data.comparison;
+  const links = Object.entries(data.urls || {}).map(([name, href]) =>
+    link(href, {"estimate.xlsx": "Estimate (Excel)", "estimate-crosscheck.html": "Cross-check with the drawings",
+                "estimate-comparison.html": "Comparison with your workbook"}[name] || name));
+  const open = (data.questions || []).length;
+  $("estimate-body").replaceChildren(el("div", {class: `note ${open ? "warn" : "ok"} small`},
+    `Measured from the ${data.source === "model" ? "built model" : "drawings as answered"} with the ${data.rules} rules: ${data.rows} rows.`,
+    c ? el("div", {}, c.exact ? "Matches your workbook cell by cell." :
+        `${c.differences.length} cell${c.differences.length === 1 ? "" : "s"} differ from your workbook (${Object.entries(c.counts).map(([k, v]) => `${k} ${v}`).join(", ")}).`) : "",
+    open ? el("div", {}, `${open} question${open === 1 ? "" : "s"} below; answer and make it again.`) : "",
+    el("div", {}, ...links.flatMap((l, i) => i ? [" · ", l] : [l]))));
+}
+
+function renderStageQuestions() {
+  for (const stage of ["drawings", "estimate"]) {
+    const box = $(`${stage}-questions`);
+    if (!box) continue;
+    const qs = allQuestions().filter(q => q.key?.stage === stage && !q.answered_by);
+    box.replaceChildren(...(qs.length ? [el("p", {class: "small muted"}, `To answer before the ${stage === "drawings" ? "drawing set" : "estimate"} is complete:`), ...qs.map(questionView)] : []));
+  }
+}
+
+loadEarlier();
+if (location.hash.length > 1) openImport(decodeURIComponent(location.hash.slice(1)));
+</script>
+</body>
+</html>

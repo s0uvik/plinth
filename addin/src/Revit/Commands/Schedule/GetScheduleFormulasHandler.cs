@@ -1,6 +1,6 @@
 // Derived from rvt-mcp by bimwright (https://github.com/bimwright/rvt-mcp),
 // file src/shared/Handlers/Schedules/GetScheduleFormulasHandler.cs, commit b44ee0b. Licensed under the Apache License, Version 2.0.
-// Modified for B2M: calculated fields are found through ScheduleField.FieldType (Formula, Percentage); rvt-mcp
+// Modified for Plinth: calculated fields are found through ScheduleField.FieldType (Formula, Percentage); rvt-mcp
 // reflected for HasFormula/Formula/GetFormula members that the 2024-2027 API does not have, so it never
 // reported a formula field. The Revit API does not expose formula text, so formula is always null and the
 // dependency parsing that read it is dropped; percentage fields report the field they are a percentage of
@@ -10,10 +10,10 @@
 using System;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using B2M.Revit.Bridge;
+using Plinth.Revit.Bridge;
 using Newtonsoft.Json.Linq;
 
-namespace B2M.Revit.Commands.Schedule
+namespace Plinth.Revit.Commands.Schedule
 {
     public sealed class GetScheduleFormulasHandler : IRevitCommand
     {
