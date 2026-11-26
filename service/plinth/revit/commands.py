@@ -46,9 +46,10 @@ BOX_FAMILY_COMMAND = "create_box_family"
 # the add-in refuses create_stair in a batch, and a railing needs its stair's id and railings first; type pre-steps
 # may open, save or duplicate types, which a batch rollback cannot undo, and their results rename what later ops use.
 # Copying types from a template opens another file, and creating a box family builds and loads a family file, which
-# the add-in refuses inside a batch.
+# the add-in refuses inside a batch. A circuit's panel assignment may be undone by Revit's failure handling on its own
+# (reported for the whole request, success with rolled_back_by_failure): one call per circuit tells whose it was.
 DIRECT_OPS = frozenset({"stair", "railing", "wall_type", "floor_type", "opening_type", "types_from_file",
-                        "family_type_copy", "family_create"})
+                        "family_type_copy", "family_create", "circuit"})
 
 # Placed families of these categories go through the MEP placement commands (snake_case parameters); the rest through
 # create_point_based_element. All three place the same way (the add-in's FamilyPlacer).
@@ -76,6 +77,20 @@ CATEGORY = {
 
 # What ensure_* reports when the type was already there (nothing was made, so nothing to remove later).
 TYPE_FOUND_ACTIONS = frozenset({"existing", "found", "reused"})
+
+
+def fitout_commands(ops: list[Op]) -> list[str]:
+    """What building these fit-out ops needs of the add-in on top of REQUIRED_COMMANDS, so an add-in without a command
+    the plan does not use (create_box_family, the MEP ones) still builds it."""
+    kinds = {op.op for op in ops}
+    categories = {op.category for op in ops if isinstance(op, FamilyOp)}
+    wanted = {"types_from_file": ["copy_types_from_file"],
+              "family_type_copy": ["duplicate_family_type", "get_available_family_types"],
+              "family_create": [BOX_FAMILY_COMMAND], "mep_run": ["create_mep_run"],
+              "circuit": ["create_electrical_circuit"]}
+    out = [c for kind, names in wanted.items() if kind in kinds for c in names]
+    out += [c for category, c in FAMILY_COMMANDS.items() if category in categories]
+    return list(dict.fromkeys(out))
 
 
 def _points(points: list[tuple[float, float]]) -> list[dict[str, float]]:
@@ -221,6 +236,8 @@ def to_command(op: Op, plan: dict[str, Op], ids: dict[str, int], types: TypeMap 
                       "width_mm": op.width_mm, "depth_mm": op.depth_mm, "height_mm": op.height_mm}
             if op.material:
                 params["material_name"] = op.material
+            if op.connectors:
+                params["connectors"] = [c.model_dump(exclude_none=True) for c in op.connectors]
             return {"command": BOX_FAMILY_COMMAND, "params": params}
         case FamilyOp():
             return _family_command(op, ids, types)
@@ -241,6 +258,8 @@ def to_command(op: Op, plan: dict[str, Op], ids: dict[str, int], types: TypeMap 
             params = {"element_ids": [ids[k] for k in op.device_keys], "system_type": op.system_type}
             if op.panel_key:
                 params["panel_id"] = ids[op.panel_key]
+            if op.best_effort:
+                params["best_effort"] = True
             return {"command": "create_electrical_circuit", "params": params}
     raise ValueError(f"unknown op {op!r}")
 
@@ -331,7 +350,8 @@ def created_ids(op: Op, data: dict[str, Any]) -> list[int]:
         case MepRunOp():
             return list(data["created_ids"])
         case CircuitOp():
-            return [data["circuit_id"]]
+            # best_effort: no circuit when none of its devices could go on it (reported by ``issues``)
+            return [data["circuit_id"]] if data.get("circuit_id") is not None else []
     return [data["elementId"]]
 
 
@@ -347,6 +367,46 @@ def created_entries(op: Op, data: dict[str, Any]) -> dict[str, int]:
     entries.update({f"{op.key}{KEY_SEPARATOR}{FITTING_MARK}{n}": i for n, i in enumerate(fittings, 1)})
     entries.update({f"{op.key}{KEY_SEPARATOR}{PIECE_MARK}{n}": i for n, i in enumerate(others, 1)})
     return entries
+
+
+def issues(op: Op, data: dict[str, Any], response: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """What a command did not do of an op it otherwise built, each as {key, what, reason, ...}: a run's joins (and
+    elbows) Revit refused (create_mep_run's failed_connections, with require_connections false), a circuit's devices
+    left off it, a panel Revit refused (panel_error, or the panel assignment Revit's failure handling undid: the whole
+    ``response`` says rolled_back_by_failure, the circuit stays) or no circuit at all (create_electrical_circuit's
+    best_effort), a box family's connectors not made (a family of that name already in the project, or an add-in that
+    does not make them)."""
+    out: list[dict[str, Any]] = []
+    match op:
+        case MepRunOp():
+            for row in data.get("failed_connections") or []:
+                at = row.get("at")
+                what = "elbow" if at == "bend" else "connection"
+                extra = {k: row[k] for k in ("at", "element_id", "point_index") if row.get(k) is not None}
+                out.append({"key": op.key, "what": what, "reason": row.get("reason") or "refused", **extra})
+        case CircuitOp():
+            for row in data.get("skipped") or []:
+                out.append({"key": op.key, "what": "circuit_device", "element_id": row.get("element_id"),
+                            "reason": row.get("reason") or "left off the circuit"})
+            if data.get("panel_error"):
+                out.append({"key": op.key, "what": "panel", "element_id": data.get("panel_id"),
+                            "reason": data["panel_error"]})
+            elif op.panel_key and data.get("circuit_id") is not None and (response or {}).get("rolled_back_by_failure"):
+                said = "; ".join(str(f.get("message") or f) if isinstance(f, dict) else str(f)
+                                 for f in (response or {}).get("failures") or [])
+                out.append({"key": op.key, "what": "panel", "element_id": data.get("panel_id"),
+                            "reason": "Revit undid the panel assignment" + (f": {said}" if said else "")})
+            if data.get("circuit_id") is None:
+                out.append({"key": op.key, "what": "circuit",
+                            "reason": "not made: none of its devices has a free electrical connector"})
+        case FamilyCreateOp() if op.connectors:
+            made = data.get("connectors") or []
+            if len(made) < len(op.connectors):
+                why = ("the family is already in the project and is used as it is" if data.get("action") == "already_there"
+                       else "the add-in made fewer (an add-in without box connectors?)")
+                out.append({"key": op.key, "what": "connectors", "reason": f"{len(made)} of {len(op.connectors)} "
+                            f"connectors made: {why}", "asked": [c.model_dump(exclude_none=True) for c in op.connectors]})
+    return out
 
 
 def category_of(key: str, op: Op) -> str:

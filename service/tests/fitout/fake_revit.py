@@ -28,9 +28,18 @@ class FitoutRevit:
     """The fake document. ``types``: project family types {category, family, type, dims (mm), writable (names),
     placement, box: what measure_family_types answers for it {min, max, base_offset_mm} (mm, about the point asked)};
     ``mep``: project MEP types {kind, name}; ``templates``: {path: {"family_types": [...], "mep_types": {kind: [...]}}}
-    in list_types_in_file's shape; ``elements``: id -> {category, level, ...} already in the model (a built run)."""
+    in list_types_in_file's shape; ``elements``: id -> {category, level, ...} already in the model (a built run).
 
-    def __init__(self, types=None, mep=None, templates=None, elements=None, title="Scratch", year="2026"):
+    Connectors, as real families have them or not: instances of a category in ``unjoinable`` have no connector a run
+    can join (a run's join to one fails: the run is undone with require_connections, else listed in
+    failed_connections), of a category in ``unpowered`` no electrical connector (create_electrical_circuit refuses
+    them, or leaves them off with best_effort); a box family's own connectors (create_box_family's ``connectors``)
+    make its instances joinable and powered. ``refuse_panels``: Revit will not assign a circuit to a panel ("error":
+    the add-in says so in panel_error; "rollback": Revit's failure handling undoes the assignment after the add-in
+    made it, so the response is a success with rolled_back_by_failure and the circuit stays unassigned)."""
+
+    def __init__(self, types=None, mep=None, templates=None, elements=None, title="Scratch", year="2026",
+                 unjoinable=(), unpowered=(), refuse_panels=False):
         self.next_id = 50000
         self.elements: dict[int, dict[str, Any]] = {}
         for t in types or []:
@@ -49,6 +58,8 @@ class FitoutRevit:
         self.health = {"addin_version": "0.9.0", "revit_year": int(year)}
         self.observer = None
         self.warnings = 0
+        self.unjoinable, self.unpowered, self.refuse_panels = set(unjoinable), set(unpowered), refuse_panels
+        self.envelope: dict[str, Any] = {}  # what the last request's whole response adds to its data
 
     # ------------------------------------------------------------------ helpers
 
@@ -75,6 +86,18 @@ class FitoutRevit:
         return {i: e for i, e in self.elements.items()
                 if not e.get("is_type") and not e.get("is_family") and not e.get("is_material")}
 
+    def _connectors(self, element: dict) -> list[dict]:
+        return (self.elements.get(element.get("type_id")) or {}).get("connectors") or []
+
+    def _joinable(self, element: dict, kind: str) -> bool:
+        if element["category"] in CURVE.values() or element["category"] not in self.unjoinable:
+            return True
+        return kind == "pipe" and any(c["domain"] == "pipe" for c in self._connectors(element))
+
+    def _powered(self, element: dict) -> bool:
+        return element["category"] not in self.unpowered or any(
+            c["domain"] == "electrical" for c in self._connectors(element))
+
     def _find_type(self, kind, name, family=None, category=None) -> int:
         for i, e in self.project_types(kind).items():
             if e["type"] == name and (family is None or e["family"] == family) and (category is None or e["category"] == category):
@@ -93,6 +116,12 @@ class FitoutRevit:
 
     def __exit__(self, *a):
         pass
+
+    def request(self, command, params=None, *, timeout_seconds=None):
+        """The whole response, as RevitClient.request: the data, and what Revit's failure handling did."""
+        self.envelope = {}
+        data = self.call(command, params, timeout_seconds=timeout_seconds)
+        return {"success": True, "data": data, **self.envelope}
 
     def call(self, command, params=None, *, timeout_seconds=None):
         params = params or {}
@@ -253,11 +282,14 @@ class FitoutRevit:
             return {"action": "already_there", "dry_run": False, "family_name": self.elements[family]["family"],
                     "type_name": chosen[1]["type"] if chosen[1] else None, "family_id": family, "type_id": chosen[0],
                     "category": self.elements[family]["category"], "created_ids": [],
-                    "notes": [] if chosen[1] and chosen[1]["type"] == type_name else [f"it has no type '{type_name}'"]}
+                    "notes": [] if chosen[1] and chosen[1]["type"] == type_name else [f"it has no type '{type_name}'"],
+                    "connectors": None}
         before = set(self.elements)
         type_id = self._add_type("family_type", type_name, name, p.get("category") or "OST_Furniture",
                                  dims={"width": w, "depth": d, "height": h}, placement="OneLevelBased", made_by="box")
         self.elements[type_id]["box"] = {"min": [-w / 2, -d, 0], "max": [w / 2, 0, h]}
+        connectors = [{"face": "back", **c} for c in p.get("connectors") or []]
+        self.elements[type_id]["connectors"] = connectors
         material = p.get("material_name") or "Plinth Fit-out"
         if not any(e.get("is_material") and e["name"] == material for e in self.elements.values()):
             self.elements[self._new_id()] = {"is_material": True, "name": material, "category": "OST_Materials"}
@@ -265,7 +297,8 @@ class FitoutRevit:
         others = [i for i in sorted(set(self.elements) - before) if i not in (family_id, type_id)]
         return {"action": "created", "dry_run": False, "family_name": name, "type_name": type_name, "family_id": family_id,
                 "type_id": type_id, "category": p.get("category") or "OST_Furniture", "template": "Metric Furniture.rft",
-                "placement": "OneLevelBased", "created_ids": [family_id, type_id, *others], "brought_along_ids": others}
+                "placement": "OneLevelBased", "created_ids": [family_id, type_id, *others], "brought_along_ids": others,
+                "connectors": connectors}
 
     # ------------------------------------------------------------------ building
 
@@ -329,9 +362,15 @@ class FitoutRevit:
         self._find_type(f"{kind}_type", p["type_name"])
         if kind in ("pipe", "duct"):
             self._find_type(f"{kind}_system_type", p["system_type_name"])
+        failed = []
         for end in ("start_connect", "end_connect"):
             if end in p and p[end]["element_id"] not in self.elements:
                 raise _fail(f"ELEMENT_NOT_FOUND: {end} {p[end]['element_id']} is not in this document.")
+            if end in p and not self._joinable(self.elements[p[end]["element_id"]], kind):
+                reason = f"NO_CONNECTORS: element {p[end]['element_id']} has no {kind} connector."
+                if p.get("require_connections"):
+                    raise _fail(reason + " Nothing was created.")
+                failed.append({"at": end.split("_")[0], "element_id": p[end]["element_id"], "reason": reason})
         segments, fittings = [], []
         for _ in range(len(p["points"]) - 1):
             segments.append(self._new_id())
@@ -340,17 +379,39 @@ class FitoutRevit:
             fittings.append(self._new_id())
             self.elements[fittings[-1]] = {"category": FITTING[kind], "level": p["level"]}
         return {"kind": kind, "segment_ids": segments, "fitting_ids": fittings, "created_ids": segments + fittings,
-                "modified_ids": [], "failed_connections": []}
+                "modified_ids": [], "failed_connections": failed}
 
     def _create_electrical_circuit(self, p):
+        """As the add-in: every element needs a free electrical connector (else the call fails), unless best_effort,
+        which leaves those out (skipped), makes no circuit when none is left, and keeps a circuit Revit will not assign
+        to the panel unassigned (panel_error)."""
+        members, skipped = [], []
         for i in p["element_ids"]:
             if i not in self.elements:
-                raise _fail(f"NO_ELECTRICAL_CONNECTOR: {i}: not in this document. Nothing was created.")
+                raise _fail(f"ELEMENT_NOT_FOUND: {i}: not in this document. Nothing was created.")
+            if self._powered(self.elements[i]):
+                members.append(i)
+            elif p.get("best_effort"):
+                skipped.append({"element_id": i, "reason": "no free electrical connector of a power circuit"})
+            else:
+                raise _fail(f"NO_ELECTRICAL_CONNECTOR: {i} has no free electrical connector. Nothing was created.")
         if p.get("panel_id") is not None and self.elements[p["panel_id"]]["category"] != "OST_ElectricalEquipment":
             raise _fail("NOT_A_PANEL: not electrical equipment")
+        if not members:
+            return {"circuit_id": None, "panel_id": None, "element_ids": [], "created_ids": [], "skipped": skipped,
+                    "note": "no element could go on a circuit: nothing was created"}
+        out: dict[str, Any] = {"skipped": skipped} if p.get("best_effort") else {}
+        panel = p.get("panel_id")
+        if panel is not None and self.refuse_panels == "rollback":
+            self.envelope = {"failures": [{"severity": "Error", "message": "the panel's voltage does not match"}],
+                             "rolled_back_by_failure": True}
+        elif panel is not None and self.refuse_panels:
+            if not p.get("best_effort"):
+                raise _fail("PANEL_REFUSED: Revit would not assign the circuit to the panel. Nothing was created.")
+            out["panel_error"], panel = "Revit would not assign the circuit to the panel (voltage or poles)", None
         circuit = self._new_id()
-        self.elements[circuit] = {"category": "OST_ElectricalCircuit", "level": None, "members": list(p["element_ids"])}
-        return {"circuit_id": circuit, "panel_id": p.get("panel_id"), "element_ids": p["element_ids"], "created_ids": [circuit]}
+        self.elements[circuit] = {"category": "OST_ElectricalCircuit", "level": None, "members": members}
+        return {"circuit_id": circuit, "panel_id": panel, "element_ids": members, "created_ids": [circuit], **out}
 
     # ------------------------------------------------------------------ removing
 

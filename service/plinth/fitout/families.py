@@ -76,6 +76,7 @@ CATEGORIES = {
     "OST_CommunicationDevices", "data devices": "OST_DataDevices", "security devices": "OST_SecurityDevices",
     "telephone devices": "OST_TelephoneDevices", "nurse call devices": "OST_NurseCallDevices",
     "generic models": "OST_GenericModel", "plumbing equipment": "OST_PlumbingEquipment",
+    "fire protection": "OST_FireProtection",  # Revit 2023+ (extinguishers, hose reels, landing valves)
 }
 # MEP type kinds (list_types_in_file / copy_types_from_file) -> the project category get_available_family_types lists.
 MEP_KIND_CATEGORY = {"pipe_type": "OST_PipeCurves", "pipe_system_type": "OST_PipingSystem",

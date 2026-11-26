@@ -89,7 +89,7 @@ class BuildService:
                     batches={"total": result.batches_total, "succeeded": result.batches_succeeded},
                     created=result.created,
                     error=result.error, error_code=result.error_code, failed_key=result.failed_key, hint=hint(result.error),
-                    error_data=result.error_data, failures=result.failures,
+                    error_data=result.error_data, failures=result.failures, issues=result.issues,
                 )
                 if result.status == "needs_input" and result.error_code in FITOUT_TYPE_QUESTIONS:
                     data = result.error_data if isinstance(result.error_data, dict) else {}
@@ -106,7 +106,9 @@ class BuildService:
                         "searched": data.get("searched_roots"), "can_create": data.get("can_create")})
                 if result.status == "built":
                     readback = runner.verify(plan, result.created)
-                    run.update(readback=readback, status="built" if readback["ok"] else "built_with_issues")
+                    # built with issues: the read-back differs, or the add-in did not wholly build some op (issues)
+                    ok = readback["ok"] and not result.issues
+                    run.update(readback=readback, status="built" if ok else "built_with_issues")
                     if after_build is not None:  # e.g. compliance checks on rooms read back from Revit (F8.1)
                         try:
                             run.update(checks=after_build(revit, run, result.created))

@@ -308,12 +308,37 @@ class FamilyTypeCopyOp(_Op):
     values_mm: dict[str, float] = Field(min_length=1)  # type parameter name -> length in mm, e.g. {"Width": 1800}
 
 
+MAX_BOX_CONNECTORS = 12  # create_box_family's limit
+
+
+class BoxConnector(BaseModel):
+    """A connector a box family gets on one face of its box, so the MEP runs and circuits of the plan can join its
+    instances: electrical (a circuit's device or panel) or a pipe connector of a system classification and size (a run
+    ending at it)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    domain: Literal["electrical", "pipe"]
+    system_type: str | None = None  # electrical: PowerCircuit
+    classification: str | None = None  # pipe: Sanitary, DomesticColdWater...
+    diameter_mm: float | None = Field(default=None, gt=0, le=600)  # pipe
+    face: Literal["back", "front", "left", "right", "top", "bottom"] = "back"
+
+    @model_validator(mode="after")
+    def _domain(self) -> "BoxConnector":
+        if self.domain == "electrical" and (not self.system_type or self.classification or self.diameter_mm):
+            raise ValueError("an electrical connector takes system_type only")
+        if self.domain == "pipe" and (self.system_type or not self.classification or not self.diameter_mm):
+            raise ValueError("a pipe connector takes classification and diameter_mm")
+        return self
+
+
 class FamilyCreateOp(_Op):
     """A plain box family Plinth creates for a fit-out item, only because the user answered so (``{"create": "box"}``:
     no family suits it): one extrusion ``width_mm`` x ``depth_mm`` x ``height_mm`` with type parameters Width, Depth,
     Height and Material, its origin at the middle of its back edge (back on +Y, front facing -Y) and its base at the
-    level, loaded as a NEW family ``family`` with the one type ``type``. A family of that name already in the project is
-    used as it is (never overwritten) and is not the run's to remove."""
+    level, loaded as a NEW family ``family`` with the one type ``type``, with ``connectors`` for what the plan joins to
+    its instances. A family of that name already in the project is used as it is (never overwritten, its connectors as
+    they are) and is not the run's to remove."""
 
     op: Literal["family_create"]
     kind: Literal["box"] = "box"
@@ -324,6 +349,8 @@ class FamilyCreateOp(_Op):
     depth_mm: float = Field(gt=0, le=20000)
     height_mm: float = Field(gt=0, le=20000)
     material: str | None = None
+    connectors: list[BoxConnector] = Field(default_factory=list, max_length=MAX_BOX_CONNECTORS,
+                                           exclude_if=lambda v: not v)
 
 
 class FamilyOp(_Op):
@@ -380,7 +407,10 @@ class MepRunOp(_Op):
     height_mm: float | None = Field(default=None, gt=0)
     start_key: str | None = None
     end_key: str | None = None
-    require_connections: bool = True  # a join Revit refuses undoes the run and stops the build: no silent disconnects
+    # True: a join (or elbow) Revit refuses undoes the run and stops the build. False: the run stays and each refused
+    # join is recorded as an issue of the build (never silent); the fit-out's choice for a run ending at a family,
+    # which may have no connector of the run's domain.
+    require_connections: bool = True
     source: str | None = None
 
     @model_validator(mode="after")
@@ -400,12 +430,15 @@ class MepRunOp(_Op):
 
 
 class CircuitOp(_Op):
-    """One electrical circuit: the placed devices ``device_keys`` on it, assigned to the panel ``panel_key``."""
+    """One electrical circuit: the placed devices ``device_keys`` on it, assigned to the panel ``panel_key``.
+    ``best_effort`` (the fit-out's): a device without a free electrical connector is left off the circuit, a circuit
+    with none left is not made, a panel Revit refuses leaves the circuit unassigned; each is reported, never silent."""
 
     op: Literal["circuit"]
     device_keys: list[str] = Field(min_length=1, max_length=200)
     panel_key: str | None = None
     system_type: str = "PowerCircuit"
+    best_effort: bool = Field(default=False, exclude_if=lambda v: not v)
     source: str | None = None
 
 
