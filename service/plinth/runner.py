@@ -18,6 +18,11 @@ and copy a type to another size (``family_type_copy``: duplicate before edit); a
 created and loaded as a new family (``family_create``: recorded and removed with the run; a family of that name already
 in the project is used as it is and not recorded). Placed families, MEP runs (segments,
 fittings, pieces as key, key#2 / key#f1 / key#p1) and circuits follow in batches.
+
+What the add-in built but not wholly (a fit-out's best effort: a run's join to a family without a connector of its
+domain, a circuit's device without an electrical connector, a panel Revit refused, a circuit not made, a box family's
+connectors not made) is not a failure: the build goes on and each is an issue of the result (``BuildResult.issues``:
+key, what, reason), so the run is built with issues, never silently disconnected.
 """
 
 from __future__ import annotations
@@ -73,6 +78,7 @@ class BuildResult:
     failed_key: str | None = None
     error_data: Any = None
     failures: list[dict[str, Any]] = field(default_factory=list)
+    issues: list[dict[str, Any]] = field(default_factory=list)  # built, but not wholly (see the module docstring)
 
 
 def plan_batches(plan: BuildPlan) -> list[list[Op]]:
@@ -140,6 +146,7 @@ class Runner:
                 return self._stop(result, "failed", e, batch[failed].key if failed is not None and 0 <= failed < len(batch) else None)
             for op, entry in zip(batch, data["results"]):
                 result.created.update(commands.created_entries(op, entry["data"]))
+                result.issues.extend(commands.issues(op, entry["data"]))
             result.batches_succeeded += 1
             self.progress(index + 1, len(batches))
         return result
@@ -195,8 +202,8 @@ class Runner:
             command["params"]["source_type_id"] = source_id
         log.info("direct call: %s (%s)", command["command"], op.key)
         try:
-            data = self.revit.call(command["command"], command["params"],
-                                   timeout_seconds=ENSURE_TIMEOUT_SECONDS if type_op else BATCH_TIMEOUT_SECONDS)
+            data, response = self._request(command["command"], command["params"],
+                                           ENSURE_TIMEOUT_SECONDS if type_op else BATCH_TIMEOUT_SECONDS)
         except RevitTimeout as e:
             return self._stop(result, "unknown", e, op.key)
         except RevitError as e:
@@ -207,6 +214,7 @@ class Runner:
                 return None
             # A type that cannot be found, copied or chosen without the user is a question, not a failure.
             return self._stop(result, "needs_input" if type_op and e.code in TYPE_QUESTIONS else "failed", e, op.key)
+        result.issues.extend(commands.issues(op, data, response))
         if isinstance(op, TypesFromFileOp):
             result.created.update(commands.created_entries(op, data))
             return self._copied(op, data, result)
@@ -218,6 +226,15 @@ class Runner:
             log.info("%s %s: %s %r", op.op, op.name, data.get("action"), data.get("type_name"))
         result.created.update(commands.created_entries(op, data))
         return None
+
+    def _request(self, command: str, params: dict[str, Any], timeout: int) -> tuple[Any, dict[str, Any]]:
+        """A command's data and its whole response (what Revit's failure handling did, e.g. a circuit's panel assignment
+        it undid on its own), when the client gives the response; else the data alone."""
+        request = getattr(self.revit, "request", None)
+        if request is None:
+            return self.revit.call(command, params, timeout_seconds=timeout), {}
+        response = request(command, params, timeout_seconds=timeout)
+        return response.get("data"), response
 
     def _ids(self, result: BuildResult) -> dict[str, int]:
         """Element ids by key: the earlier run's the plan builds on, then this build's."""

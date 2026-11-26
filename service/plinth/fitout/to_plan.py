@@ -11,8 +11,15 @@ run on top of the building's run, so it is approved, built, read back and remove
 
     # families first: each item's family chosen and measured, the layout made with their real footprints
     found = to_plan.plan_furniture(revit, building_plan, building_run_created, model, ruleset, answers=answers,
-                                   measurements=families.load_measurements(path))   # measurements optional
+                                   measurements=families.load_measurements(path),   # measurements optional
+                                   mep=True, shaft_kinds=shaft_kinds)                # and the MEP layout on it
     found.layout, found.items   # the layout it made; the family (and measured types) per rule item
+    found.mep                   # the MEP layout made on that furniture layout (mep=True)
+
+    # on an earlier fit-out run: its records are not placed again, runs and circuits join what it built
+    found = to_plan.plan_furniture(..., mep=True, built_fitout=earlier_run_created)
+    found.already_built         # the family op each of its records would get now (to check the layout is the same)
+    to_plan.prune(found.plan, drop=keys)   # a plan without some records and whatever joins them
 
 A measured family is inserted so its box lands on the layout's footprint (``measured_point``): the layout gives the
 middle of the item's back edge and the turn for a family whose front faces -Y; the family's back middle (the middle
@@ -38,6 +45,20 @@ The plan's ops, in build order:
 The building's levels and the walls used as hosts are the plan's ``existing_levels`` and ``existing`` (the building
 run's ids): looked up, never created nor removed by the fit-out run.
 
+Joins, best effort and never silent: an MEP family (the user's own WC, a socket, a box) often has no connector of a
+run's domain (conduits almost never join receptacles), so a run with an end at a family does not require its joins
+(``require_connections`` false: a refused join leaves the run standing and is an issue of the build); a run joining
+only other runs (our own pipes, which have connectors) does. Circuits are best effort (``best_effort``): a device
+without an electrical connector is left off its circuit, a circuit with none left is not made, a panel Revit refuses
+leaves it unassigned; each is an issue of the build. A box family Plinth creates gets the connectors the plan joins to
+its instances (``connectors``): an electrical one when any is on a circuit or is a panel, a pipe connector per
+system classification and diameter of the pipe runs ending at them.
+
+On an earlier fit-out run (``built_fitout``: its keys -> element ids, e.g. the furniture built before the MEP): those
+records get no op and no type op, but count as placed, so runs and circuits join them (``BuildPlan.existing``).
+``prune`` is the one way records leave a plan (a system or flat left out, an earlier run's): whatever joins a record
+that is gone goes too (a circuit only loses the device), and so do the types nothing uses any more.
+
 MEP layout records (F4), read by attribute or key: ``devices`` shaped like the furniture records (key, room_key,
 level, item, label, category, keywords, insertion or point, rotation_deg, elevation_mm, wall_key, center or toward,
 face_down, source; width_mm/depth_mm when sized); ``runs`` (key, kind pipe/duct/conduit/cable_tray, level, system (a
@@ -49,15 +70,17 @@ level)], diameter_mm or width_mm/height_mm, start_key/end_key: a device or an ea
 from __future__ import annotations
 
 import re
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 from pydantic import BaseModel, ConfigDict
 
-from plinth.fitout import families, furniture as furniture_solver
+from plinth.fitout import families, furniture as furniture_solver, mep as mep_solver, mep_plan
 from plinth.fitout.families import BASE_TOL_MM, FRONT_TURN, Choice, ItemFamilies, Measurement, Need, Resolution, turn
 from plinth.fitout.furniture import FurnitureLayout
+from plinth.fitout.mepcore import MepLayout
 from plinth.fitout.rooms import Assumption, Question, RoomModel
-from plinth.plan import BuildPlan, LevelOp, WallOp
+from plinth.plan import (MAX_BOX_CONNECTORS, TYPE_OPS, BuildPlan, CircuitOp, FamilyCreateOp, FamilyOp, FamilyTypeCopyOp,
+                         LevelOp, MepRunOp, TypesFromFileOp, WallOp, references)
 
 TYPES_KEY, TYPE_COPY_KEY, FAMILY_KEY = "FIT-TYPES-", "FIT-TYPE-", "FIT-FAMILY-"
 LEVEL_BASED = (None, "OneLevelBased")
@@ -84,6 +107,14 @@ class FitoutPlan(_Model):
     needs: list[Need] = []
     layout: FurnitureLayout | None = None  # plan_furniture: the layout made with the chosen families' sizes
     items: ItemFamilies | None = None  # plan_furniture: the family chosen (and measured) per rule item
+    mep: MepLayout | None = None  # plan_furniture(mep=True): the MEP layout made on that furniture layout
+    already_built: dict[str, FamilyOp] = {}  # built_fitout: the op each record an earlier run built would get now
+
+
+class Pruned(_Model):
+    plan: BuildPlan | None = None
+    dropped: dict[str, str] = {}  # op key -> why it is not in the plan any more
+    trimmed: dict[str, list[str]] = {}  # circuit key -> the devices left off it
 
 
 def _get(record: Any, name: str, default: Any = None) -> Any:
@@ -106,26 +137,36 @@ def _mep_part(mep: Any, name: str) -> list[Any]:
 
 def plan_fitout(revit: families.Revit, building: BuildPlan, built: dict[str, int], *, furniture: Any = None,
                 mep: Any = None, answers: dict[str, Any] | None = None, templates: list[str] | None = None,
-                year: int | str | None = None) -> FitoutPlan:
-    """Match families for the layout (project, then installed templates) and make the fit-out's build plan."""
+                year: int | str | None = None, built_fitout: Mapping[str, int] | None = None) -> FitoutPlan:
+    """Match families for the layout (project, then installed templates) and make the fit-out's build plan. ``mep``:
+    the MEP records (``mep_plan.records``)."""
     devices = list(_get(furniture, "placed") or []) + _mep_part(mep, "devices")
     needs = families.needs_from(devices) + families.run_needs(_mep_part(mep, "runs"))
     resolution = families.resolve(needs, revit, answers, templates=templates, year=year)
-    return make(resolution, needs, building, built, furniture=furniture, mep=mep)
+    return make(resolution, needs, building, built, furniture=furniture, mep=mep, built_fitout=built_fitout)
+
+
+def levels_of(building: BuildPlan) -> dict[str, float]:
+    """The building's levels: name -> elevation (its own and those it was built on)."""
+    levels = {op.name: op.elevation_mm for op in building.ops if isinstance(op, LevelOp)}
+    levels.update(building.existing_levels)
+    return levels
 
 
 def plan_furniture(revit: families.Revit, building: BuildPlan, built: dict[str, int], model: RoomModel, rules: Any, *,
                    answers: dict[str, Any] | None = None, measurements: list[Measurement] | None = None,
-                   mep: Any = None, document: str | None = None, measure_level: str | None = None,
-                   cache: dict | None = None, templates: list[str] | None = None,
-                   year: int | str | None = None) -> FitoutPlan:
+                   mep: bool = False, shaft_kinds: Mapping[str, str] | None = None, document: str | None = None,
+                   measure_level: str | None = None, cache: dict | None = None, templates: list[str] | None = None,
+                   year: int | str | None = None, built_fitout: Mapping[str, int] | None = None) -> FitoutPlan:
     """Families first, then the layout, then the plan:
 
     1. a family type per rule item (``families.resolve_items``: answers ``fitout:family:<item>``, else the best match),
        each project type measured (``measurements`` given, else the add-in's measure_family_types on
        ``measure_level``), items the user skips or a chosen family includes left out;
     2. the layout with each measured item at its family's own footprint (its smaller types when it does not fit) and
-       the rule's clearances, so what does not fit is reported as it really is;
+       the rule's clearances, so what does not fit is reported as it really is; with ``mep``, the MEP layout on that
+       furniture layout (``mep.layout``: its runs end at the fixtures where they really stand; ``shaft_kinds`` as it
+       takes them), its questions and assumptions joining the plan's;
     3. the plan: measured items placed with the type the layout used, their insertion worked out from the measured box
        (``measured_point``); the rest (a counter's legs, template types, MEP) matched per size as ``plan_fitout``."""
     answers = answers or {}
@@ -134,6 +175,8 @@ def plan_furniture(revit: families.Revit, building: BuildPlan, built: dict[str, 
                                    level=measure_level, cache=cache, search=search)
     layout = furniture_solver.solve(model, furniture_solver.with_sizes(rules, items.sizes(), items.no_sides),
                                     leave_out=items.left_out)
+    mep_layout = mep_solver.layout(building, model, layout, rules, answers, shaft_kinds) if mep else None
+    mep = mep_plan.records(mep_layout, levels_of(building)) if mep_layout is not None else None
     records = {p.key: p for p in layout.placed}
     devices = list(layout.placed) + _mep_part(mep, "devices")
     needs = families.needs_from(devices) + families.run_needs(_mep_part(mep, "runs"))
@@ -155,8 +198,13 @@ def plan_furniture(revit: families.Revit, building: BuildPlan, built: dict[str, 
     resolution = Resolution(choices={**found.choices, **pinned}, questions=questions + found.questions,
                             assumptions=[*items.assumptions, *found.assumptions], skipped=found.skipped,
                             searched=list(dict.fromkeys(items.searched + found.searched)))
-    result = make(resolution, needs, building, built, furniture=layout, mep=mep)
-    return result.model_copy(update={"layout": layout, "items": items})
+    result = make(resolution, needs, building, built, furniture=layout, mep=mep, built_fitout=built_fitout)
+    update: dict[str, Any] = {"layout": layout, "items": items}
+    if mep_layout is not None:
+        update.update(mep=mep_layout, questions=[*result.questions, *mep_layout.questions],
+                      ready=result.ready and not mep_layout.questions,
+                      assumptions=[*result.assumptions, *mep_layout.assumptions, *mep_plan.assumptions(mep_layout)])
+    return result.model_copy(update=update)
 
 
 def measured_point(m: Measurement, front: str, point: tuple[float, float], rotation_deg: float) -> tuple[tuple[float, float], float]:
@@ -183,10 +231,10 @@ def measured_offset(m: Measurement, elevation: float, on_counter: bool) -> float
 
 
 def make(resolution: Resolution, needs: list[Need], building: BuildPlan, built: dict[str, int], *,
-         furniture: Any = None, mep: Any = None) -> FitoutPlan:
+         furniture: Any = None, mep: Any = None, built_fitout: Mapping[str, int] | None = None) -> FitoutPlan:
     """The build plan for the layout with the families resolved (see the module docstring)."""
-    levels = {op.name: op.elevation_mm for op in building.ops if isinstance(op, LevelOp)}
-    levels.update(building.existing_levels)
+    built_fitout = dict(built_fitout or {})
+    levels = levels_of(building)
     walls = {op.key for op in building.ops if isinstance(op, WallOp)}
     need_of: dict[tuple[str, str], Need] = {}
     for need in needs:
@@ -201,7 +249,9 @@ def make(resolution: Resolution, needs: list[Need], building: BuildPlan, built: 
     used: dict[str, Choice] = {}
     existing: dict[str, int] = {}
     used_levels: set[str] = set()
-    placed: set[str] = set()
+    placed: set[str] = set(built_fitout)  # an earlier run's records: joined, not placed again
+    chosen: dict[str, Choice] = {}  # placed record key -> its family type
+    records: dict[str, Any] = {}
 
     def leave(key: str, item: str, reason: str) -> None:
         left.append(LeftOut(key=key, item=item, reason=reason))
@@ -242,9 +292,11 @@ def make(resolution: Resolution, needs: list[Need], building: BuildPlan, built: 
         used_levels.add(level)
         used[choice.need] = choice
         placed.add(key)
+        chosen[key], records[key] = choice, record
         ops.append(op)
 
     # ---------------------------------------------------------------- MEP runs and circuits
+    run_keys = {_get(run, "key") for run in _mep_part(mep, "runs")}
     for run in _mep_part(mep, "runs"):
         key, kind, level = _get(run, "key"), _get(run, "kind"), _get(run, "level")
         what = f"{kind} run"
@@ -273,9 +325,12 @@ def make(resolution: Resolution, needs: list[Need], building: BuildPlan, built: 
         for name in ("diameter_mm", "width_mm", "height_mm", "start_key", "end_key", "source"):
             if _get(run, name) is not None:
                 op[name] = _get(run, name)
+        # a join to a family may find no connector of the run's domain: best effort, reported (module docstring)
+        op["require_connections"] = all(k in run_keys for k in ends)
         used[type_choice.need] = type_choice
         used_levels.add(level)
         placed.add(key)
+        records[key] = run
         ops.append(op)
 
     for circuit in _mep_part(mep, "circuits"):
@@ -292,23 +347,140 @@ def make(resolution: Resolution, needs: list[Need], building: BuildPlan, built: 
             notes.append(Assumption(id=f"fitout:circuit:{key}", text=f"circuit {key}: without {', '.join(missing)} "
                                     f"(not in the plan)", value=missing, source="fit-out plan", instances=[key]))
         op = {"op": "circuit", "key": key, "device_keys": devices_in,
-              "system_type": _get(circuit, "system_type") or "PowerCircuit"}
+              "system_type": _get(circuit, "system_type") or "PowerCircuit", "best_effort": True}
         if panel:
             op["panel_key"] = panel
         if _get(circuit, "source"):
             op["source"] = _get(circuit, "source")
         ops.append(op)
 
-    type_ops = _type_ops(used.values())
+    connectors, capped = _box_connectors(ops, chosen, records)
+    notes += capped
+    type_ops = _type_ops(used.values(), connectors)
     all_ops = type_ops + ops
-    plan = None
+    op_keys = {op["key"] for op in ops}
+    for op in ops:  # an earlier run's record a run or circuit joins: looked up, as the building's walls
+        for ref in (op.get("start_key"), op.get("end_key"), op.get("panel_key"), *(op.get("device_keys") or [])):
+            if ref in built_fitout and ref not in op_keys:
+                existing[ref] = built_fitout[ref]
+    plan, again = None, {}
     if ops:
         plan = BuildPlan.model_validate({
             "ops": all_ops, "existing_levels": {name: levels[name] for name in sorted(used_levels)},
             "existing": dict(sorted(existing.items()))})
-    return FitoutPlan(plan=plan, ready=not resolution.questions, questions=resolution.questions,
+        if built_fitout:
+            again = {op.key: op for op in plan.ops if isinstance(op, FamilyOp) and op.key in built_fitout}
+            plan = prune(plan, existing=built_fitout).plan
+    # a question only about records an earlier run built is not this plan's
+    questions = [q for q in resolution.questions if not q.instances or not set(q.instances) <= set(built_fitout)]
+    return FitoutPlan(plan=plan, ready=not questions, questions=questions,
                       assumptions=[*resolution.assumptions, *notes], left_out=left, families=resolution.choices,
-                      needs=needs)
+                      needs=needs, already_built=again)
+
+
+def _box_connectors(ops: list[dict[str, Any]], chosen: dict[str, Choice],
+                    records: dict[str, Any]) -> tuple[dict[str, list[dict[str, Any]]], list[Assumption]]:
+    """Box family (casefolded name) -> the connectors the plan joins to its instances: an electrical one when any of
+    them is on a circuit (or is a panel), a pipe connector per system classification and diameter of the pipe runs
+    ending at them; at most ``MAX_BOX_CONNECTORS`` (the rest listed back)."""
+    box = {key: c.family.casefold() for key, c in chosen.items() if c.source == "create" and c.family}
+    if not box:
+        return {}, []
+    powered: dict[str, bool] = {}
+    pipes: dict[str, set[tuple[str, float]]] = {}
+    for op in ops:
+        if op["op"] == "circuit":
+            for key in [*op["device_keys"], *([op["panel_key"]] if op.get("panel_key") else [])]:
+                if key in box:
+                    powered[box[key]] = True
+        elif op["op"] == "mep_run" and op["kind"] == "pipe":
+            classification = _get(records[op["key"]], "system")
+            for key in (op.get("start_key"), op.get("end_key")):
+                if key in box and classification and op.get("diameter_mm"):
+                    pipes.setdefault(box[key], set()).add((classification, float(op["diameter_mm"])))
+    for key, family in box.items():
+        if _get(records[key], "panel"):
+            powered[family] = True
+    out: dict[str, list[dict[str, Any]]] = {}
+    notes: list[Assumption] = []
+    for family in sorted(set(powered) | set(pipes)):
+        wanted = ([{"domain": "electrical", "system_type": "PowerCircuit"}] if powered.get(family) else []) + [
+            {"domain": "pipe", "classification": c, "diameter_mm": d} for c, d in sorted(pipes.get(family, ()))]
+        out[family] = wanted[:MAX_BOX_CONNECTORS]
+        if len(wanted) > MAX_BOX_CONNECTORS:
+            notes.append(Assumption(id=f"fitout:box-connectors:{family}", text=f"box family {family!r}: the first "
+                                    f"{MAX_BOX_CONNECTORS} of its {len(wanted)} connectors are made (the add-in's "
+                                    f"limit); runs to the others join best effort", value=wanted[MAX_BOX_CONNECTORS:],
+                                    source="create_box_family"))
+    return out, notes
+
+
+def prune(plan: BuildPlan, drop: Iterable[str] = (), existing: Mapping[str, int] | None = None,
+          why: str = "left out") -> Pruned:
+    """The plan without the ops ``drop`` names (``why``) and without the ops ``existing`` names (an earlier run built
+    them: they stay joinable, as ``BuildPlan.existing``), and without whatever then joins an op that is gone: a run
+    with an end at it, a family hosted on it, a circuit on its panel; a circuit only loses a device that is gone
+    (``trimmed``), unless none is left. Then the types nothing uses any more go (a template item, a size copy, a box
+    family), and the levels and existing elements nothing refers to. None when no element is left."""
+    existing = dict(existing or {})
+    drop = set(drop)
+    dropped: dict[str, str] = {}
+    trimmed: dict[str, list[str]] = {}
+    kept: dict[str, Any] = {}
+    for op in plan.ordered():  # a run joins only runs listed before it: one pass in build order settles it
+        if op.op in TYPE_OPS:
+            continue
+        if op.key in existing:
+            dropped[op.key] = "built by an earlier run"
+            continue
+        if op.key in drop:
+            dropped[op.key] = why
+            continue
+        gone = [k for k in references(op) if k in dropped and k not in existing]
+        if isinstance(op, CircuitOp):
+            devices = [k for k in op.device_keys if k not in gone]
+            if op.panel_key in gone or not devices:
+                what = f"its panel {op.panel_key}" if op.panel_key in gone else "every device of it"
+                dropped[op.key] = f"{what} is left out"
+                continue
+            if len(devices) < len(op.device_keys):
+                trimmed[op.key] = [k for k in op.device_keys if k in gone]
+                op = op.model_copy(update={"device_keys": devices})
+        elif gone:
+            dropped[op.key] = f"it joins {', '.join(gone)}, which is left out"
+            continue
+        kept[op.key] = op
+    elements = [kept[op.key] for op in plan.ops if op.key in kept]
+    if not elements:
+        return Pruned(plan=None, dropped=dropped, trimmed=trimmed)
+    placed = {(op.family, op.type) for op in elements if isinstance(op, FamilyOp)}
+    families_used = {op.family.casefold() for op in elements if isinstance(op, FamilyOp) and op.family}
+    copies = [op for op in plan.ops if isinstance(op, FamilyTypeCopyOp) and (op.family, op.name) in placed]
+    wanted = {("family_type", f, t) for f, t in placed} | {("family_type", op.family, op.base_type) for op in copies}
+    for op in elements:
+        if isinstance(op, MepRunOp):
+            wanted.add((f"{op.kind}_type", None, op.type))
+            if op.system_type:
+                wanted.add((f"{op.kind}_system_type", None, op.system_type))
+    types: list[Any] = []
+    for op in plan.ops:
+        if isinstance(op, TypesFromFileOp):
+            items = [i for i in op.items if (i.kind, i.family, i.name) in wanted]
+            if items:
+                types.append(op.model_copy(update={"items": items}))
+        elif isinstance(op, FamilyCreateOp) and op.family.casefold() in families_used:
+            types.append(op)
+        elif op in copies:
+            types.append(op)
+    refs = {k for op in elements for k in references(op)}
+    used_levels = {getattr(op, "level", None) for op in elements}
+    joined = {k: v for k, v in {**plan.existing, **existing}.items() if k in refs}
+    pruned = BuildPlan.model_validate({
+        "plan_version": plan.plan_version, "spec_hash": plan.spec_hash,
+        "ops": [op.model_dump(mode="json") for op in [*types, *elements]],
+        "existing_levels": {k: v for k, v in plan.existing_levels.items() if k in used_levels},
+        "existing": dict(sorted(joined.items()))})
+    return Pruned(plan=pruned, dropped=dropped, trimmed=trimmed)
 
 
 def _family_op(record: Any, choice: Choice, walls: set[str], built: dict[str, int]) -> tuple[dict | None, str | None]:
@@ -377,9 +549,11 @@ def _family_op(record: Any, choice: Choice, walls: set[str], built: dict[str, in
     return None, f"its family ({choice.family}) is placed {placement}, which the fit-out does not place"
 
 
-def _type_ops(choices: Iterable[Choice]) -> list[dict[str, Any]]:
-    """types_from_file per template the used types come from (sorted, so the plan is the same every time), then a
-    family_type_copy per size copy."""
+def _type_ops(choices: Iterable[Choice], connectors: Mapping[str, list[dict[str, Any]]] | None = None
+              ) -> list[dict[str, Any]]:
+    """types_from_file per template the used types come from (sorted, so the plan is the same every time), a
+    family_create per box family (with the ``connectors`` its instances are joined by), then a family_type_copy per
+    size copy."""
     by_file: dict[str, dict[tuple, dict[str, Any]]] = {}
     copies: dict[tuple, dict[str, Any]] = {}
     boxes: dict[str, dict[str, Any]] = {}
@@ -392,6 +566,8 @@ def _type_ops(choices: Iterable[Choice]) -> list[dict[str, Any]]:
                 box["material"] = c.box.material
             if boxes.setdefault(c.family.casefold(), box) != box:
                 raise ValueError(f"box family {c.family!r} is asked at two sizes; name each size's family apart")
+            if (connectors or {}).get(c.family.casefold()):
+                boxes[c.family.casefold()]["connectors"] = connectors[c.family.casefold()]
             continue
         if c.source == "template" and c.path:
             name = c.base_type or c.type

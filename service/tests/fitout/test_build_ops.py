@@ -5,9 +5,12 @@ made goes, types the project already had stay untouched."""
 import pytest
 from pydantic import ValidationError
 
+from plinth.builds import BuildService
 from plinth.plan import BuildPlan
 from plinth.revit import commands
+from plinth.revit.types import TypeMap
 from plinth.runner import Runner, plan_batches
+from plinth.runs import RunStore
 from tests.fitout.fake_revit import FitoutRevit
 
 TEMPLATE = "C:\\ProgramData\\Autodesk\\RVT 2026\\Templates\\English\\Residential-Default_Metric.rte"
@@ -211,3 +214,123 @@ def test_a_size_copy_of_a_project_type_finds_its_id_in_the_project():
     assert revit.elements[result.created["T"]]["dims"] == {"width": 1000, "depth": 500}
     # Built again: the name is taken (by that copy), so it is used as it is and not recorded a second time.
     assert Runner(revit).build(plan).created == {}
+
+
+# ------------------------------------------------------------------------------------------------ best effort (MEP)
+
+def _best_effort_plan():
+    """The plan with its runs joining families best effort (require_connections false where an end is a family) and
+    its circuit best effort, as the fit-out plans them."""
+    data = _plan().model_dump(mode="json")
+    for op in data["ops"]:
+        if op["key"] in ("FIT-WASTE", "FIT-CONDUIT"):
+            op["require_connections"] = False
+        if op["op"] == "circuit":
+            op["best_effort"] = True
+    return BuildPlan.model_validate(data)
+
+
+def test_best_effort_ops_map_to_the_addin_contract():
+    plan = _best_effort_plan()
+    by_key = plan.by_key()
+    ids = {"W-S": WALL_ID, "FIT-BASIN": 1, "FIT-SOIL": 2, "FIT-LIGHT": 3, "FIT-DB": 4}
+    assert commands.to_command(by_key["FIT-C1"], by_key, ids)["params"] == {
+        "element_ids": [3], "system_type": "PowerCircuit", "panel_id": 4, "best_effort": True}
+    assert commands.to_command(by_key["FIT-WASTE"], by_key, ids)["params"]["require_connections"] is False
+    # a circuit the add-in did not make creates nothing; what it left out is an issue
+    op = by_key["FIT-C1"]
+    none = {"circuit_id": None, "created_ids": [], "skipped": [{"element_id": 3, "reason": "no connector"}]}
+    assert commands.created_entries(op, none) == {}
+    assert [(i["what"], i.get("element_id")) for i in commands.issues(op, none)] == [
+        ("circuit_device", 3), ("circuit", None)]
+    refused = {"circuit_id": 77, "created_ids": [77], "skipped": [], "panel_error": "voltage"}
+    assert commands.created_entries(op, refused) == {"FIT-C1": 77}
+    assert commands.issues(op, refused) == [{"key": "FIT-C1", "what": "panel", "element_id": None, "reason": "voltage"}]
+    failed = {"segment_ids": [5], "fitting_ids": [], "created_ids": [5], "failed_connections": [
+        {"at": "start", "element_id": 1, "reason": "JOIN_FAILED: no connector"},
+        {"at": "bend", "point_index": 1, "reason": "JOIN_FAILED: angle"}]}
+    assert commands.issues(by_key["FIT-WASTE"], failed) == [
+        {"key": "FIT-WASTE", "what": "connection", "reason": "JOIN_FAILED: no connector", "at": "start", "element_id": 1},
+        {"key": "FIT-WASTE", "what": "elbow", "reason": "JOIN_FAILED: angle", "at": "bend", "point_index": 1}]
+    # dumps stay as before when nothing is best effort
+    assert "best_effort" not in _plan().by_key()["FIT-C1"].model_dump(mode="json")
+
+
+def test_refused_joins_and_circuit_devices_are_issues_and_the_run_is_built_with_issues(tmp_path):
+    revit = FitoutRevit(types=[{"category": "OST_Furniture", "family": "M_Chair", "type": "Standard"}],
+                        templates=_template(), elements={WALL_ID: {"category": "OST_Walls", "level": "L1"}},
+                        unjoinable={"OST_PlumbingFixtures", "OST_LightingFixtures"}, unpowered={"OST_LightingFixtures"})
+    before = dict(revit.elements)
+    store = RunStore(tmp_path)
+    record = BuildService(store, lambda: revit, types=TypeMap()).build_now(_best_effort_plan(), revit.title)
+    assert record["status"] == "built_with_issues", record
+    assert sorted((i["key"], i["what"]) for i in record["issues"]) == [
+        ("FIT-C1", "circuit"), ("FIT-C1", "circuit_device"), ("FIT-CONDUIT", "connection"), ("FIT-WASTE", "connection")]
+    assert all(i["reason"] for i in record["issues"])
+    # the runs stand (their joins to the families were refused, not their segments); no circuit was made, and the
+    # read-back does not miss it
+    assert "FIT-WASTE" in record["created"] and "FIT-C1" not in record["created"]
+    assert record["readback"]["ok"], record["readback"]
+    assert not [e for e in revit.elements.values() if e["category"] == "OST_ElectricalCircuit"]
+    assert BuildService(store, lambda: revit).remove(record["run_id"])["status"] == "removed"
+    assert revit.elements == before
+
+
+def test_a_refused_join_with_connections_required_stops_the_build():
+    revit = FitoutRevit(types=[{"category": "OST_Furniture", "family": "M_Chair", "type": "Standard"}],
+                        templates=_template(), elements={WALL_ID: {"category": "OST_Walls", "level": "L1"}},
+                        unjoinable={"OST_PlumbingFixtures"})
+    result = Runner(revit).build(_plan())
+    assert result.status == "failed" and result.failed_key == "FIT-WASTE" and "NO_CONNECTOR" in result.error
+
+
+@pytest.mark.parametrize("how", ["error", "rollback"])
+def test_a_panel_revit_refuses_leaves_the_circuit_unassigned_as_an_issue(how):
+    # "error": the add-in could not assign it (panel_error); "rollback": Revit's failure handling undid the assignment
+    # after the add-in made it (a success with rolled_back_by_failure): the circuit stays either way
+    revit = FitoutRevit(types=[{"category": "OST_Furniture", "family": "M_Chair", "type": "Standard"}],
+                        templates=_template(), elements={WALL_ID: {"category": "OST_Walls", "level": "L1"}},
+                        refuse_panels=how)
+    plan = _best_effort_plan()
+    runner = Runner(revit)
+    result = runner.build(plan)
+    assert result.status == "built"
+    (issue,) = result.issues
+    assert (issue["key"], issue["what"]) == ("FIT-C1", "panel")
+    assert "voltage" in issue["reason"]
+    assert "FIT-C1" in result.created and runner.verify(plan, result.created)["ok"]
+
+
+def test_box_connectors_go_to_the_addin_and_a_box_already_there_is_an_issue():
+    plan = BuildPlan.model_validate({"ops": [
+        {"op": "family_create", "key": "FIT-FAMILY-PLINTH-GEYSER", "category": "OST_MechanicalEquipment",
+         "family": "Plinth Geyser", "type": "400 x 300 x 600mm (Plinth)", "width_mm": 400, "depth_mm": 300,
+         "height_mm": 600, "connectors": [
+             {"domain": "electrical", "system_type": "PowerCircuit"},
+             {"domain": "pipe", "classification": "DomesticColdWater", "diameter_mm": 15},
+             {"domain": "pipe", "classification": "DomesticHotWater", "diameter_mm": 15, "face": "left"}]}]})
+    op = plan.ops[0]
+    params = commands.to_command(op, plan.by_key(), {})["params"]
+    assert params["connectors"] == [
+        {"domain": "electrical", "system_type": "PowerCircuit", "face": "back"},
+        {"domain": "pipe", "classification": "DomesticColdWater", "diameter_mm": 15, "face": "back"},
+        {"domain": "pipe", "classification": "DomesticHotWater", "diameter_mm": 15, "face": "left"}]
+    revit = FitoutRevit()
+    first = Runner(revit).build(plan)
+    assert first.status == "built" and first.issues == []
+    made = next(e for e in revit.elements.values() if e.get("type") == op.type)
+    assert len(made["connectors"]) == 3
+    again = Runner(revit).build(plan)  # already there: used as it is, its connectors as they are
+    (issue,) = again.issues
+    assert issue["what"] == "connectors" and issue["reason"].startswith("0 of 3 connectors made: the family is already")
+    with pytest.raises(ValidationError, match="takes classification and diameter_mm"):
+        BuildPlan.model_validate({"ops": [{**op.model_dump(mode="json"), "connectors": [{"domain": "pipe"}]}]})
+    plain = BuildPlan.model_validate({"ops": [{**op.model_dump(mode="json"), "connectors": []}]})
+    assert "connectors" not in plain.ops[0].model_dump(mode="json")
+
+
+def test_the_commands_a_fitout_plan_needs():
+    assert commands.fitout_commands(_plan().ops) == [
+        "copy_types_from_file", "duplicate_family_type", "get_available_family_types", "create_mep_run",
+        "create_electrical_circuit", "create_lighting_fixture"]
+    assert commands.fitout_commands([o for o in _plan().ops if o.op == "family"][:1]) == []
