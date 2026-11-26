@@ -162,3 +162,118 @@ def test_mep_devices_runs_and_circuits_join_the_plan(building, wb_rules):
     built_fitout = Runner(revit).build(found.plan)
     assert built_fitout.status == "built", built_fitout.error
     assert Runner(revit).verify(found.plan, built_fitout.created)["ok"]
+
+
+# ------------------------------------------------------------------------------------------------ joins (MEP)
+
+MEP_TEMPLATES = {**TEMPLATES, PLU: {**TEMPLATES[PLU], "mep_types": {
+    "pipe_type": [{"id": 31, "name": "PVC - DWV"}],
+    "pipe_system_type": [{"id": 32, "name": "Sanitary", "classification": "Sanitary"},
+                         {"id": 34, "name": "Domestic Cold Water", "classification": "DomesticColdWater"}]}},
+    RES: {"family_types": TEMPLATES[RES]["family_types"] + [
+        {"id": 42, "category": "OST_ElectricalEquipment", "family": "M_Distribution Board", "type": "8 way",
+         "placement": "OneLevelBased", "dims_mm": {}}]}}
+
+
+def toilet_mep():
+    """A toilet's water and drain, a geyser and the flat's board: the cold water to the WC, the basin's waste teed
+    into a stack, the geyser on a circuit of the board (records as mep_plan makes them)."""
+    return {
+        "devices": [
+            {"key": "MEP-DB", "level": "L0", "item": "distribution_board", "label": "Distribution board",
+             "category": "Electrical Equipment", "keywords": ["distribution board"], "point": (300, 300),
+             "elevation_mm": 1500, "panel": True, "source": "electrical"},
+            {"key": "MEP-GEYSER", "level": "L0", "room_key": "TLT", "item": "geyser", "label": "Geyser",
+             "category": "Mechanical Equipment", "keywords": ["water heater"], "point": (6000, 2400),
+             "elevation_mm": 1800, "width_mm": 400, "depth_mm": 300, "height_mm": 600, "source": "plumbing"}],
+        "runs": [
+            {"key": "RUN-STACK", "kind": "pipe", "system": "Sanitary", "level": "L0", "diameter_mm": 100,
+             "points": [(6600, 300, -300), (6600, 300, 3000)]},
+            {"key": "RUN-WASTE", "kind": "pipe", "system": "Sanitary", "level": "L0", "diameter_mm": 40,
+             "start_key": "FIT-TLT-basin-1", "end_key": "RUN-STACK",
+             "points": [(5300, 300, 400), (6500, 300, 400)]},
+            {"key": "RUN-COLD", "kind": "pipe", "system": "DomesticColdWater", "level": "L0", "diameter_mm": 15,
+             "end_key": "FIT-TLT-wc-1", "points": [(6600, 500, 2800), (5500, 500, 2800), (5500, 500, 300)]},
+            {"key": "RUN-VENT", "kind": "pipe", "system": "Sanitary", "level": "L0", "diameter_mm": 50,
+             "start_key": "RUN-STACK", "points": [(6600, 300, 2900), (6600, 300, 3400)]}],
+        "circuits": [{"key": "CKT-1", "device_keys": ["MEP-GEYSER"], "panel_key": "MEP-DB"}]}
+
+
+def plan_toilet(revit, building, built, wb_rules, **kw):
+    layout = furniture.solve(rooms.build(building, wb_rules), wb_rules)
+    answers = {"fitout:family:wardrobe": "skip", "fitout:family:side_table": "skip", "fitout:family:wc": {"create": "box"},
+               "fitout:family:geyser": {"create": "box"}}
+    return to_plan.plan_fitout(revit, building, built, furniture=layout, mep=toilet_mep(), answers=answers, **kw)
+
+
+def test_runs_to_families_join_best_effort_and_box_families_get_their_connectors(tmp_path, building, wb_rules):
+    revit = FitoutRevit(templates=MEP_TEMPLATES, unjoinable={"OST_PlumbingFixtures", "OST_MechanicalEquipment"},
+                        unpowered={"OST_MechanicalEquipment"})
+    store = RunStore(tmp_path)
+    _, built = built_run(store, building, revit)
+    found = plan_toilet(revit, building, built, wb_rules)
+    assert found.ready, found.questions
+    by_key = found.plan.by_key()
+    # our own pipes have connectors: a run joining only runs requires its joins; one ending at a family does not
+    assert [by_key[k].require_connections for k in ("RUN-STACK", "RUN-WASTE", "RUN-COLD", "RUN-VENT")] == [
+        True, False, False, True]
+    assert by_key["CKT-1"].best_effort
+    boxes = {op.family: op.connectors for op in found.plan.ops if op.op == "family_create"}
+    assert {f: [c.model_dump(exclude_none=True) for c in cs] for f, cs in boxes.items()} == {
+        "Plinth Geyser": [{"domain": "electrical", "system_type": "PowerCircuit", "face": "back"}],
+        "Plinth Water closet": [{"domain": "pipe", "classification": "DomesticColdWater", "diameter_mm": 15.0, "face": "back"}]}
+    record = BuildService(store, lambda: revit, types=TypeMap()).build_now(found.plan, revit.title)
+    # the WC and geyser boxes joined by their own connectors; the template basin has none: its waste stands, unjoined
+    assert record["status"] == "built_with_issues", record
+    assert [(i["key"], i["what"], i["at"]) for i in record["issues"]] == [("RUN-WASTE", "connection", "start")]
+    assert record["readback"]["ok"]
+    assert BuildService(store, lambda: revit).remove(record["run_id"])["status"] == "removed"
+
+
+def test_prune_drops_what_joins_a_record_that_is_gone_and_the_types_nobody_uses(building, wb_rules):
+    revit = FitoutRevit(templates=MEP_TEMPLATES)
+    built = {op.key: 70000 + i for i, op in enumerate(building.ops)}
+    plan = plan_toilet(revit, building, built, wb_rules).plan
+    out = to_plan.prune(plan, drop={"FIT-TLT-wc-1", "RUN-STACK", "MEP-GEYSER"}, why="not in the pilot")
+    assert out.dropped == {"FIT-TLT-wc-1": "not in the pilot", "MEP-GEYSER": "not in the pilot",
+                           "RUN-STACK": "not in the pilot",
+                           "RUN-WASTE": "it joins RUN-STACK, which is left out",
+                           "RUN-COLD": "it joins FIT-TLT-wc-1, which is left out",
+                           "RUN-VENT": "it joins RUN-STACK, which is left out",
+                           "CKT-1": "every device of it is left out"}
+    kinds = {op.op for op in out.plan.ops}
+    assert "mep_run" not in kinds and "circuit" not in kinds
+    assert not [op for op in out.plan.ops if op.op == "family_create"]  # both boxes' instances are gone
+    items = [(i.kind, i.name) for op in out.plan.ops if op.op == "types_from_file" for i in op.items]
+    assert not [i for i in items if i[0].startswith("pipe")]  # no run uses a pipe type or system any more
+    assert set(out.plan.existing) == {"tW"}  # the basin's wall; nothing else is referred to
+    # a circuit only loses a device that is gone
+    trimmed = to_plan.prune(BuildPlan.model_validate({**plan.model_dump(mode="json"), "ops": [
+        *plan.model_dump(mode="json")["ops"],
+        {"op": "circuit", "key": "CKT-2", "device_keys": ["MEP-GEYSER", "FIT-TLT-basin-1"], "panel_key": "MEP-DB"}]}),
+        drop={"MEP-GEYSER"})
+    assert trimmed.trimmed == {"CKT-2": ["MEP-GEYSER"]} and trimmed.plan.by_key()["CKT-2"].device_keys == [
+        "FIT-TLT-basin-1"]
+    assert to_plan.prune(plan, drop={op.key for op in plan.ops}).plan is None
+
+
+def test_on_an_earlier_fitout_run_its_records_are_joined_not_placed_again(building, wb_rules):
+    revit = FitoutRevit(templates=MEP_TEMPLATES)
+    built = {op.key: 70000 + i for i, op in enumerate(building.ops)}
+    full = plan_toilet(revit, building, built, wb_rules).plan
+    furniture_keys = [op.key for op in full.ops if op.op == "family" and op.key.startswith("FIT-")]
+    earlier = {k: 80000 + i for i, k in enumerate(furniture_keys)}
+    found = plan_toilet(revit, building, built, wb_rules, built_fitout=earlier)
+    plan = found.plan
+    assert not set(earlier) & set(plan.by_key())
+    assert plan.existing == {"FIT-TLT-basin-1": earlier["FIT-TLT-basin-1"], "FIT-TLT-wc-1": earlier["FIT-TLT-wc-1"]}
+    assert plan.by_key()["RUN-COLD"].end_key == "FIT-TLT-wc-1"
+    # no type op for what the earlier run placed: the WC box family is that run's, the bed and desk copies too
+    assert {op.family for op in plan.ops if op.op == "family_create"} == {"Plinth Geyser"}
+    assert not [op for op in plan.ops if op.op == "family_type_copy"]
+    assert set(found.already_built) == set(earlier)
+    assert found.already_built["FIT-TLT-wc-1"] == full.by_key()["FIT-TLT-wc-1"]
+    record = Runner(FitoutRevit(templates=MEP_TEMPLATES, elements={
+        **{i: {"category": "OST_Walls", "level": "L0"} for i in built.values()},
+        **{i: {"category": "OST_PlumbingFixtures", "level": "L0"} for i in earlier.values()}})).build(plan)
+    assert record.status == "built", record.error
