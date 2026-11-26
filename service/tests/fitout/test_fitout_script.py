@@ -33,7 +33,8 @@ def test_a_dry_plan_then_a_build_as_its_own_run(tmp_path, capsys):
                                                    "min": [-1000, -450, 3000], "max": [1000, 450, 3800]}]}),
                             encoding="utf-8")
     argv = ["--run", run_id, "--title", doc.title, "--rules", "west-bengal", "--answers", str(answers),
-            "--measurements", str(measurements), "--measured-level", "L1", "--out", str(tmp_path / "out")]
+            "--measurements", str(measurements), "--measured-level", "L1", "--out", str(tmp_path / "out"),
+            "--systems", "furniture"]  # the MEP of this flat without a roof or stair would ask its questions first
     assert fitout_build.main(argv, connect=lambda: doc, store=store) == 0
     printed = capsys.readouterr().out
     assert "1 measured types" in printed and "sofa: 1 laid out, 1 in the plan  [2000 x 900 x1]" in printed
