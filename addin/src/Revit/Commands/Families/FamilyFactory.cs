@@ -17,6 +17,11 @@
 // A box (BoxRecipe, for create_box_family, 2026-11-17: a fit-out item no family suits, created only when the user says
 // so) is one extrusion W x D x H with type parameters Width, Depth, Height and Material, its origin at the middle of its
 // back edge (back on +Y, front facing -Y) and its base at the level; its flex check keeps the back on the origin.
+// Box connectors (2026-11-27, MEP fit-out): each electrical or pipe connector is created on one face of the extrusion
+// (ConnectorElement.CreateElectricalConnector / CreatePipeConnector with the face's reference, the same overloads in Revit
+// 2024 to 2027), then moved along that face to where BoxFamily.ConnectorPositions puts it (the API documents a face-only
+// connector as placed at the plane's origin and movable along the face). Being hosted by the face, it follows the face
+// when Width, Depth or Height changes; the flex check checks that it does.
 
 using System;
 using System.Collections.Generic;
@@ -25,6 +30,7 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
 using Plinth.Revit.Bridge;
+using Plinth.Revit.Core.Families;
 using Plinth.Revit.Core.Logging;
 using Newtonsoft.Json.Linq;
 using RevitApplication = Autodesk.Revit.ApplicationServices.Application;
@@ -283,6 +289,11 @@ namespace Plinth.Revit.Commands.Families
     {
         public Extrusion Extrusion;
         public double Cx, Cy, Z0;
+
+        /// <summary>The connectors added, with what was asked of each, in the asked order.</summary>
+        public readonly List<Tuple<BoxConnector, ConnectorElement>> Connectors = new List<Tuple<BoxConnector, ConnectorElement>>();
+
+        public XYZ Origin => new XYZ(Cx, Cy, Z0);
     }
 
     /// <summary>
@@ -372,7 +383,7 @@ namespace Plinth.Revit.Commands.Families
         /// FamilyBuildException naming the failed step; the family document is always closed without saving.
         /// </summary>
         public static JObject CreateBox(RevitApplication app, string templatePath, BuiltInCategory category, string savePath, string typeName,
-            double w, double d, double h, string materialName)
+            double w, double d, double h, string materialName, IReadOnlyList<BoxConnector> connectors = null)
         {
             Document doc = null;
             try
@@ -408,11 +419,24 @@ namespace Plinth.Revit.Commands.Families
                     // The parameter holds its material before it is associated (an empty material parameter fails regeneration).
                     material = FamilyBuilder.Step("bind the " + BoxMaterialParameterName + " parameter to the extrusion", () =>
                         fb.BindMaterial(built.Extrusion, BoxMaterialParameterName, string.IsNullOrWhiteSpace(materialName) ? BoxDefaultMaterial : materialName.Trim()));
+                    if (connectors != null && connectors.Count > 0)
+                    {
+                        var positions = BoxFamily.ConnectorPositions(Mm.FromFeet(w, 6), Mm.FromFeet(d, 6), Mm.FromFeet(h, 6), connectors);
+                        for (var i = 0; i < connectors.Count; i++)
+                        {
+                            var spec = connectors[i];
+                            var target = built.Origin + new XYZ(Mm.ToFeet(positions[i][0]), Mm.ToFeet(positions[i][1]), Mm.ToFeet(positions[i][2]));
+                            var element = FamilyBuilder.Step("add connectors[" + i + "] (" + spec.Domain + " " + spec.SystemType + ") on the "
+                                + spec.Face + " face", () => fb.AddConnector(built.Extrusion, spec, target));
+                            built.Connectors.Add(Tuple.Create(spec, element));
+                        }
+                    }
                     var status = FamilyBuilder.Step("commit the family geometry", () => tx.Commit());
                     if (status != TransactionStatus.Committed)
                         throw new FamilyBuildException("commit the family geometry", "Revit rolled the family transaction back (see failures)");
                 }
 
+                var made = new JArray(built.Connectors.Select(c => DescribeConnector(c.Item1, c.Item2, built.Origin)));
                 var flex = BoxFlexCheck(fb, built, pw, pd, ph, w, d, h);
 
                 FamilyBuilder.Step("save the family file", () =>
@@ -429,6 +453,7 @@ namespace Plinth.Revit.Commands.Families
                     ["sample_geometry_removed"] = removed,
                     ["reference_planes_created"] = new JArray(fb.PlanesCreated),
                     ["reference_planes_reused"] = new JArray(fb.PlanesReused),
+                    ["connectors"] = made,
                     ["flex_check"] = flex
                 };
             }
@@ -474,13 +499,54 @@ namespace Plinth.Revit.Commands.Families
                     Expect(box, XYZ.BasisX, built.Cx - w2 / 2, built.Cx + w2 / 2, "Width");
                     Expect(box, XYZ.BasisY, built.Cy - d2, built.Cy, "Depth (the back staying on the origin)");
                     Expect(box, XYZ.BasisZ, built.Z0, built.Z0 + h2, "Height (the base staying on the level)");
+                    // Each connector stays on its face: on the face's plane after the face moved (front, left, right, top).
+                    foreach (var made in built.Connectors)
+                    {
+                        var face = made.Item1.Face;
+                        var normal = Vector(BoxFamily.FaceNormal(face));
+                        var axis = new XYZ(Math.Abs(normal.X), Math.Abs(normal.Y), Math.Abs(normal.Z));
+                        var origin = FamilyBuilder.Step(step + ": read the " + face + " connector", () => made.Item2.Origin);
+                        var actual = (origin - built.Origin).DotProduct(axis);
+                        var expected = Mm.ToFeet(BoxFamily.FaceCoordinate(face, Mm.FromFeet(w2, 6), Mm.FromFeet(d2, 6), Mm.FromFeet(h2, 6)));
+                        if (Math.Abs(actual - expected) > FamilyBuilder.Tolerance)
+                            throw new FamilyBuildException(step, "the " + made.Item1.Domain + " connector on the " + face + " face does not follow "
+                                + "the face: it is at " + Mm.FromFeet(actual) + " mm, the face at " + Mm.FromFeet(expected) + " mm");
+                    }
                 }
                 finally
                 {
                     if (tx.HasStarted() && !tx.HasEnded()) tx.RollBack();
                 }
             }
-            return new JObject { ["width_depth_height_flex"] = true, ["origin"] = "middle of the back edge, at the level" };
+            var result = new JObject { ["width_depth_height_flex"] = true, ["origin"] = "middle of the back edge, at the level" };
+            if (built.Connectors.Count > 0) result["connectors_follow_their_faces"] = true;
+            return result;
+        }
+
+        internal static XYZ Vector(double[] v) => new XYZ(v[0], v[1], v[2]);
+
+        /// <summary>A created connector as the result lists it: what it is, its face, where it sits about the origin (mm).</summary>
+        private static JObject DescribeConnector(BoxConnector spec, ConnectorElement connector, XYZ origin)
+        {
+            var at = connector.Origin - origin;
+            var described = new JObject
+            {
+                ["domain"] = spec.Domain,
+                [spec.Domain == BoxConnector.Pipe ? "classification" : "system_type"] = spec.SystemType,
+                ["face"] = spec.Face,
+                ["position_mm"] = new JArray(Mm.FromFeet(at.X), Mm.FromFeet(at.Y), Mm.FromFeet(at.Z))
+            };
+            if (spec.Domain == BoxConnector.Pipe)
+            {
+                described["diameter_mm"] = connector.Radius > 0 ? Mm.FromFeet(connector.Radius * 2) : (double?)null;
+                return described;
+            }
+            var poles = connector.get_Parameter(BuiltInParameter.RBS_ELEC_NUMBER_OF_POLES);
+            described["poles"] = poles != null && poles.StorageType == StorageType.Integer ? poles.AsInteger() : (int?)null;
+            var voltage = connector.get_Parameter(BuiltInParameter.RBS_ELEC_VOLTAGE);
+            described["voltage_v"] = voltage != null && voltage.StorageType == StorageType.Double
+                ? Math.Round(UnitUtils.ConvertFromInternalUnits(voltage.AsDouble(), UnitTypeId.Volts), 1) : (double?)null;
+            return described;
         }
 
         /// <summary>
@@ -977,6 +1043,65 @@ namespace Plinth.Revit.Commands.Families
             // regeneration (the first live run reported "Document regeneration failed" at the material binding).
             Doc.Regenerate();
         }
+
+        /// <summary>
+        /// An electrical or pipe connector on the extrusion's face, moved along the face to target (family coordinates).
+        /// A pipe connector gets the asked diameter (its Radius is read-only: the CONNECTOR_RADIUS parameter is set, else
+        /// CONNECTOR_DIAMETER). An electrical connector is set to 1 pole where it has the parameter (a single-phase device,
+        /// the indicative default); its voltage and load stay Revit's defaults, since the box knows nothing of the real
+        /// device (they are read back into the result).
+        /// </summary>
+        public ConnectorElement AddConnector(Extrusion extrusion, BoxConnector spec, XYZ target)
+        {
+            var normal = FamilyFactory.Vector(BoxFamily.FaceNormal(spec.Face));
+            var face = FindFace(extrusion, normal);
+            ConnectorElement connector;
+            if (spec.Domain == BoxConnector.Electrical)
+            {
+                if (!Enum.TryParse(spec.SystemType, false, out Autodesk.Revit.DB.Electrical.ElectricalSystemType type))
+                    throw new InvalidOperationException("this Revit has no electrical system type " + spec.SystemType);
+                connector = ConnectorElement.CreateElectricalConnector(Doc, type, face.Reference)
+                    ?? throw new InvalidOperationException("Revit returned no connector");
+                var poles = connector.get_Parameter(BuiltInParameter.RBS_ELEC_NUMBER_OF_POLES);
+                if (poles != null && !poles.IsReadOnly && poles.StorageType == StorageType.Integer && poles.AsInteger() != 1) poles.Set(1);
+            }
+            else
+            {
+                if (!Enum.TryParse(spec.SystemType, false, out Autodesk.Revit.DB.Plumbing.PipeSystemType type))
+                    throw new InvalidOperationException("this Revit has no pipe system type " + spec.SystemType);
+                connector = ConnectorElement.CreatePipeConnector(Doc, type, face.Reference)
+                    ?? throw new InvalidOperationException("Revit returned no connector");
+                var radius = Mm.ToFeet(spec.DiameterMm) / 2;
+                var size = connector.get_Parameter(BuiltInParameter.CONNECTOR_RADIUS);
+                if (size != null && !size.IsReadOnly && size.StorageType == StorageType.Double) size.Set(radius);
+                else
+                {
+                    size = connector.get_Parameter(BuiltInParameter.CONNECTOR_DIAMETER);
+                    if (size == null || size.IsReadOnly || size.StorageType != StorageType.Double)
+                        throw new InvalidOperationException("the pipe connector's radius and diameter cannot be set");
+                    size.Set(radius * 2);
+                }
+                Doc.Regenerate();
+                if (Math.Abs(connector.Radius - radius) > Tolerance)
+                    throw new InvalidOperationException("the pipe connector's diameter is " + Mm.FromFeet(connector.Radius * 2) + " mm, not "
+                        + spec.DiameterMm + " mm");
+            }
+            Doc.Regenerate();
+
+            // Along the face only: the connector stays on (hosted by) the face's plane.
+            var offset = target - connector.Origin;
+            offset -= normal * offset.DotProduct(normal);
+            if (offset.GetLength() > Tolerance)
+            {
+                ElementTransformUtils.MoveElement(Doc, connector.Id, offset);
+                Doc.Regenerate();
+            }
+            if (connector.Origin.DistanceTo(target) > Tolerance)
+                throw new InvalidOperationException("Revit put the connector at " + Point(connector.Origin) + " mm, not at " + Point(target) + " mm");
+            return connector;
+        }
+
+        private static string Point(XYZ p) => "(" + Mm.FromFeet(p.X) + ", " + Mm.FromFeet(p.Y) + ", " + Mm.FromFeet(p.Z) + ")";
 
         private static PlanarFace FindFace(Extrusion extrusion, XYZ normal)
         {

@@ -304,6 +304,94 @@ namespace Plinth.Revit.Core.Tests
             Assert.Equal(new[] { "Metric Generic Model.rft" }, BoxFamily.Templates("OST_LightingFixtures"));
         }
 
+        [Fact]
+        public void BoxConnectorsAreOptionalAndDefaultToAPowerCircuitOnTheBack()
+        {
+            Assert.Null(BoxFamily.ConnectorsError(null, out var none));
+            Assert.Empty(none);
+            Assert.Null(BoxFamily.ConnectorsError(JValue.CreateNull(), out none));
+            Assert.Empty(none);
+
+            Assert.Null(BoxFamily.ConnectorsError(JArray.Parse(
+                @"[{""domain"":""electrical""},
+                   {""domain"":""Pipe"",""classification"":""domesticcoldwater"",""diameter_mm"":15,""face"":""Bottom""},
+                   {""domain"":""electrical"",""system_type"":""data"",""face"":""top""}]"), out var connectors));
+            Assert.Equal(3, connectors.Count);
+            Assert.Equal(("electrical", "PowerCircuit", 0.0, "back"), Tuple(connectors[0]));
+            Assert.Equal(("pipe", "DomesticColdWater", 15.0, "bottom"), Tuple(connectors[1]));
+            Assert.Equal(("electrical", "Data", 0.0, "top"), Tuple(connectors[2]));
+        }
+
+        private static (string, string, double, string) Tuple(BoxConnector c) => (c.Domain, c.SystemType, c.DiameterMm, c.Face);
+
+        [Theory]
+        [InlineData(@"{""domain"":""electrical""}", "list")]
+        [InlineData(@"[1]", "connectors[0] must be an object")]
+        [InlineData(@"[{""domain"":""duct""}]", "domain must be electrical or pipe")]
+        [InlineData(@"[{}]", "domain must be electrical or pipe")]
+        [InlineData(@"[{""domain"":""electrical"",""system_type"":""Lighting""}]", "system_type must be one of")]
+        [InlineData(@"[{""domain"":""electrical"",""system_type"":""UndefinedSystemType""}]", "system_type must be one of")]
+        [InlineData(@"[{""domain"":""electrical"",""diameter_mm"":20}]", "does not take diameter_mm")]
+        [InlineData(@"[{""domain"":""electrical"",""face"":""side""}]", "face must be one of back, front, left, right, top, bottom")]
+        [InlineData(@"[{""domain"":""pipe"",""diameter_mm"":15}]", "classification must be one of")]
+        [InlineData(@"[{""domain"":""pipe"",""classification"":""Global"",""diameter_mm"":15}]", "classification must be one of")]
+        [InlineData(@"[{""domain"":""pipe"",""classification"":""Sanitary""}]", "diameter_mm must be")]
+        [InlineData(@"[{""domain"":""pipe"",""classification"":""Sanitary"",""diameter_mm"":0}]", "diameter_mm must be")]
+        [InlineData(@"[{""domain"":""pipe"",""classification"":""Sanitary"",""diameter_mm"":""100""}]", "diameter_mm must be")]
+        [InlineData(@"[{""domain"":""pipe"",""classification"":""Sanitary"",""diameter_mm"":700}]", "at most 600")]
+        [InlineData(@"[{""domain"":""pipe"",""classification"":""Vent"",""diameter_mm"":50,""system_type"":""Vent""}]", "does not take system_type")]
+        [InlineData(@"[{""domain"":""electrical""},{""domain"":""pipe"",""classification"":""Vent"",""diameter_mm"":50,""dia"":1}]", "connectors[1] (pipe) does not take dia")]
+        public void BadBoxConnectorsAreRefused(string json, string error)
+        {
+            Assert.Contains(error, BoxFamily.ConnectorsError(JToken.Parse(json), out _));
+        }
+
+        [Fact]
+        public void AtMostTwelveBoxConnectors()
+        {
+            var many = new JArray(Enumerable.Range(0, 13).Select(_ => new JObject { ["domain"] = "electrical" }));
+            Assert.Contains("at most 12", BoxFamily.ConnectorsError(many, out _));
+            many.RemoveAt(0);
+            Assert.Null(BoxFamily.ConnectorsError(many, out var twelve));
+            Assert.Equal(12, twelve.Count);
+        }
+
+        [Fact]
+        public void BoxConnectorsSitAtTheirFaceCentresAndSpreadWhenTheyShareOne()
+        {
+            BoxConnector On(string face) => new BoxConnector { Domain = "electrical", SystemType = "PowerCircuit", Face = face };
+            // 1200 wide, 600 deep, 900 high; the origin is the middle of the back edge at the level.
+            var single = BoxFamily.ConnectorPositions(1200, 600, 900,
+                new[] { On("back"), On("front"), On("left"), On("right"), On("top"), On("bottom") });
+            Assert.Equal(new[] { 0.0, 0.0, 450.0 }, single[0]);
+            Assert.Equal(new[] { 0.0, -600.0, 450.0 }, single[1]);
+            Assert.Equal(new[] { -600.0, -300.0, 450.0 }, single[2]);
+            Assert.Equal(new[] { 600.0, -300.0, 450.0 }, single[3]);
+            Assert.Equal(new[] { 0.0, -300.0, 900.0 }, single[4]);
+            Assert.Equal(new[] { 0.0, -300.0, 0.0 }, single[5]);
+
+            // Two on the back split its width in thirds; the left one between them stays centred; three on the right
+            // split the depth in quarters.
+            var shared = BoxFamily.ConnectorPositions(1200, 600, 900,
+                new[] { On("back"), On("left"), On("back"), On("right"), On("right"), On("right") });
+            Assert.Equal(-200.0, shared[0][0], 6);
+            Assert.Equal(new[] { -600.0, -300.0, 450.0 }, shared[1]);
+            Assert.Equal(200.0, shared[2][0], 6);
+            Assert.Equal(new[] { -450.0, -300.0, -150.0 }, shared.Skip(3).Select(p => p[1]).ToArray());
+            Assert.All(shared.Skip(3), p => Assert.Equal(600.0, p[0]));
+
+            // Every position lies on its face's plane.
+            var faces = new[] { "back", "left", "back", "right", "right", "right" };
+            for (var i = 0; i < faces.Length; i++)
+            {
+                var n = BoxFamily.FaceNormal(faces[i]);
+                var axis = Array.FindIndex(n, v => v != 0);
+                Assert.Equal(BoxFamily.FaceCoordinate(faces[i], 1200, 600, 900), shared[i][axis], 6);
+            }
+            Assert.Equal(-600.0, BoxFamily.FaceCoordinate("front", 1200, 600, 900));
+            Assert.Equal(new[] { 0.0, 0.0, -1.0 }, BoxFamily.FaceNormal("bottom"));
+        }
+
         [Theory]
         [InlineData(850, 0.0, 850)]       // the hob live on 2026-11-17: asked 850 above the level, left on it
         [InlineData(850, 849.5, 0)]       // raised: within 1 mm

@@ -2,6 +2,14 @@
 // circuit (ElectricalSystem.Create) and, when a panel is given, assigns it (SelectPanel). Every element is checked first:
 // one without a free electrical connector of the circuit's type is an error naming it, and nothing is created.
 // One transaction: if Revit refuses the circuit or the panel (a voltage or distribution system mismatch), it all rolls back.
+// best_effort (2026-11-27, MEP fit-out on real-world families: an indicative model where a socket family without a power
+// connector, or a panel of the wrong voltage, should not stop the rest): elements without a free connector of the type are
+// left out and listed in skipped (none left: success with circuit_id null and nothing changed); the circuit is committed
+// in its own transaction first and the panel assigned in a second one, so a panel Revit refuses (SelectPanel throws, or
+// the FailureScope rolls the assignment back on a warning or error) only undoes the assignment: the circuit is kept
+// without a panel and panel_error says why. A SubTransaction would not do: failures are processed when the outer
+// transaction commits, and the FailureScope's rollback there would take the circuit with it. Both transactions sit in one
+// TransactionGroup, so it is one undo step.
 
 using System;
 using System.Collections.Generic;
@@ -23,11 +31,15 @@ namespace Plinth.Revit.Commands.Mep
             "Create one electrical circuit from devices and fixtures (element_ids) and, with panel_id, assign it to that panel "
             + "(electrical equipment). system_type is the circuit type (default PowerCircuit; others such as Data, FireAlarm, "
             + "Communication, Controls). Each element needs a free electrical connector of that type; otherwise the error lists the "
-            + "elements and why, and nothing is created. Returns circuit_id, circuit_number, panel and created_ids.";
+            + "elements and why, and nothing is created. Returns circuit_id, circuit_number, panel and created_ids. best_effort true: "
+            + "elements without such a connector are left out and listed in skipped [{element_id, reason}] (none left: success with "
+            + "circuit_id null, created_ids [] and nothing changed), and a panel Revit refuses (voltage, poles, no free slot) leaves "
+            + "the circuit without a panel and returns panel_error (null when assigned).";
         public string ParametersSchema => @"{""type"":""object"",""properties"":{
             ""element_ids"":{""type"":""array"",""items"":{""type"":""integer""}},
             ""panel_id"":{""type"":""integer""},
-            ""system_type"":{""type"":""string""}},
+            ""system_type"":{""type"":""string""},
+            ""best_effort"":{""type"":""boolean"",""description"":""skip elements that cannot join and keep the circuit if the panel is refused (default false)""}},
             ""required"":[""element_ids""]}";
         public bool ReadOnly => false;
 
@@ -45,13 +57,14 @@ namespace Plinth.Revit.Commands.Mep
             if (ids.Count == 0 || ids.Count > MaxElements)
                 return CommandResult.Fail("INVALID_PARAMS: element_ids lists 1 to " + MaxElements + " devices or fixtures.");
 
+            var bestEffort = p.Value<bool?>("best_effort") ?? false;
             var problems = new JArray();
             foreach (var id in ids)
             {
                 var reason = Check(doc, id, systemType);
                 if (reason != null) problems.Add(new JObject { ["element_id"] = id, ["reason"] = reason });
             }
-            if (problems.Count > 0)
+            if (problems.Count > 0 && !bestEffort)
                 return CommandResult.Fail("NO_ELECTRICAL_CONNECTOR: " + problems.Count + " of the elements cannot join a " + systemType
                     + " circuit (" + string.Join("; ", problems.Select(x => x.Value<long>("element_id") + ": " + x.Value<string>("reason"))) + "). Nothing was created.",
                     new JObject { ["problems"] = problems });
@@ -66,6 +79,12 @@ namespace Plinth.Revit.Commands.Mep
                 if (panel.Category?.BuiltInCategory != BuiltInCategory.OST_ElectricalEquipment)
                     return CommandResult.Fail("NOT_A_PANEL: element " + panelId.Value + " is a " + (panel.Category?.Name ?? "element")
                         + ", not electrical equipment.");
+            }
+
+            if (bestEffort)
+            {
+                var skippedIds = new HashSet<long>(problems.Select(x => x.Value<long>("element_id")));
+                return BestEffort(doc, ids.Where(id => !skippedIds.Contains(id)).ToList(), systemType, panel, problems);
             }
 
             using (var tx = new Transaction(doc, "Plinth: Create circuit"))
@@ -108,6 +127,104 @@ namespace Plinth.Revit.Commands.Mep
                     return CommandResult.Fail("CREATE_FAILED: could not create the circuit" + (panel == null ? "" : " on panel " + panelId.Value)
                         + ": " + ex.Message + " Nothing was created.");
                 }
+            }
+        }
+
+        /// <summary>
+        /// best_effort: the circuit from the elements that can join, committed on its own; then the panel in a second
+        /// transaction, whose failure only undoes the assignment. One TransactionGroup, so one undo step.
+        /// </summary>
+        private static CommandResult BestEffort(Document doc, List<long> ids, ElectricalSystemType systemType, FamilyInstance panel, JArray skipped)
+        {
+            if (ids.Count == 0)
+                return CommandResult.Ok(new JObject
+                {
+                    ["circuit_id"] = null,
+                    ["circuit_number"] = null,
+                    ["load_name"] = null,
+                    ["system_type"] = systemType.ToString(),
+                    ["panel_id"] = null,
+                    ["panel_name"] = null,
+                    ["element_ids"] = new JArray(),
+                    ["created_ids"] = new JArray(),
+                    ["skipped"] = skipped,
+                    ["panel_error"] = null,
+                    ["note"] = "No element can join a " + systemType + " circuit; nothing was created."
+                });
+
+            using (var group = new TransactionGroup(doc, "Plinth: Create circuit"))
+            {
+                group.Start();
+                ElectricalSystem circuit;
+                List<long> members;
+                using (var tx = new Transaction(doc, "Plinth: Create circuit"))
+                {
+                    tx.Start();
+                    try
+                    {
+                        circuit = ElectricalSystem.Create(doc, ids.Select(RevitCompat.ToElementId).ToList(), systemType)
+                            ?? throw new InvalidOperationException("Revit returned no circuit.");
+                        doc.Regenerate();
+                        members = circuit.Elements.Cast<Element>().Select(e => RevitCompat.GetId(e.Id)).ToList();
+                        if (members.Count == 0) throw new InvalidOperationException("Revit made an empty circuit.");
+                        foreach (var id in ids.Where(id => !members.Contains(id)))
+                            skipped.Add(new JObject { ["element_id"] = id, ["reason"] = "Revit left it out of the circuit" });
+                        if (tx.Commit() != TransactionStatus.Committed)
+                        {
+                            group.RollBack();
+                            return CommandResult.Fail("NOT_COMMITTED: Revit rolled the circuit back; see failures. Nothing was created.",
+                                new JObject { ["skipped"] = skipped });
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        if (tx.HasStarted() && !tx.HasEnded()) tx.RollBack();
+                        if (group.HasStarted() && !group.HasEnded()) group.RollBack();
+                        return CommandResult.Fail("CREATE_FAILED: could not create the circuit: " + ex.Message + " Nothing was created.",
+                            new JObject { ["skipped"] = skipped });
+                    }
+                }
+
+                string panelError = null;
+                if (panel != null)
+                {
+                    using (var tx = new Transaction(doc, "Plinth: Assign circuit to panel"))
+                    {
+                        tx.Start();
+                        try
+                        {
+                            circuit.SelectPanel(panel);
+                            doc.Regenerate();
+                            if (circuit.BaseEquipment == null || circuit.BaseEquipment.Id != panel.Id)
+                                throw new InvalidOperationException("Revit did not assign the circuit to the panel.");
+                            if (tx.Commit() != TransactionStatus.Committed)
+                                panelError = "Revit raised a warning or error and undid the assignment (see failures).";
+                        }
+                        catch (Exception ex)
+                        {
+                            if (tx.HasStarted() && !tx.HasEnded()) tx.RollBack();
+                            panelError = ex.Message;
+                        }
+                    }
+                    if (panelError != null)
+                        panelError = "Revit refused panel " + RevitCompat.GetId(panel.Id) + " (" + panel.Name + "): " + panelError
+                            + " The circuit was kept without a panel.";
+                }
+                group.Assimilate();
+
+                return CommandResult.Ok(new JObject
+                {
+                    ["circuit_id"] = RevitCompat.GetId(circuit.Id),
+                    ["circuit_number"] = circuit.CircuitNumber,
+                    ["load_name"] = circuit.LoadName,
+                    ["system_type"] = systemType.ToString(),
+                    ["panel_id"] = circuit.BaseEquipment == null ? null : (JToken)RevitCompat.GetId(circuit.BaseEquipment.Id),
+                    ["panel_name"] = circuit.PanelName,
+                    ["element_ids"] = new JArray(members),
+                    ["created_ids"] = new JArray(RevitCompat.GetId(circuit.Id)),
+                    ["skipped"] = skipped,
+                    ["panel_error"] = panelError
+                });
             }
         }
 
