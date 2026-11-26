@@ -1,0 +1,60 @@
+/*
+ * Plinth design tokens.
+ * Direction: a drawing sheet on drafting film. Graphite linework, one redline accent,
+ * hairline rules, title-block framing. Light theme only.
+ */
+:root {
+  /* colour: film and graphite (cool, slightly green-grey, like matte drafting film) */
+  --film: #edefea;          /* page */
+  --film-deep: #e3e6e0;     /* inset panels, table heads */
+  --sheet: #f8f9f6;         /* raised paper (cards, form, question card) */
+  --ink: #1f2326;           /* primary text, heavy linework */
+  --ink-2: #4c5257;         /* secondary text */
+  --ink-3: #61676c;         /* tertiary text, annotation */
+  --line: #c5cac4;          /* hairlines */
+  --line-strong: #8d938e;   /* construction lines, grid lines */
+  --wall-side: #b3b9b3;     /* extruded wall faces in the axonometric */
+
+  /* the one accent: redline */
+  --red: #c4321f;
+  --red-ink: #a82a19;       /* redline used for small text */
+  --red-wash: #f5e2dc;      /* highlight behind redline marks */
+
+  /* type */
+  --font-sans: 'Archivo', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+
+  --fs-12: 0.75rem;
+  --fs-14: 0.875rem;
+  --fs-16: 1rem;
+  --fs-18: 1.125rem;
+  --fs-21: 1.3125rem;
+  --fs-28: 1.75rem;
+  --fs-38: 2.375rem;
+  --fs-52: 3.25rem;
+  --fs-72: 4.5rem;
+
+  /* space (non-linear) */
+  --s-1: 0.25rem;
+  --s-2: 0.5rem;
+  --s-3: 0.75rem;
+  --s-4: 1rem;
+  --s-5: 1.5rem;
+  --s-6: 2rem;
+  --s-7: 3rem;
+  --s-8: 4rem;
+  --s-9: 6rem;
+  --s-10: 8rem;
+
+  /* frame */
+  --sheet-max: 78rem;
+  --gutter: clamp(1rem, 4vw, 2.5rem);
+  --track: 4.5rem;          /* left column that carries the grid bubbles */
+  --hair: 1px;
+
+  /* elevation: paper lying on paper. Flat, offset, no blur glow. */
+  --lift-1: 0 1px 0 var(--line), 0 2px 6px rgb(31 35 38 / 0.07);
+  --lift-2: 0 1px 0 var(--line-strong), 0 10px 24px -8px rgb(31 35 38 / 0.18);
+
+  --ease-draft: cubic-bezier(0.65, 0, 0.35, 1);
+}
