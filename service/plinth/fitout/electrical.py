@@ -8,9 +8,16 @@ board, circuits and conduits.
 Why so: the points per room come from the rule set (NBC 2016 Part 8 Section 2 practice: a count, or one per so many
 m²; a room of several classes, a living/dining/kitchen, takes the most of each kind of point its classes ask for, and
 the sum of their 16 A points, which serve different appliances). Lights and fans hang from the ceiling (the slab's
-underside) on a grid across the room, lights moved off the fans. One switchboard per room at its main door (the door
-to a common area or the outside, else the first), on the latch side at ``switchboard.height_mm``, so it is at hand as
-the door opens (decided with the user). Sockets spread along the walls away from the door, first beside the bed's
+underside) on a grid across the room, lights moved off the fans; each light is the fitting its room class takes
+(``electrical.light_kinds``: a batten in a room, a downlight in a toilet), so F1/F5 match a family of the right kind and
+size. A room open to the sky (a roof terrace, ``Ctx.outdoors``) has no ceiling: no fan, and its lights are wall
+bulkheads on the walls round it, at ``mounting_mm.bulkhead_light`` on the stair/lift room walls and
+``mounting_mm.parapet_light`` on the parapet's inner face, spread round it. One switchboard per room at its main door
+(the door to a common area or the outside, else the first), on the latch side at ``switchboard.height_mm``, so it is at
+hand as the door opens (decided with the user). An open room's switch is indoors: at the door that opens onto it, on
+the indoor room's side; with no such door in the plan (the G+4 sample's terraces: the stair room's door opens onto its
+landing), in the indoor common room beside it (stair or mumty first, sharing the longest wall), by its door (an
+assumption listed back). Sockets spread along the walls away from the door, first beside the bed's
 side table, the TV unit, the study table, never behind tall furniture or in a door or window; a 16 A point is the AC's
 (beside the indoor unit: a room with several answered AC units gets one per unit), the geyser's (beside it) or an
 appliance's (above the kitchen counter). One distribution board per flat beside its entrance door (hinge side, the
@@ -48,7 +55,8 @@ AC_CLASSES_USE = "ac"
 
 class State:
     def __init__(self):
-        self.switchboards: dict[str, Device] = {}  # room key -> its switchboard
+        self.switchboards: dict[str, Device] = {}  # room key -> its switchboard (an open room's: in a room beside)
+        self.open_rooms: list[Room] = []  # lit rooms open to the sky: switched from indoors (after every room)
         self.use: dict[str, str] = {}  # 16 A socket key -> ac / geyser / appliance
         self.appliance: dict[str, str] = {}  # socket key -> the AC or geyser it feeds
         self.dbs: dict[tuple, Device] = {}  # (level, flat) -> DB; (None, None) the common board
@@ -60,6 +68,8 @@ def place(ctx: Ctx) -> State:
     st = State()
     for room in ctx.fit_rooms:
         points(ctx, st, room)
+    for room in st.open_rooms:
+        outdoor_switch(ctx, st, room)
     boards(ctx, st)
     return st
 
@@ -101,44 +111,35 @@ def points(ctx: Ctx, st: State, room: Room) -> None:
     if not counts:
         return
     src = "; ".join(el.points[c].source for c in ctx.classes(room) if c in el.points)
-    ceiling = ctx.ceiling(room)
-    host = Host(kind="ceiling", height_mm=r1(ceiling))
-    fans = ceiling_points(room, counts["fans"])
-    blade = float(el.mounting_mm["fan_blade_min"].value)
-    for p in fans:
-        note = None if ceiling - 300 >= blade else f"blades below {blade:g} mm under a {ceiling:.0f} mm ceiling"
-        ctx.place("fan", "power", room, room.level, p, ceiling, 270.0, host, source=src, note=note)
-    for p in ceiling_points(room, counts["lights"], avoid=fans):
-        ctx.place("light", "lighting", room, room.level, p, ceiling, 270.0, host, source=src)
-    # the switchboard at the main door's latch side
-    door = main_door(ctx, room)
-    sb = el.switchboard
-    if door is None:
-        ctx.unplace("switchboard", room, room.level, "the room has no door to put its switchboard by")
+    kind = ctx.light_kind(room)
+    if ctx.outdoors(room):
+        if counts["fans"]:
+            ctx.unplace("fan", room, room.level, "open to the sky: no ceiling for a fan")
+        wall_lights(ctx, room, counts["lights"], kind, src)
+        if counts["lights"]:
+            st.open_rooms.append(room)
     else:
-        spec = ctx.spec("switchboard")
-        w = spec.size.width_mm if spec.size else 250
-        spots = wall_spots(ctx, room, w, sb.height_mm - 100, sb.height_mm + 100, faces=[door.face], furniture=False)
-        jambs = [door.latch, door.hinge] if door.latch else [door.left, door.right]
-        sp = None
-        for j in jambs:
-            mid = door.center
-            away = unit(sub(j, mid))
-            target = add(j, away, sb.from_jamb_mm + w / 2)
-            cand = nearest_spot(spots, target)
-            if cand is not None and math.dist(cand.point, target) <= 300:
-                sp = cand
-                break
-        if sp is None:
-            sp = nearest_spot(wall_spots(ctx, room, w, sb.height_mm - 100, sb.height_mm + 100, furniture=False),
-                              door.center)
-        if sp is None:
-            ctx.unplace("switchboard", room, room.level, f"no wall space at {sb.height_mm:g} mm near door {door.key}")
+        ceiling = ctx.ceiling(room)
+        host = Host(kind="ceiling", height_mm=r1(ceiling))
+        fans = ceiling_points(room, counts["fans"])
+        blade = float(el.mounting_mm["fan_blade_min"].value)
+        for p in fans:
+            note = None if ceiling - 300 >= blade else f"blades below {blade:g} mm under a {ceiling:.0f} mm ceiling"
+            ctx.place("fan", "power", room, room.level, p, ceiling, 270.0, host, source=src, note=note)
+        spec = ctx.spec(kind or "light")
+        minx, miny, maxx, maxy = room.shape().bounds
+        along_y = spec.size is not None and spec.size.width_mm > 2 * spec.size.depth_mm and maxy - miny > maxx - minx
+        for p in ceiling_points(room, counts["lights"], avoid=fans):
+            ctx.place("light", "lighting", room, room.level, p, ceiling, 0.0 if along_y else 270.0, host,
+                      source=src, kind=kind)  # a linear fitting along the room's long side
+        # the switchboard at the main door's latch side
+        door = main_door(ctx, room)
+        if door is None:
+            ctx.unplace("switchboard", room, room.level, "the room has no door to put its switchboard by")
         else:
-            note = None if math.dist(sp.point, jambs[0]) <= sb.from_jamb_mm + w / 2 + 300 else \
-                f"not at the latch side of {door.key} (no wall there)"
-            st.switchboards[room.key] = ctx.on_wall("switchboard", "lighting", room, sp, sb.height_mm,
-                                                    load=False, source=sb.source, note=note)
+            sw = switchboard_at(ctx, room, door)
+            if sw is not None:
+                st.switchboards[room.key] = sw
     # 16 A points by use
     mount = {k: float(v.value) for k, v in el.mounting_mm.items()}
     n_ac = len(ctx.in_room_devices(room.key, "ac_indoor"))  # a large room's answered units: a socket each
@@ -178,6 +179,107 @@ def points(ctx: Ctx, st: State, room: Room) -> None:
                 ctx.unplace(what, room, room.level, "no wall space for it")
                 continue
             ctx.on_wall(what, "data", room, sp, h, source=src)
+
+
+def switchboard_at(ctx: Ctx, room: Room, door: Opening, note: str | None = None) -> Device | None:
+    """A switchboard in ``room`` beside ``door`` (its view of the door): on the latch side, ``from_jamb_mm`` off the
+    jamb, at ``switchboard.height_mm``; else the nearest wall space (said in its note); None (unplaced) without one."""
+    sb = ctx.rules.electrical.switchboard
+    spec = ctx.spec("switchboard")
+    w = spec.size.width_mm if spec.size else 250
+    spots = wall_spots(ctx, room, w, sb.height_mm - 100, sb.height_mm + 100, faces=[door.face], furniture=False)
+    jambs = [door.latch, door.hinge] if door.latch else [door.left, door.right]
+    sp = None
+    for j in jambs:
+        away = unit(sub(j, door.center))
+        target = add(j, away, sb.from_jamb_mm + w / 2)
+        cand = nearest_spot(spots, target)
+        if cand is not None and math.dist(cand.point, target) <= 300:
+            sp = cand
+            break
+    if sp is None:
+        sp = nearest_spot(wall_spots(ctx, room, w, sb.height_mm - 100, sb.height_mm + 100, furniture=False),
+                          door.center)
+    if sp is None:
+        ctx.unplace("switchboard", room, room.level, f"no wall space at {sb.height_mm:g} mm near door {door.key}")
+        return None
+    where = None if math.dist(sp.point, jambs[0]) <= sb.from_jamb_mm + w / 2 + 300 else \
+        f"not at the latch side of {door.key} (no wall there)"
+    note = "; ".join(x for x in (note, where) if x) or None
+    return ctx.on_wall("switchboard", "lighting", room, sp, sb.height_mm, load=False, source=sb.source, note=note)
+
+
+def wall_lights(ctx: Ctx, room: Room, n: int, kind: str | None, src: str) -> None:
+    """``n`` lights on the walls of a room open to the sky, spread round it: on walls tall enough at
+    ``mounting_mm.bulkhead_light`` (the stair/lift room walls facing a terrace), on parapets at
+    ``mounting_mm.parapet_light``."""
+    if n <= 0:
+        return
+    mount = ctx.rules.electrical.mounting_mm
+    spec = ctx.spec(kind or "light")
+    w, h = (spec.size.width_mm, spec.size.height_mm) if spec.size else (250.0, 150.0)
+    tall_z, low_z = float(mount["bulkhead_light"].value), float(mount["parapet_light"].value)
+    tall, low = [], []
+    for fi, f in enumerate(room.faces):
+        if f.kind != "wall":
+            continue
+        top = ctx.wall_top(f.wall_key, room.level) or room.height_mm or 0.0
+        if top >= tall_z + h / 2 + 100:
+            tall.append(fi)
+        elif top >= low_z + h / 2 + 50:
+            low.append(fi)
+    at = {}
+    for faces, z in ((tall, tall_z), (low, low_z)):
+        if faces:
+            for sp in wall_spots(ctx, room, w, z - h / 2, z + h / 2, faces=faces, furniture=False):
+                at[id(sp)] = (sp, z)
+    chosen = spread([sp for sp, _ in at.values()], n, [centre_of(room)], min_gap=2000)
+    for sp in chosen:
+        z = at[id(sp)][1]
+        ctx.on_wall("light", "lighting", room, sp, z, kind=kind, source=src,
+                    note="on the wall: open to the sky, no ceiling" + (" (the parapet)" if z == low_z else ""))
+    for _ in range(n - len(chosen)):
+        ctx.unplace("light", room, room.level, "open to the sky (no ceiling) and no more wall or parapet for a "
+                    "wall light")
+
+
+def outdoor_switch(ctx: Ctx, st: State, room: Room) -> None:
+    """The switchboard of a room open to the sky, indoors: in the indoor room whose door opens onto it, beside that
+    door; else (the plan has no such door) in the indoor room beside it on its level, a stair or mumty first, sharing
+    the longest wall, by that room's main door (assumed)."""
+    names = {room.key, *room.shared_with}
+    level = [r for r in ctx.fit_rooms if r.level == room.level and r.key != room.key and not ctx.outdoors(r)]
+    onto = sorted(((r.key, o.key, r, o) for r in level for o in r.doors
+                   if o.face is not None and o.other_room in names), key=lambda x: (x[0], x[1]))
+    if onto:
+        _, _, r, door = onto[0]
+        sw = switchboard_at(ctx, r, door, note=f"switches the lights of {room.name} ({room.key}): at the door onto it, "
+                                               "indoors")
+    else:
+        walls = {f.wall_key for f in room.faces if f.kind == "wall"}
+        best = None
+        for r in level:
+            shared = sum(f.length_mm for f in r.faces if f.kind == "wall" and f.wall_key in walls)
+            door = main_door(ctx, r)
+            if shared <= 0 or door is None:
+                continue
+            core = 0 if any(c in ("stair", "mumty", "lobby") for c in ctx.classes(r)) else 1
+            key = (core, -round(shared), r.key)
+            if best is None or key < best[0]:
+                best = (key, r, door)
+        if best is None:
+            ctx.unplace("switchboard", room, room.level, "open to the sky with no door onto it from an indoor room "
+                        "and no indoor room beside it to switch its lights from")
+            return
+        _, r, door = best
+        sw = switchboard_at(ctx, r, door, note=f"switches the lights of {room.name} ({room.key}): the plan has no "
+                                               f"door onto it, so by the door of {r.name} beside it (assumed)")
+        if sw is not None:
+            ctx.assume(f"fitout:outdoor_switch:{room.key}", f"{room.name} ({room.key}) is open to the sky and the plan "
+                       f"has no door onto it: its lights are switched from {r.name} ({r.key}) beside it, by that "
+                       "room's door", r.key, ctx.rules.electrical.switchboard.source, [room.key])
+    if sw is not None:
+        st.switchboards[room.key] = sw
 
 
 def socket16(ctx: Ctx, st: State, room: Room, cls: str, mount: dict[str, float]) -> None:

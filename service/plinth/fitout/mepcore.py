@@ -24,7 +24,8 @@ main stops ``TEE_GAP_MM`` short of the main's axis, square to it.
 Shared ground (``Ctx``): the rooms to fit (a room sharing its space with another is fitted with the first, as the
 furniture solver does), each storey's footprint (runs keep inside it), the ducts (shaft ops or rooms of class shaft,
 kind from the caller, an answer, or asked), the roof (the level of the roof terraces), doors as boxes (runs keep clear
-of them), wall spots along a room's faces clear of doors, windows and tall furniture backs, ceiling heights from the
+of them), the structure (columns and beams: runs step round them, ``detour``), wall spots along a room's faces
+clear of doors, windows and tall furniture backs, ceiling heights from the
 slab over each room, the questions asked and the assumptions taken.
 """
 
@@ -39,9 +40,9 @@ from shapely.geometry import LineString, Point as SPoint, Polygon
 from shapely.ops import nearest_points, unary_union
 
 from plinth.fitout.furniture import FurnitureLayout, Placed
-from plinth.fitout.rooms import Assumption, Face, Opening, Question, Room, RoomModel, type_thickness
+from plinth.fitout.rooms import Assumption, Face, Opening, Question, Room, RoomModel, type_size, type_thickness
 from plinth.fitout.rules import FitoutRules, MepDevice, Size
-from plinth.plan import BuildPlan, FloorOp, FloorTypeOp, ShaftOp, StairOp
+from plinth.plan import BeamOp, BuildPlan, ColumnOp, FloorOp, FloorTypeOp, ShaftOp, StairOp, WallOp, WallTypeOp
 
 Point = tuple[float, float]
 P3 = tuple[float, float, float]
@@ -57,6 +58,10 @@ LOW_FURNITURE_MM = 600.0  # furniture this low (side table, TV unit, bed) does n
 DEFAULT_DOOR_HEAD_MM = 2100.0
 DEFAULT_SLAB_MM = 150.0
 INSIDE_TOL_MM = 5.0
+PIPE_CLEAR_MM = 25.0  # a pipe keeps this far off a column or beam (beyond its radius)
+MAX_JOG_MM = 1500.0  # a run steps round a column or beam this far aside at most (else it is not drawn that way)
+OPEN_CLASSES = ("terrace",)  # rooms open to the sky: no ceiling (lights on their walls, no fans)
+OPEN_WALLS_MM = 1800.0  # a room with no slab over it whose walls are lower than this (a parapet) is open too
 
 DeviceSystem = Literal["power", "lighting", "data", "hvac", "plumbing", "fire"]
 RunSystem = Literal["cold_water", "hot_water", "soil", "waste", "vent", "rainwater", "power", "lighting", "fire"]
@@ -270,6 +275,106 @@ def clean(points: list[P3]) -> list[P3]:
     return out
 
 
+_SHRUNK: dict[int, tuple] = {}
+
+
+def _shrunk(poly: Polygon) -> tuple:
+    """An obstacle's outline less 0.5 mm (touching it is clear) and its bounds, kept per outline."""
+    got = _SHRUNK.get(id(poly))
+    if got is None or got[0] is not poly:
+        got = (poly, poly.buffer(-0.5), poly.bounds)
+        _SHRUNK[id(poly)] = got
+    return got[1], got[2]
+
+
+def through(path: list[Point], obstacles: list[tuple[Polygon, str]]) -> list[str]:
+    """The obstacles a plan path passes through (touching an outline is clear)."""
+    out = []
+    for a, b in zip(path, path[1:]):
+        x0, x1 = sorted((a[0], b[0]))
+        y0, y1 = sorted((a[1], b[1]))
+        g = None
+        for poly, key in obstacles:
+            if key in out:
+                continue
+            s, (bx0, by0, bx1, by1) = _shrunk(poly)
+            if bx0 > x1 or bx1 < x0 or by0 > y1 or by1 < y0:
+                continue
+            if g is None:
+                g = LineString([a, b]) if math.dist(a, b) > 0.5 else SPoint(a)
+            if s.intersects(g):
+                out.append(key)
+    return out
+
+
+def detour(path: list[Point], obstacles: list[tuple[Polygon, str]], allowed=None, fixed_ends: float = 50.0
+           ) -> list[Point]:
+    """An axis-aligned plan path stepped round the obstacles it passes through: where a straight leg meets an
+    obstacle (a column, a beam: ``Ctx.obstacles``), it jogs to the obstacle's nearer side and back onto its line beyond
+    it, no more than ``MAX_JOG_MM`` aside, keeping clear of the other obstacles and inside ``allowed`` (a shape) when
+    given. The ends stay as they are (and ``fixed_ends`` of each leg, so a run still leaves and arrives square); a leg
+    that cannot step round stays as it was (``through`` still lists it)."""
+    pts = [tuple(p) for p in path]
+    shrunk = [(_shrunk(poly)[0], poly) for poly, _ in obstacles]
+
+    def clear(seq: list[Point]) -> bool:
+        for a, b in zip(seq, seq[1:]):
+            if math.dist(a, b) < 0.5:
+                continue
+            g = LineString([a, b])
+            if any(s.intersects(g) for s, _ in shrunk) or (allowed is not None and not allowed.covers(g)):
+                return False
+        return True
+
+    for _ in range(4 * len(shrunk) + 4):
+        changed = False
+        for i in range(len(pts) - 1):
+            a, b = pts[i], pts[i + 1]
+            L = math.dist(a, b)
+            if L < 1:
+                continue
+            seg = LineString([a, b])
+            hit = [(s, p) for s, p in shrunk if s.intersects(seg)]
+            if not hit:
+                continue
+            k = 0 if abs(b[1] - a[1]) < 0.5 else 1 if abs(b[0] - a[0]) < 0.5 else None
+            if k is None or any(s.contains(SPoint(a)) or s.contains(SPoint(b)) for s, _ in hit):
+                continue
+            sgn = 1 if b[k] > a[k] else -1
+            _, poly = min(hit, key=lambda sp: sgn * (sp[1].bounds[k] if sgn > 0 else sp[1].bounds[k + 2]))
+            lo, hi = poly.bounds[k], poly.bounds[k + 2]
+            enter, leave = (lo, hi) if sgn > 0 else (hi, lo)
+            if sgn * (enter - a[k]) < fixed_ends or sgn * (b[k] - leave) < fixed_ends:
+                continue
+            o = 1 - k
+            sides = sorted((poly.bounds[o], poly.bounds[o + 2]), key=lambda c: (abs(c - a[o]), c))
+            for c in sides:
+                if abs(c - a[o]) > MAX_JOG_MM:
+                    continue
+
+                def P(along_: float, across: float) -> Point:
+                    return pt((along_, across) if k == 0 else (across, along_))
+
+                new = [P(enter, a[o]), P(enter, c), P(leave, c), P(leave, a[o])]
+                if clear([a, *new, b]):
+                    pts[i + 1:i + 1] = new
+                    changed = True
+                    break
+            if changed:
+                break
+        if not changed:
+            break
+    out: list[Point] = []
+    for p in pts:
+        if out and math.dist(out[-1], p) < 0.5:
+            continue
+        out.append(p)
+        while len(out) >= 3 and abs((out[-2][0] - out[-3][0]) * (out[-1][1] - out[-2][1]) -
+                                    (out[-2][1] - out[-3][1]) * (out[-1][0] - out[-2][0])) < 1e-6:
+            out.pop(-2)
+    return out
+
+
 def manhattan(a: Point, b: Point, first: Literal["x", "y"]) -> list[Point]:
     """a -> b along the axes, ``first`` axis first."""
     mid = (b[0], a[1]) if first == "x" else (a[0], b[1])
@@ -356,8 +461,11 @@ class Ctx:
         self.ops_floor = [op for op in plan.ops if isinstance(op, FloorOp)]
         self.floor_types = {op.name: op for op in plan.ops if isinstance(op, FloorTypeOp)}
         self.stairs = [op for op in plan.ops if isinstance(op, StairOp)]
+        self.walls = {op.key: op for op in plan.ops if isinstance(op, WallOp)}
+        self.wall_types = {op.name: op for op in plan.ops if isinstance(op, WallTypeOp)}
         self._footprints: dict[str, Any] = {}
         self._doors: dict[str, list[tuple[Polygon, float, float, str]]] = {}
+        self.structure = self._structure()
         self.roof = self._roof()
         self.ducts = self._ducts()
         self.height_m, self.fire_band = self._height()
@@ -420,8 +528,10 @@ class Ctx:
               elevation: float, facing: Point | float, host: Host, *, scope: str | None = None,
               size: Size | None = None, rating: str | None = None, capacity_l: float | None = None,
               panel: bool = False, load: bool = True, note: str | None = None, source: str | None = None,
-              flat: str | None = None) -> Device:
-        s = self.spec(what)
+              flat: str | None = None, kind: str | None = None) -> Device:
+        """``kind``: the catalogue entry whose label, category, keywords and size the device takes (a light's fitting,
+        ``electrical.light_kinds``); the device stays a ``what`` (its load, its circuit)."""
+        s = self.spec(kind or what)
         facing_deg = facing if isinstance(facing, (int, float)) else deg(facing)
         d = Device(key=self.key(scope or (room.key if room else level), what), room_key=room.key if room else None,
                    level=level, flat=flat if flat is not None else (room.flat if room else None), system=system,
@@ -498,6 +608,57 @@ class Ctx:
         h = room.height_mm or 3000.0
         return h - self.slab_above(room)
 
+    def wall_function(self, wall_key: str | None) -> str | None:
+        """"exterior" or "interior": the wall's type's function in the plan (its ``wall_type`` op, else the word in
+        the type's name); None when the plan does not say."""
+        w = self.walls.get(wall_key or "")
+        if w is None:
+            return None
+        t = self.wall_types.get(w.type or "")
+        if t is not None:
+            return t.function
+        name = (w.type or "").lower()
+        return "interior" if "interior" in name else "exterior" if "exterior" in name else None
+
+    def exterior(self, f: Face) -> bool:
+        """A face on the building's outer skin: a wall face with the outside beyond it (``outer``), on a wall the plan
+        does not type as interior. A recess or court between two wings drawn with interior walls is outside the
+        rooms but not the building's face: an outdoor unit or an outside stack does not hang there unless answered."""
+        return f.kind == "wall" and f.outer and self.wall_function(f.wall_key) != "interior"
+
+    def wall_top(self, wall_key: str | None, level: str) -> float | None:
+        """Height of a wall's top above ``level`` (a parapet's 900 mm, a storey wall's storey height)."""
+        w = self.walls.get(wall_key or "")
+        if w is None:
+            return None
+        if w.height_mm is not None:
+            top = self.levels[w.level] + w.base_offset_mm + w.height_mm
+        elif w.top_level in self.levels:
+            top = self.levels[w.top_level] + w.top_offset_mm
+        else:
+            return None
+        return top - self.levels[level]
+
+    def outdoors(self, room: Room) -> bool:
+        """The room is open to the sky: a roof terrace (``OPEN_CLASSES``), or a room no slab of a higher level
+        covers whose walls are a parapet (lower than ``OPEN_WALLS_MM``). It has no ceiling for a light or a fan."""
+        if any(c in OPEN_CLASSES for c in self.classes(room)):
+            return True
+        if room.height_mm is not None and room.height_mm >= OPEN_WALLS_MM:
+            return False
+        return not any(self.levels[op.level] > room.elevation_mm + 1 and Polygon(op.points).covers(SPoint(room.point))
+                       for op in self.ops_floor)
+
+    def light_kind(self, room: Room) -> str | None:
+        """The light fitting the room takes (``electrical.light_kinds``): the outdoor kind in an open room, else that
+        of its first class listed; None: the generic light."""
+        lk = self.rules.electrical.light_kinds
+        if lk is None:
+            return None
+        if self.outdoors(room):
+            return lk.outdoor
+        return next((lk.classes[c] for c in self.classes(room) if c in lk.classes), None)
+
     def storey_height(self, level: str) -> float:
         hs = Counter(round(r.height_mm) for r in self.model.on_level(level) if r.height_mm)
         return float(hs.most_common(1)[0][0]) if hs else 3000.0
@@ -533,6 +694,46 @@ class Ctx:
                     seen[o.key] = (box_, z, z + (o.height_mm or DEFAULT_DOOR_HEAD_MM) + 50, o.key)
             self._doors[level] = list(seen.values())
         return self._doors[level]
+
+    def _structure(self) -> list[tuple[Polygon, float, float, str]]:
+        """Every column and beam as (plan outline, bottom z, top z, key): a column's rectangle from its type's size
+        ("RCC Column 250x500": 250 along its rotation), from its base to its top; a beam's along its axis, its width
+        and depth from its type ("RCC Beam 250x400"), hanging below its level. Members whose size the type does not
+        give are left out."""
+        out = []
+        for op in self.plan.ops:
+            if isinstance(op, ColumnOp) and op.level in self.levels and op.top_level in self.levels:
+                b, h = type_size(op.type)
+                if not b or not h:
+                    continue
+                a = math.radians(op.rotation_deg)
+                u, v = (math.cos(a), math.sin(a)), (-math.sin(a), math.cos(a))
+                corners = [add(add(op.point, u, sx * b / 2), v, sy * h / 2)
+                           for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+                out.append((Polygon(corners), self.levels[op.level] + op.base_offset_mm,
+                            self.levels[op.top_level] + op.top_offset_mm, op.key))
+            elif isinstance(op, BeamOp) and op.level in self.levels:
+                b, h = type_size(op.type)
+                if not b or not h:
+                    continue
+                d = unit(sub(op.end, op.start))
+                n = (-d[1], d[0])
+                corners = [add(op.start, n, b / 2), add(op.end, n, b / 2), add(op.end, n, -b / 2),
+                           add(op.start, n, -b / 2)]
+                z = self.levels[op.level]
+                out.append((Polygon(corners), z - h, z, op.key))
+        return out
+
+    def obstacles(self, zlo: float, zhi: float, size: float = 0.0) -> list[tuple[Polygon, str]]:
+        """The columns and beams a run between heights ``zlo`` and ``zhi`` (absolute) meets, each outline grown by
+        the run's radius (``size`` / 2) and ``PIPE_CLEAR_MM``."""
+        key_ = (round(zlo), round(zhi), round(size))
+        cache = self.__dict__.setdefault("_obstacles", {})
+        if key_ not in cache:
+            grow = size / 2 + PIPE_CLEAR_MM
+            cache[key_] = [(poly.buffer(grow, join_style="mitre"), key) for poly, z0, z1, key in self.structure
+                           if zhi > z0 + 1 and zlo < z1 - 1]
+        return cache[key_]
 
     def crossings(self, points: list[P3]) -> list[str]:
         """Doors a polyline passes through (in plan and within the door's height)."""

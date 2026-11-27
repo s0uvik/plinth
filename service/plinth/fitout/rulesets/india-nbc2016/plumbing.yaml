@@ -104,7 +104,15 @@ plumbing:
     max_depth_below_floor_mm: 1200
     tee_spacing_mm: 200
     max_length_m: 12
-    source: "NBC 2016 Part 9 Section 2 / IS 1742 self-cleansing gradients (about 1 in 60 for 100 mm, 1 in 40 for 75 mm and smaller), as recalled; branch depth, tee spacing and length typical practice (a sunken or false-ceiling zone under the slab)"
+    # Longest horizontal run from a fixture's outlet to its stack, by drain size (mm: m). Placeholders after the
+    # trap-arm limits of the model plumbing codes (about 1.5 m for 32 mm to 3.6 m for 75 mm unvented), taken longer for a
+    # two-pipe branch vented through its stack; NBC 2016 Part 9 Section 2 asks for short, direct branches. Unverified.
+    max_length_by_size_m: {32: 4.5, 40: 4.5, 50: 6.0, 75: 7.5, 100: 7.5}
+    # A kitchen sink (or basin, washing machine) beyond its length from every duct drains through its room's exterior
+    # wall to a waste stack of its own on the outer face, as Indian blocks commonly do; others are asked.
+    outside_stack_fixtures: [kitchen_sink, basin, washing_machine]
+    outside_outlet_mm: 450
+    source: "NBC 2016 Part 9 Section 2 / IS 1742 self-cleansing gradients (about 1 in 60 for 100 mm, 1 in 40 for 75 mm and smaller), as recalled; branch depth, tee spacing and length typical practice (a sunken or false-ceiling zone under the slab); branch length by drain size after the model codes' trap-arm limits, longer for a vented two-pipe branch (placeholders); an outside waste stack for a far kitchen sink, its waste through the wall under the sink at about 450 mm, typical Indian practice"
     verified: false
 
   supply:

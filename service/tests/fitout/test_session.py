@@ -49,10 +49,15 @@ def template(rules) -> dict:
         "pipe_system_type": [{"id": 910 + i, "name": n, "classification": c} for i, (n, c) in enumerate(SYSTEM_TYPES)]}}}
 
 
+# The sample's plan has no slab over the stair/lift rooms the overhead tanks are answered on: the layout asks
+# fitout:overhead_tank_slab rather than leave them floating; answered here as added (as tests/fitout/test_mep.py does).
+SLAB = {"fitout:overhead_tank_slab": "slab"}
+
+
 @pytest.fixture(scope="module")
 def fitout_answers():
-    return {k: v for k, v in json.loads((SAMPLE / "fitout-answers.json").read_text(encoding="utf-8")).items()
-            if not k.startswith("_")}
+    return {**{k: v for k, v in json.loads((SAMPLE / "fitout-answers.json").read_text(encoding="utf-8")).items()
+               if not k.startswith("_")}, **SLAB}
 
 
 @pytest.fixture
@@ -107,8 +112,13 @@ def test_furniture_and_mep_are_one_plan_built_read_back_and_removed(world, fitou
     assert not short, short[:5]
     assert all(op.best_effort for op in planned.plan.ops if op.op == "circuit")
     # ceiling lights face down at the ceiling's height (no ceilings in the model); wall points on their wall's side
+    # (an open roof terrace has no ceiling: its lights are wall bulkheads, on their wall's side)
     lights = [op for op in planned.plan.ops if op.op == "family" and "-light-" in op.key]
-    assert lights and all(op.face_down and op.offset_mm > 0 for op in lights)
+    ceiling = [op for op in lights if not op.host_key]
+    assert ceiling and all(op.face_down and op.offset_mm > 0 for op in ceiling)
+    assert {op.room_key for op in lights if op.host_key} == {r.key for r in session.prepare(
+        world[0], world[1], "west-bengal", answers=fitout_answers).model.rooms if r.cls == "terrace"}
+    assert all(op.toward and not op.face_down for op in lights if op.host_key)
     sockets = [op for op in planned.plan.ops if op.op == "family" and "socket" in op.key]
     assert sockets and all(op.host_key and op.toward for op in sockets)
     outdoor = [op for op in planned.plan.ops if op.op == "family" and "ac_outdoor" in op.key]
@@ -225,7 +235,7 @@ def test_the_systems_asked_for_leave_out_the_rest_and_what_joins_it(world, fitou
     # an HVAC-only question is not asked of a plumbing build
     hvac_only = plan(world, {k: v for k, v in fitout_answers.items() if not k.startswith("fitout:ac:")}, systems=["plumbing"])
     assert hvac_only.ready and [q["id"] for q in hvac_only.report["questions_not_needed_now"]] == [
-        "fitout:ac:living dining:39", "fitout:ac:living dining:40"]
+        "fitout:ac:living"]
 
 
 def test_a_flat_pilot_keeps_the_flat_and_what_it_joins(world, fitout_answers):

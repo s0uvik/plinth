@@ -18,7 +18,11 @@ from tests.fitout.fake_revit import FitoutRevit
 from tests.fitout.test_session import MEP, TITLE, template
 
 IMPORT_ID = "2026-11-20T10-00-00Z-ab12"
-AC = ("fitout:ac:living dining:39", "fitout:ac:living dining:40")
+AC = ("fitout:ac:living",)
+
+# The sample's plan has no slab over the stair/lift rooms the overhead tanks are answered on: the layout asks
+# fitout:overhead_tank_slab rather than leave them floating; answered here as added (as tests/fitout/test_mep.py does).
+SLAB = {"fitout:overhead_tank_slab": "slab"}
 
 
 class Addin(FitoutRevit):
@@ -41,7 +45,7 @@ class Addin(FitoutRevit):
 def fitout_answers():
     from tests.cad.conftest import SAMPLE
     return {k: v for k, v in json.loads((SAMPLE / "fitout-answers.json").read_text(encoding="utf-8")).items()
-            if not k.startswith("_")}
+            if not k.startswith("_")} | SLAB
 
 
 @pytest.fixture
@@ -111,7 +115,7 @@ def test_plan_asks_its_questions_as_import_questions_and_reads_json_answers(worl
         a = api.post(f"/imports/{IMPORT_ID}/answers", json={"question_id": qid, "answer": "[1.5, 1.5]"})
         assert a.status_code == 200, a.text
     project = ImportStore(service.store.root.parent / "imports").get(IMPORT_ID)
-    assert project.question(AC[0]).answer == [1.5, 1.5] and project.inputs.values[AC[1]] == [1.5, 1.5]
+    assert project.question(AC[0]).answer == [1.5, 1.5] and project.inputs.values[AC[-1]] == [1.5, 1.5]
     state = api.get(f"/imports/{IMPORT_ID}/fitout").json()
     assert state["plan"]["stale"] == list(AC)  # answered since: plan again to use them
 
