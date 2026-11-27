@@ -254,6 +254,7 @@ class Electrical(_Model):
     wiring: Wiring
     devices: dict[str, MepDevice]
     supply_authority: SourcedValue | None = None
+    supply_voltage_v: SourcedValue | None = None  # single-phase supply, V: electrical connectors are made at it
 
 
 # ------------------------------------------------------------------------------------------------ plumbing

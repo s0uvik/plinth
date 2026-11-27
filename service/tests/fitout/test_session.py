@@ -5,6 +5,7 @@ plan); the systems asked for and a one-flat pilot leave out the rest and whateve
 refuses are the run's issues."""
 
 import json
+import math
 from collections import Counter
 
 import pytest
@@ -94,11 +95,16 @@ def test_furniture_and_mep_are_one_plan_built_read_back_and_removed(world, fitou
     ops = Counter(op.op for op in planned.plan.ops)
     assert ops["family"] > 1500 and ops["mep_run"] > 1500 and ops["circuit"] > 200
     by_key = planned.plan.by_key()
-    # the runs end at the furniture fixtures of the same plan, best effort; runs joining runs require their joins
+    # the runs end at the furniture fixtures of the same plan; every run is best effort, those joining runs too (an
+    # elbow a real type cannot make at a size is an issue, never a stop)
     wc_runs = [op for op in planned.plan.ops if op.op == "mep_run" and "-wc-" in (op.start_key or "")]
-    assert wc_runs and all(by_key[op.start_key].op == "family" and not op.require_connections for op in wc_runs)
+    assert wc_runs and all(by_key[op.start_key].op == "family" for op in wc_runs)
     stacks = [op for op in planned.plan.ops if op.op == "mep_run" and op.key.split("-")[-2].endswith("_stack")]
-    assert stacks and all(op.require_connections for op in stacks)
+    assert stacks and not [op for op in planned.plan.ops if op.op == "mep_run" and op.require_connections]
+    # no leg is too short for an elbow
+    short = [op.key for op in planned.plan.ops if op.op == "mep_run" and len(op.points) > 2
+             and min(math.dist(a, b) for a, b in zip(op.points, op.points[1:])) < 50]
+    assert not short, short[:5]
     assert all(op.best_effort for op in planned.plan.ops if op.op == "circuit")
     # ceiling lights face down at the ceiling's height (no ceilings in the model); wall points on their wall's side
     lights = [op for op in planned.plan.ops if op.op == "family" and "-light-" in op.key]
@@ -249,3 +255,23 @@ def test_the_command_line_plans_and_builds_a_pilot_with_its_mep(world, fitout_an
     built = [r for r in store.list() if r["run_id"] != run_id]
     assert len(built) == 1 and built[0]["status"] == "built"
     assert fitout_build.main(argv[:-2] + ["--systems", "gas"], connect=lambda: revit, store=store) == 2
+    capsys.readouterr()
+    # an answer planning cannot take is said, not a traceback
+    bad = json.dumps({**fitout_answers, "fitout:family:bed": {"create": "cylinder"}})
+    assert fitout_build.main(argv[:-2] + ["--answers", bad], connect=lambda: revit, store=store) == 2
+    assert "the fit-out cannot be planned: fitout:family:bed: create 'cylinder' is not 'box'" in capsys.readouterr().out
+
+
+def test_drift_compares_height_host_side_facing_down_and_category():
+    from plinth.plan import FamilyOp
+    built = FamilyOp(op="family", key="K", category="OST_ElectricalFixtures", family="F", type="T", level="L1",
+                     point=(0, 0), offset_mm=300, host_key="W1", toward=(0, 200))
+    for change, said in (({"offset_mm": 900}, "offset 300 -> 900"), ({"host_key": "W2"}, "host W1 -> W2"),
+                         ({"toward": (0, -200)}, "side (0.0, 200.0) -> (0, -200)"),
+                         ({"toward": None}, "side (0.0, 200.0) -> None"),
+                         ({"face_down": True}, "face down False -> True"),
+                         ({"category": "OST_LightingDevices"}, "category OST_ElectricalFixtures -> OST_LightingDevices")):
+        drift = session.check_drift({"K": built}, {"K": built.model_copy(update=change)})
+        assert drift["mismatches"] == [f"K: {said}"], change
+    same = session.check_drift({"K": built}, {"K": built.model_copy(update={"offset_mm": 300.4})})
+    assert same == {"compared": 1, "mismatches": [], "built_not_planned_now": []}

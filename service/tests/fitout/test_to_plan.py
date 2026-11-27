@@ -214,9 +214,10 @@ def test_runs_to_families_join_best_effort_and_box_families_get_their_connectors
     found = plan_toilet(revit, building, built, wb_rules)
     assert found.ready, found.questions
     by_key = found.plan.by_key()
-    # our own pipes have connectors: a run joining only runs requires its joins; one ending at a family does not
+    # every fit-out run is best effort, even one joining only runs: an elbow or tee a real type's routing preferences
+    # lack at a size is an issue of the build, never a stop of thousands of ops
     assert [by_key[k].require_connections for k in ("RUN-STACK", "RUN-WASTE", "RUN-COLD", "RUN-VENT")] == [
-        True, False, False, True]
+        False, False, False, False]
     assert by_key["CKT-1"].best_effort
     boxes = {op.family: op.connectors for op in found.plan.ops if op.op == "family_create"}
     assert {f: [c.model_dump(exclude_none=True) for c in cs] for f, cs in boxes.items()} == {
@@ -228,6 +229,64 @@ def test_runs_to_families_join_best_effort_and_box_families_get_their_connectors
     assert [(i["key"], i["what"], i["at"]) for i in record["issues"]] == [("RUN-WASTE", "connection", "start")]
     assert record["readback"]["ok"]
     assert BuildService(store, lambda: revit).remove(record["run_id"])["status"] == "removed"
+
+
+def test_box_power_connectors_are_made_at_the_supply_voltage(building, wb_rules):
+    from plinth.fitout.to_plan import supply_voltage
+    assert supply_voltage(wb_rules) == 230.0  # india-nbc2016's supply, inherited by west-bengal
+    revit = FitoutRevit(templates=MEP_TEMPLATES)
+    built = {op.key: 70000 + i for i, op in enumerate(building.ops)}
+    found = plan_toilet(revit, building, built, wb_rules, voltage_v=supply_voltage(wb_rules))
+    geyser = next(op for op in found.plan.ops if op.op == "family_create" and op.family == "Plinth Geyser")
+    assert [c.model_dump(exclude_none=True) for c in geyser.connectors] == [
+        {"domain": "electrical", "system_type": "PowerCircuit", "voltage_v": 230.0, "face": "back"}]
+
+
+def test_a_mep_layout_given_as_it_is_is_made_into_records(building, wb_rules):
+    from plinth.fitout.mepcore import MepLayout, Run
+    from plinth.fitout import mep_plan
+    revit = FitoutRevit(templates=MEP_TEMPLATES)
+    built = {op.key: 70000 + i for i, op in enumerate(building.ops)}
+    layout = MepLayout(rule_set="x", runs=[Run(key="RUN-STACK", kind="pipe", system="soil", level="L0", size_mm=100,
+                                              points=[(6600, 300, -300), (6600, 300, 3000)], source="test")])
+    as_layout = to_plan.plan_fitout(revit, building, built, mep=layout).plan.by_key()["RUN-STACK"]
+    as_records = to_plan.plan_fitout(revit, building, built, mep=mep_plan.records(layout, to_plan.levels_of(building)))
+    assert as_layout == as_records.plan.by_key()["RUN-STACK"]
+    assert as_layout.points == [(6600, 300, -300), (6600, 300, 3000)] and as_layout.diameter_mm == 100
+
+
+def test_level_based_wall_and_ceiling_devices_are_placed_by_their_box_not_their_origin():
+    # 2026-11-27 review: a wall device's elevation is its centre and a ceiling device's the ceiling; a level-based family
+    # stands on its origin, so taken as the offset a 320 mm AC indoor unit stood 160 mm too high and a fan above the
+    # ceiling
+    from plinth.fitout.families import Choice, Measurement
+    plain = Choice(need="ac", category="OST_MechanicalEquipment", family="Unit", type="T", source="project",
+                   placement="OneLevelBased")
+    wall = {"key": "AC", "level": "L0", "point": (1000, 0), "elevation_mm": 2260, "host_kind": "wall",
+            "center_mm": 2260, "wall_key": "bS", "toward": (1000, 200), "height_mm": 320}
+    op, note = to_plan._family_op(wall, plain, set(), {})
+    assert op["offset_mm"] == 2100 and "origin taken as its base" in note
+    # measured: its box (300 high, its bottom 10 mm below its origin) centred on 2260
+    measured = plain.model_copy(update={"measured": Measurement(type="T", min=(-400, -200, -10), max=(400, 0, 290))})
+    op, note = to_plan._family_op(wall, measured, set(), {})
+    assert op["offset_mm"] == 2120 and note is None
+    # an outdoor unit: the layout's elevation is its bottom, its centre what the adapter gives
+    outdoor = {**wall, "host_kind": "outside_wall", "elevation_mm": 1500, "center_mm": 1800, "height_mm": 600}
+    assert to_plan._family_op(outdoor, plain, set(), {})[0]["offset_mm"] == 1500
+    unknown = {k: v for k, v in wall.items() if k != "height_mm"}
+    op, note = to_plan._family_op(unknown, plain, set(), {})
+    assert op["offset_mm"] == 2260 and "height not known" in note
+    # a level-based fan or light hangs with its top at the ceiling
+    fan = {"key": "FAN", "level": "L0", "point": (1000, 1000), "elevation_mm": 2550, "host_kind": "ceiling",
+           "face_down": True, "height_mm": 300}
+    op, note = to_plan._family_op(fan, plain, set(), {})
+    assert op["offset_mm"] == 2250 and not op.get("face_down") and "not facing down" in note
+    op, note = to_plan._family_op(fan, plain.model_copy(update={"measured": Measurement(
+        type="T", min=(-600, -600, -250), max=(600, 600, 0))}), set(), {})
+    assert op["offset_mm"] == 2550 and "not facing down" in note  # drawn hanging below its origin
+    # furniture records are not MEP devices: as before
+    sofa = {"key": "S", "level": "L0", "point": (0, 0), "elevation_mm": 0}
+    assert "offset_mm" not in to_plan._family_op(sofa, plain, set(), {})[0]
 
 
 def test_prune_drops_what_joins_a_record_that_is_gone_and_the_types_nobody_uses(building, wb_rules):

@@ -78,6 +78,29 @@ def test_runs_go_above_their_level_with_a_revit_classification():
         mep_plan.records(MepLayout(rule_set="x", runs=[run(level="L9")]), LEVELS)
 
 
+def test_legs_too_short_for_an_elbow_are_merged_keeping_the_ends_and_the_joins():
+    # a 30 mm jog and a 20 mm last leg: no elbow fits on either (2026-11-27 review: 38 legs under 60 mm on the sample)
+    points = [(0.0, 0.0, 3400.0), (1000.0, 0.0, 3400.0), (1000.0, 30.0, 3400.0), (2000.0, 30.0, 3400.0),
+              (2000.0, 50.0, 3400.0)]
+    rec = mep_plan.run_record(run(points=points, connect_end=None), LEVELS)
+    assert rec["points"] == [(0.0, 0.0, 400.0), (1000.0, 0.0, 400.0), (2000.0, 50.0, 400.0)]  # the ends stay
+    legs = [((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
+            for a, b in zip(rec["points"], rec["points"][1:])]
+    assert min(legs) >= mep_plan.MIN_LEG_MM
+    assert "2 legs under 50 mm merged (no elbow fits)" in rec["source"]
+    # a point another run joins at is never dropped
+    kept, dropped = mep_plan.merge_short_legs(points, keep={(1000, 30, 3400)})
+    assert (1000.0, 30.0, 3400.0) in kept and dropped == 2
+    # in a layout, the main keeps the point its branch ends at
+    main = run(key="RUN-MAIN", connect_start=None, connect_end=None, points=points)
+    branch = run(key="RUN-B", connect_start="RUN-MAIN", connect_end=None,
+                 points=[(1000.0, 30.0, 3400.0), (1000.0, 900.0, 3400.0)])
+    records = mep_plan.records(MepLayout(rule_set="x", runs=[main, branch]), LEVELS)
+    assert (1000.0, 30.0, 400.0) in records["runs"][0]["points"]
+    # a run of two points stays, however short
+    assert mep_plan.merge_short_legs([(0.0, 0.0, 0.0), (0.0, 0.0, 20.0)]) == ([(0.0, 0.0, 0.0), (0.0, 0.0, 20.0)], 0)
+
+
 def test_circuits_and_systems():
     c = Circuit(key="CKT-DB-1", panel="MEP-DB-1", kind="sockets", devices=["MEP-R1-socket_6a-1"], load_w=1200,
                 rating_a=16, source="IS 732")

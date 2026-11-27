@@ -318,7 +318,12 @@ class BoxConnector(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
     domain: Literal["electrical", "pipe"]
-    system_type: str | None = None  # electrical: PowerCircuit
+    # electrical: PowerCircuit (the add-in makes every box's electrical connector PowerBalanced whatever is asked; the
+    # name says what the plan joins to it)
+    system_type: str | None = None
+    # electrical: the supply voltage the connector is made at (the rule set's, 230 V in India), so Revit accepts the
+    # instance on a circuit of the board; None: the add-in's default
+    voltage_v: float | None = Field(default=None, gt=0, le=1000)
     classification: str | None = None  # pipe: Sanitary, DomesticColdWater...
     diameter_mm: float | None = Field(default=None, gt=0, le=600)  # pipe
     face: Literal["back", "front", "left", "right", "top", "bottom"] = "back"
@@ -326,8 +331,9 @@ class BoxConnector(BaseModel):
     @model_validator(mode="after")
     def _domain(self) -> "BoxConnector":
         if self.domain == "electrical" and (not self.system_type or self.classification or self.diameter_mm):
-            raise ValueError("an electrical connector takes system_type only")
-        if self.domain == "pipe" and (self.system_type or not self.classification or not self.diameter_mm):
+            raise ValueError("an electrical connector takes system_type (and voltage_v) only")
+        if self.domain == "pipe" and (self.system_type or self.voltage_v or not self.classification
+                                      or not self.diameter_mm):
             raise ValueError("a pipe connector takes classification and diameter_mm")
         return self
 
@@ -408,8 +414,9 @@ class MepRunOp(_Op):
     start_key: str | None = None
     end_key: str | None = None
     # True: a join (or elbow) Revit refuses undoes the run and stops the build. False: the run stays and each refused
-    # join is recorded as an issue of the build (never silent); the fit-out's choice for a run ending at a family,
-    # which may have no connector of the run's domain.
+    # join or elbow is recorded as an issue of the build (never silent); the fit-out's choice for every run: a family
+    # may have no connector of the run's domain, and a real type's routing preferences may lack an elbow at a size,
+    # which must not stop a build of thousands of ops.
     require_connections: bool = True
     source: str | None = None
 

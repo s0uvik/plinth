@@ -403,7 +403,7 @@ class FitoutRevit:
         out: dict[str, Any] = {"skipped": skipped} if p.get("best_effort") else {}
         panel = p.get("panel_id")
         if panel is not None and self.refuse_panels == "rollback":
-            self.envelope = {"failures": [{"severity": "Error", "message": "the panel's voltage does not match"}],
+            self.envelope = {"failures": [{"severity": "Error", "description": "the panel's voltage does not match"}],
                              "rolled_back_by_failure": True}
         elif panel is not None and self.refuse_panels:
             if not p.get("best_effort"):

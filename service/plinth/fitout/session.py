@@ -205,10 +205,15 @@ def plan(revit: Any, inputs: Inputs, document: str | None) -> Planned:
     if inputs.furniture_document and title != inputs.furniture_document:
         raise SessionError(f"run {inputs.furniture_run} was built in {inputs.furniture_document!r}, not in {title!r}")
     with_mep = any(s in MEP_SYSTEMS for s in inputs.systems)
-    found = to_plan.plan_furniture(revit, inputs.building, inputs.built, inputs.model, inputs.rules,
-                                   answers=inputs.answers, measurements=inputs.measurements, mep=with_mep,
-                                   shaft_kinds=inputs.shaft_kinds, document=title,
-                                   measure_level=inputs.measured_level, built_fitout=inputs.earlier)
+    try:
+        found = to_plan.plan_furniture(revit, inputs.building, inputs.built, inputs.model, inputs.rules,
+                                       answers=inputs.answers, measurements=inputs.measurements, mep=with_mep,
+                                       shaft_kinds=inputs.shaft_kinds, document=title,
+                                       measure_level=inputs.measured_level, built_fitout=inputs.earlier)
+    except SessionError:
+        raise
+    except ValueError as e:  # an answer or a layout the plan cannot take: said, not a traceback
+        raise SessionError(f"the fit-out cannot be planned: {e}") from e
     drift = check_drift(inputs.furniture_ops, found.already_built)
     if drift["mismatches"]:
         raise Drift(inputs.furniture_run or "", drift["mismatches"])
@@ -253,20 +258,32 @@ def plan_fitout(revit: Any, store: RunStore, building_run: str, document: str | 
 
 def check_drift(before: Mapping[str, FamilyOp], now: Mapping[str, FamilyOp]) -> dict[str, Any]:
     """The furniture run's family ops (``before``, as its plan placed them) against the ops the layout gives the same
-    records now: level, family type, point within ``POINT_TOL_MM`` and turn within ``TURN_TOL_DEG``. A record it built
-    that gets no op now (not laid out, or its family not settled) is listed, not compared: runs to it are left out."""
+    records now: level, category, family type, point within ``POINT_TOL_MM``, turn within ``TURN_TOL_DEG``, height
+    (offset) within ``POINT_TOL_MM``, host, side and facing down. A record it built that gets no op now (not laid out,
+    or its family not settled) is listed, not compared: it stays as built, and runs and circuits to it are still
+    planned and joined (it is an element of the furniture run)."""
     mismatches = []
     for key in sorted(set(before) & set(now)):
         a, b = before[key], now[key]
         diffs = []
         if a.level != b.level:
             diffs.append(f"level {a.level} -> {b.level}")
+        if a.category != b.category:
+            diffs.append(f"category {a.category} -> {b.category}")
         if (a.family, a.type) != (b.family, b.type):
             diffs.append(f"type {a.family}: {a.type} -> {b.family}: {b.type}")
         if math.dist(a.point, b.point) > POINT_TOL_MM:
             diffs.append(f"point {tuple(a.point)} -> {tuple(b.point)}")
         if abs((a.rotation_deg - b.rotation_deg + 180) % 360 - 180) > TURN_TOL_DEG:
             diffs.append(f"turn {a.rotation_deg:g} -> {b.rotation_deg:g}")
+        if abs(a.offset_mm - b.offset_mm) > POINT_TOL_MM:
+            diffs.append(f"offset {a.offset_mm:g} -> {b.offset_mm:g}")
+        if a.host_key != b.host_key:
+            diffs.append(f"host {a.host_key} -> {b.host_key}")
+        if (a.toward is None) != (b.toward is None) or (a.toward and b.toward and math.dist(a.toward, b.toward) > POINT_TOL_MM):
+            diffs.append(f"side {a.toward} -> {b.toward}")
+        if a.face_down != b.face_down:
+            diffs.append(f"face down {a.face_down} -> {b.face_down}")
         if diffs:
             mismatches.append(f"{key}: {'; '.join(diffs)}")
     return {"compared": len(set(before) & set(now)), "mismatches": mismatches,

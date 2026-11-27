@@ -3,7 +3,7 @@ layout when given) with the family types matched for it becomes one BuildPlan, b
 run on top of the building's run, so it is approved, built, read back and removed as a whole, apart from the building.
 
     found = to_plan.plan_fitout(revit, building_plan, building_run_created, furniture=layout, mep=mep_layout,
-                                answers=answers)
+                                answers=answers)    # mep: the MepLayout (made into records here) or its records
     found.plan          # BuildPlan (None when nothing can be placed yet)
     found.questions     # families to choose (nothing fits), with the items they hold back
     found.assumptions   # template copies, size copies, size differences, placements decided here
@@ -46,13 +46,14 @@ The building's levels and the walls used as hosts are the plan's ``existing_leve
 run's ids): looked up, never created nor removed by the fit-out run.
 
 Joins, best effort and never silent: an MEP family (the user's own WC, a socket, a box) often has no connector of a
-run's domain (conduits almost never join receptacles), so a run with an end at a family does not require its joins
-(``require_connections`` false: a refused join leaves the run standing and is an issue of the build); a run joining
-only other runs (our own pipes, which have connectors) does. Circuits are best effort (``best_effort``): a device
-without an electrical connector is left off its circuit, a circuit with none left is not made, a panel Revit refuses
-leaves it unassigned; each is an issue of the build. A box family Plinth creates gets the connectors the plan joins to
-its instances (``connectors``): an electrical one when any is on a circuit or is a panel, a pipe connector per
-system classification and diameter of the pipe runs ending at them.
+run's domain (conduits almost never join receptacles), and a real type's routing preferences may lack an elbow or tee
+at a size, so no fit-out run requires its joins (``require_connections`` false: a refused join or elbow leaves the run
+standing and is an issue of the build; one refusal never stops a build of thousands of ops). Circuits are best effort
+(``best_effort``): a device without an electrical connector is left off its circuit, a circuit with none left is not
+made, a panel Revit refuses leaves it unassigned; each is an issue of the build. A box family Plinth creates gets the
+connectors the plan joins to its instances (``connectors``): an electrical one at the rule set's supply voltage when
+any is on a circuit or is a panel, a pipe connector per system classification and diameter of the pipe runs ending at
+them.
 
 On an earlier fit-out run (``built_fitout``: its keys -> element ids, e.g. the furniture built before the MEP): those
 records get no op and no type op, but count as placed, so runs and circuits join them (``BuildPlan.existing``).
@@ -135,15 +136,26 @@ def _mep_part(mep: Any, name: str) -> list[Any]:
     return list(_get(mep, name) or []) if mep is not None else []
 
 
+def mep_records(mep: Any, building: BuildPlan) -> Any:
+    """The MEP records ``make`` reads. A ``MepLayout`` given as it is becomes its records here (``mep_plan.records``:
+    points above their level, sizes, joins, classifications): read as records, its absolute z would be raised by the
+    level again and its sizes and joins lost."""
+    return mep_plan.records(mep, levels_of(building)) if isinstance(mep, MepLayout) else mep
+
+
 def plan_fitout(revit: families.Revit, building: BuildPlan, built: dict[str, int], *, furniture: Any = None,
                 mep: Any = None, answers: dict[str, Any] | None = None, templates: list[str] | None = None,
-                year: int | str | None = None, built_fitout: Mapping[str, int] | None = None) -> FitoutPlan:
+                year: int | str | None = None, built_fitout: Mapping[str, int] | None = None,
+                voltage_v: float | None = None) -> FitoutPlan:
     """Match families for the layout (project, then installed templates) and make the fit-out's build plan. ``mep``:
-    the MEP records (``mep_plan.records``)."""
+    the MEP layout or its records (``mep_plan.records``); ``voltage_v``: the supply voltage of box families'
+    electrical connectors (the rule set's)."""
+    mep = mep_records(mep, building)
     devices = list(_get(furniture, "placed") or []) + _mep_part(mep, "devices")
     needs = families.needs_from(devices) + families.run_needs(_mep_part(mep, "runs"))
     resolution = families.resolve(needs, revit, answers, templates=templates, year=year)
-    return make(resolution, needs, building, built, furniture=furniture, mep=mep, built_fitout=built_fitout)
+    return make(resolution, needs, building, built, furniture=furniture, mep=mep, built_fitout=built_fitout,
+                voltage_v=voltage_v)
 
 
 def levels_of(building: BuildPlan) -> dict[str, float]:
@@ -198,13 +210,20 @@ def plan_furniture(revit: families.Revit, building: BuildPlan, built: dict[str, 
     resolution = Resolution(choices={**found.choices, **pinned}, questions=questions + found.questions,
                             assumptions=[*items.assumptions, *found.assumptions], skipped=found.skipped,
                             searched=list(dict.fromkeys(items.searched + found.searched)))
-    result = make(resolution, needs, building, built, furniture=layout, mep=mep, built_fitout=built_fitout)
+    result = make(resolution, needs, building, built, furniture=layout, mep=mep, built_fitout=built_fitout,
+                  voltage_v=supply_voltage(rules))
     update: dict[str, Any] = {"layout": layout, "items": items}
     if mep_layout is not None:
         update.update(mep=mep_layout, questions=[*result.questions, *mep_layout.questions],
                       ready=result.ready and not mep_layout.questions,
                       assumptions=[*result.assumptions, *mep_layout.assumptions, *mep_plan.assumptions(mep_layout)])
     return result.model_copy(update=update)
+
+
+def supply_voltage(rules: Any) -> float | None:
+    """The rule set's single-phase supply voltage (``electrical.supply_voltage_v``), None when it gives none."""
+    value = getattr(getattr(getattr(rules, "electrical", None), "supply_voltage_v", None), "value", None)
+    return float(value) if value is not None else None
 
 
 def measured_point(m: Measurement, front: str, point: tuple[float, float], rotation_deg: float) -> tuple[tuple[float, float], float]:
@@ -230,9 +249,47 @@ def measured_offset(m: Measurement, elevation: float, on_counter: bool) -> float
     return elevation
 
 
+WALL_HOSTS = ("wall", "outside_wall")
+
+
+def device_offset(record: Any, m: Measurement | None) -> tuple[float, str | None] | None:
+    """The offset above the level of a level-based MEP device, and how it was found; None for anything else. The
+    layout gives a wall device's centre height and a ceiling device's ceiling height, not where the family's origin
+    goes: on a wall, the family's box is centred on that height (offset = centre - half its height - its box's
+    bottom below its origin); on the ceiling, its top is at the ceiling (offset = ceiling - its box's top above its
+    origin). The box is the measured one; else the rule's height with the origin at the base (as the box families
+    Plinth creates have); else, nothing known, the origin goes at that height and the note says so."""
+    kind = _get(record, "host_kind")
+    height = _get(record, "height_mm")
+    if kind in WALL_HOSTS:
+        centre = float(_get(record, "center_mm") if _get(record, "center_mm") is not None else _get(record, "elevation_mm") or 0)
+        if m is not None:
+            return round(centre - m.height_mm / 2 - m.base_mm, 1), None
+        if height:
+            return round(centre - float(height) / 2, 1), (f"not measured: its origin taken as its base, the rule's "
+                                                          f"{float(height):g} mm high box centred at {centre:g} mm")
+        return centre, f"its height not known: its origin placed at the device's centre height ({centre:g} mm)"
+    if kind == "ceiling" or (kind is None and _get(record, "face_down")):
+        ceiling = float(_get(record, "elevation_mm") or 0)
+        if m is not None:
+            top = m.max[2] - m.base_offset_mm
+            return round(ceiling - top, 1), (f"its family is level-based: hung with its top ({top:g} mm above its "
+                                             f"origin, measured) at the ceiling's height {ceiling:g} mm, not facing down")
+        if height:
+            return round(ceiling - float(height), 1), (f"its family is level-based: hung with its top at the ceiling's "
+                                                       f"height {ceiling:g} mm (the rule's {float(height):g} mm high, "
+                                                       f"its origin taken as its base), not facing down")
+        return ceiling, (f"its family is level-based: its origin placed at the ceiling's height {ceiling:g} mm (its "
+                         f"height not known), not facing down")
+    return None
+
+
 def make(resolution: Resolution, needs: list[Need], building: BuildPlan, built: dict[str, int], *,
-         furniture: Any = None, mep: Any = None, built_fitout: Mapping[str, int] | None = None) -> FitoutPlan:
-    """The build plan for the layout with the families resolved (see the module docstring)."""
+         furniture: Any = None, mep: Any = None, built_fitout: Mapping[str, int] | None = None,
+         voltage_v: float | None = None) -> FitoutPlan:
+    """The build plan for the layout with the families resolved (see the module docstring). ``mep``: the MEP layout or
+    its records; ``voltage_v``: the supply voltage of box families' electrical connectors."""
+    mep = mep_records(mep, building)
     built_fitout = dict(built_fitout or {})
     levels = levels_of(building)
     walls = {op.key for op in building.ops if isinstance(op, WallOp)}
@@ -296,7 +353,6 @@ def make(resolution: Resolution, needs: list[Need], building: BuildPlan, built: 
         ops.append(op)
 
     # ---------------------------------------------------------------- MEP runs and circuits
-    run_keys = {_get(run, "key") for run in _mep_part(mep, "runs")}
     for run in _mep_part(mep, "runs"):
         key, kind, level = _get(run, "key"), _get(run, "kind"), _get(run, "level")
         what = f"{kind} run"
@@ -325,8 +381,8 @@ def make(resolution: Resolution, needs: list[Need], building: BuildPlan, built: 
         for name in ("diameter_mm", "width_mm", "height_mm", "start_key", "end_key", "source"):
             if _get(run, name) is not None:
                 op[name] = _get(run, name)
-        # a join to a family may find no connector of the run's domain: best effort, reported (module docstring)
-        op["require_connections"] = all(k in run_keys for k in ends)
+        # best effort, reported: a family may have no connector of the run's domain, a type no elbow at a size
+        op["require_connections"] = False
         used[type_choice.need] = type_choice
         used_levels.add(level)
         placed.add(key)
@@ -354,7 +410,7 @@ def make(resolution: Resolution, needs: list[Need], building: BuildPlan, built: 
             op["source"] = _get(circuit, "source")
         ops.append(op)
 
-    connectors, capped = _box_connectors(ops, chosen, records)
+    connectors, capped = _box_connectors(ops, chosen, records, voltage_v)
     notes += capped
     type_ops = _type_ops(used.values(), connectors)
     all_ops = type_ops + ops
@@ -378,11 +434,12 @@ def make(resolution: Resolution, needs: list[Need], building: BuildPlan, built: 
                       needs=needs, already_built=again)
 
 
-def _box_connectors(ops: list[dict[str, Any]], chosen: dict[str, Choice],
-                    records: dict[str, Any]) -> tuple[dict[str, list[dict[str, Any]]], list[Assumption]]:
-    """Box family (casefolded name) -> the connectors the plan joins to its instances: an electrical one when any of
-    them is on a circuit (or is a panel), a pipe connector per system classification and diameter of the pipe runs
-    ending at them; at most ``MAX_BOX_CONNECTORS`` (the rest listed back)."""
+def _box_connectors(ops: list[dict[str, Any]], chosen: dict[str, Choice], records: dict[str, Any],
+                    voltage_v: float | None = None) -> tuple[dict[str, list[dict[str, Any]]], list[Assumption]]:
+    """Box family (casefolded name) -> the connectors the plan joins to its instances: an electrical one (at
+    ``voltage_v``, the supply's) when any of them is on a circuit (or is a panel), a pipe connector per system
+    classification and diameter of the pipe runs ending at them; at most ``MAX_BOX_CONNECTORS`` (the rest listed
+    back)."""
     box = {key: c.family.casefold() for key, c in chosen.items() if c.source == "create" and c.family}
     if not box:
         return {}, []
@@ -404,7 +461,9 @@ def _box_connectors(ops: list[dict[str, Any]], chosen: dict[str, Choice],
     out: dict[str, list[dict[str, Any]]] = {}
     notes: list[Assumption] = []
     for family in sorted(set(powered) | set(pipes)):
-        wanted = ([{"domain": "electrical", "system_type": "PowerCircuit"}] if powered.get(family) else []) + [
+        power = {"domain": "electrical", "system_type": "PowerCircuit",
+                 **({"voltage_v": float(voltage_v)} if voltage_v else {})}
+        wanted = ([power] if powered.get(family) else []) + [
             {"domain": "pipe", "classification": c, "diameter_mm": d} for c, d in sorted(pipes.get(family, ()))]
         out[family] = wanted[:MAX_BOX_CONNECTORS]
         if len(wanted) > MAX_BOX_CONNECTORS:
@@ -509,7 +568,9 @@ def _family_op(record: Any, choice: Choice, walls: set[str], built: dict[str, in
     if m is not None and (placement in LEVEL_BASED or placement == "WorkPlaneBased" and on_counter and not face_down):
         at, rotation = measured_point(m, choice.front, tuple(point), float(_get(record, "rotation_deg") or 0))
         op["point"] = at
-        offset = measured_offset(m, elevation, on_counter)
+        mep_offset = device_offset(record, m) if placement in LEVEL_BASED else None
+        offset = mep_offset[0] if mep_offset else measured_offset(m, elevation, on_counter)
+        note = mep_offset[1] if mep_offset else None
         op.pop("offset_mm", None)
         if offset:
             op["offset_mm"] = round(offset, 1)
@@ -520,7 +581,7 @@ def _family_op(record: Any, choice: Choice, walls: set[str], built: dict[str, in
         op["source"] = (f"{op['source']}; " if op.get("source") else "") + \
             (f"placed by {how} ({w:g} x {d:g} mm, front {choice.front.upper()}; {m.describe()}): its back's "
              f"middle on the layout's point {tuple(round(v, 1) for v in point)}")
-        return op, None
+        return op, note
     if placement == "WorkPlaneBased" and on_counter and not face_down:  # not measured: on the level's plane
         if _rotation(float(_get(record, "rotation_deg") or 0)):
             op["rotation_deg"] = _rotation(float(_get(record, "rotation_deg")))
@@ -528,11 +589,14 @@ def _family_op(record: Any, choice: Choice, walls: set[str], built: dict[str, in
     if placement in LEVEL_BASED:
         if _rotation(float(_get(record, "rotation_deg") or 0)):
             op["rotation_deg"] = _rotation(float(_get(record, "rotation_deg")))
-        if placement is None:
-            note = "placement type of the project's family not known: placed as a level-based family"
-        if face_down:
-            note = "its family is level-based: placed at its height, not facing down"
-        return op, note
+        notes = ["placement type of the project's family not known: placed as a level-based family"] if placement is None else []
+        mep_offset = device_offset(record, None)
+        if mep_offset:
+            op.pop("offset_mm", None)
+            if mep_offset[0]:
+                op["offset_mm"] = mep_offset[0]
+            notes += [mep_offset[1]] if mep_offset[1] else []
+        return op, "; ".join(notes) or None
     if placement == "OneLevelBasedHosted":
         if not wall_built:
             return None, f"its family ({choice.family}) is wall-hosted and the item has no built wall behind it"
@@ -564,10 +628,10 @@ def _type_ops(choices: Iterable[Choice], connectors: Mapping[str, list[dict[str,
                    "height_mm": c.box.height_mm}
             if c.box.material:
                 box["material"] = c.box.material
+            if (connectors or {}).get(c.family.casefold()):  # the family's, whichever size asks: the same for each
+                box["connectors"] = connectors[c.family.casefold()]
             if boxes.setdefault(c.family.casefold(), box) != box:
                 raise ValueError(f"box family {c.family!r} is asked at two sizes; name each size's family apart")
-            if (connectors or {}).get(c.family.casefold()):
-                boxes[c.family.casefold()]["connectors"] = connectors[c.family.casefold()]
             continue
         if c.source == "template" and c.path:
             name = c.base_type or c.type

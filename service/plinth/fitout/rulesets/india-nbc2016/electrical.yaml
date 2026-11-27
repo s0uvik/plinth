@@ -217,6 +217,10 @@ electrical:
     value: "a meter space on the ground floor near the entrance, one meter per flat plus the common meter"
     source: "Typical Indian multi-dwelling practice; the supply authority decides"
     verified: false
+  supply_voltage_v:  # what electrical connectors (a box family's) and circuits are made at
+    value: 230
+    source: "IS 12360 voltage bands: 230 V single phase (400 V three phase), 50 Hz, the Indian standard supply; as recalled"
+    verified: false
 
   # What F1/F5 match a family type by; sizes are nominal (width along the wall, depth from it, height).
   devices:

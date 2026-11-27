@@ -392,7 +392,8 @@ def issues(op: Op, data: dict[str, Any], response: dict[str, Any] | None = None)
                 out.append({"key": op.key, "what": "panel", "element_id": data.get("panel_id"),
                             "reason": data["panel_error"]})
             elif op.panel_key and data.get("circuit_id") is not None and (response or {}).get("rolled_back_by_failure"):
-                said = "; ".join(str(f.get("message") or f) if isinstance(f, dict) else str(f)
+                # the add-in's FailureScope writes each failure's text as "description" (older shapes: "message")
+                said = "; ".join(str(f.get("description") or f.get("message") or f) if isinstance(f, dict) else str(f)
                                  for f in (response or {}).get("failures") or [])
                 out.append({"key": op.key, "what": "panel", "element_id": data.get("panel_id"),
                             "reason": "Revit undid the panel assignment" + (f": {said}" if said else "")})
