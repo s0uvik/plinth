@@ -144,7 +144,7 @@ export function PlanDims({ className = 'pl-dims' }: { className?: string }) {
       {DIM_STOPS.slice(1).map((x, i) => {
         const a = DIM_STOPS[i];
         return (
-          <text key={x} className="pl-dim-text" x={(a + x) / 2} y={DIM_Y - 4} textAnchor="middle">
+          <text key={x} className="pl-dim-text" data-value={(x - a) * 20} x={(a + x) / 2} y={DIM_Y - 4} textAnchor="middle">
             {((x - a) * 20).toString()}
           </text>
         );

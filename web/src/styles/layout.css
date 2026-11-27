@@ -25,6 +25,7 @@
 
 .site-header {
   position: sticky;
+  /* the scroll-progress redline sits on the bottom edge */
   top: 0;
   z-index: 50;
   background: var(--film);
@@ -73,9 +74,38 @@
   text-decoration: none;
 }
 
+.site-nav a {
+  text-decoration-line: underline;
+  text-decoration-color: transparent;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.35em;
+  transition:
+    color var(--dur-1) var(--ease-out),
+    text-decoration-color var(--dur-1) var(--ease-out),
+    text-underline-offset var(--dur-2) var(--ease-out);
+}
+
 .site-nav a:hover {
   color: var(--ink);
-  text-decoration: underline;
+  text-decoration-color: var(--red);
+  text-underline-offset: 0.2em;
+}
+
+.site-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  pointer-events: none;
+}
+
+.site-progress__fill {
+  display: block;
+  height: 100%;
+  background: var(--red);
+  transform: scaleX(0);
+  transform-origin: 0 50%;
 }
 
 .site-header .btn {
@@ -122,16 +152,22 @@
 }
 
 .bubble {
-  display: grid;
-  place-items: center;
   flex: none;
   width: 2.5rem;
   height: 2.5rem;
-  border: 1.5px solid var(--ink);
-  border-radius: 50%;
-  background: var(--sheet);
+  overflow: visible;
+}
+
+.bubble circle {
+  fill: var(--sheet);
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+
+.bubble text {
+  fill: var(--ink);
   font-family: var(--font-mono);
-  font-size: var(--fs-16);
+  font-size: 15px;
   font-weight: 500;
 }
 
@@ -192,6 +228,7 @@
 /* ---------- title-block footer ---------- */
 
 .titleblock {
+  position: relative;
   margin-top: var(--s-8);
   margin-bottom: var(--s-6);
   border: 2px solid var(--ink);
@@ -281,4 +318,23 @@
   .titleblock__notes {
     align-content: end;
   }
+}
+
+/* the stamp set down on the title block's corner */
+.tb-stamp {
+  position: absolute;
+  right: var(--s-6);
+  top: -2.9rem;
+  padding: 0.3em 0.8em 0.35em;
+  border: 4px double var(--red);
+  background: rgb(248 249 246 / 0.9);
+  color: var(--red);
+  font-size: var(--fs-18);
+  font-weight: 800;
+  font-variation-settings: 'wdth' 125;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+  transform: rotate(-7deg);
+  pointer-events: none;
 }

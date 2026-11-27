@@ -56,5 +56,11 @@
   --lift-1: 0 1px 0 var(--line), 0 2px 6px rgb(31 35 38 / 0.07);
   --lift-2: 0 1px 0 var(--line-strong), 0 10px 24px -8px rgb(31 35 38 / 0.18);
 
+  /* motion: the same eases as src/lib/gsap.ts, for CSS transitions (hover, toggles) */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-draft: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-stamp: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --dur-1: 160ms;
+  --dur-2: 320ms;
+  --dur-3: 560ms;
 }
