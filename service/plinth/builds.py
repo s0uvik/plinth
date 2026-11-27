@@ -47,9 +47,10 @@ class BuildService:
 
     def start(self, plan: BuildPlan, document_title: str | None = None, attachments: dict[str, Any] | None = None,
               after_build: Callable[[RevitClient, Run, dict[str, int]], dict[str, Any]] | None = None,
-              families: dict[str, Any] | None = None) -> str:
+              families: dict[str, Any] | None = None, require: list[str] | None = None) -> str:
         """Start a build in the background and return its run id. Attachments (spec, layout report, brief)
-        are saved in the run beside the plan."""
+        are saved in the run beside the plan. ``require``: add-in commands the plan needs on top of the connection's
+        own (a fit-out's), checked before anything is built, so an older add-in fails the run at once, not mid-way."""
         if not self._lock.acquire(blocking=False):
             raise Busy("A build or removal is already running.")
         try:
@@ -61,8 +62,8 @@ class BuildService:
         except Exception:
             self._lock.release()
             raise
-        threading.Thread(target=self._build, args=(run, plan, document_title, after_build, families or {}), name=f"build-{run.id}",
-                         daemon=True).start()
+        threading.Thread(target=self._build, args=(run, plan, document_title, after_build, families or {}, require),
+                         name=f"build-{run.id}", daemon=True).start()
         return run.id
 
     def build_now(self, plan: BuildPlan, document_title: str | None = None, families: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -74,10 +75,12 @@ class BuildService:
         return self.store.get(run_id).load("run")
 
     def _build(self, run: Run, plan: BuildPlan, document_title: str | None, after_build=None,
-               families: dict[str, Any] | None = None) -> None:
+               families: dict[str, Any] | None = None, require: list[str] | None = None) -> None:
         families = families or {}
         try:
             with self._open(run) as revit:
+                if require:
+                    revit.check(require)
                 title = revit.confirm_document(document_title)
                 run.update(status="building", document_title=title, versions=self._versions(revit, plan))
                 runner = Runner(revit, progress=lambda done, total: run.update(batches={"total": total, "succeeded": done}),
