@@ -97,6 +97,56 @@ namespace Plinth.Revit.Core.Tests
             Assert.Equal(expected, ConnectorMatch.Rank(connector, run));
         }
 
+        // ---- MainSegments -----------------------------------------------------------------------------
+
+        private static double[][] Seg(double[] a, double[] b) => new[] { a, b };
+
+        [Fact]
+        public void ATeeGoesIntoTheSegmentOfTheMainItsPointLiesBeside()
+        {
+            // A 5-segment cold-water downtake: along x at z 3000 to x 4000, down to z 0, then along y.
+            var main = new List<double[][]>
+            {
+                Seg(P(0, 0, 3000), P(2000, 0, 3000)),
+                Seg(P(2000, 0, 3000), P(4000, 0, 3000)),
+                Seg(P(4000, 0, 3000), P(4000, 0, 0)),
+                Seg(P(4000, 0, 0), P(4000, 1500, 0)),
+                Seg(P(4000, 1500, 0), P(4000, 3000, 0)),
+            };
+            Assert.Equal(3, MainSegments.Containing(P(4000, 900, 0), main, 50, 300));          // on segment 4
+            Assert.Equal(1, MainSegments.Containing(P(3000, 0, 3000), main, 50, 300));
+            Assert.Equal(2, MainSegments.Containing(P(4000, 120, 1500), main, 50, 300));      // 120 mm beside it
+            Assert.Equal(-1, MainSegments.Containing(P(4000, 400, 1500), main, 50, 300));     // too far beside
+            Assert.Equal(-1, MainSegments.Containing(P(1980, 0, 3000), main, 50, 300));       // 20 mm from a joint
+            Assert.Equal(-1, MainSegments.Containing(P(-100, 0, 3000), main, 50, 300));       // past the main's end
+            Assert.Equal(4, MainSegments.Containing(P(4000, 3000 - 50, 0), main, 50, 300));   // exactly the margin
+        }
+
+        [Fact]
+        public void TheNearestSegmentWinsAndTheFirstOnATie()
+        {
+            var parallel = new List<double[][]>
+            {
+                Seg(P(0, 200, 0), P(1000, 200, 0)),
+                Seg(P(0, 50, 0), P(1000, 50, 0)),
+                Seg(P(0, -50, 0), P(1000, -50, 0)),
+            };
+            Assert.Equal(1, MainSegments.Containing(P(500, 0, 0), parallel, 50, 300));        // y 50 and y -50 tie: the first
+            Assert.Equal(1, MainSegments.Containing(P(500, 10, 0), parallel, 50, 300));       // nearer y 50
+            Assert.Equal(2, MainSegments.Containing(P(500, -10, 0), parallel, 50, 300));      // nearer y -50
+            Assert.Equal(0, MainSegments.Containing(P(500, 190, 0), parallel, 50, 300));
+            Assert.Equal(-1, MainSegments.Containing(P(500, 0, 0), new List<double[][]>(), 50, 300));
+        }
+
+        [Fact]
+        public void ASegmentTooShortForATeeTakesNoPoint()
+        {
+            Assert.Null(MainSegments.Offset(P(40, 0, 0), P(0, 0, 0), P(80, 0, 0), 50));
+            Assert.Null(MainSegments.Offset(P(0, 0, 0), P(0, 0, 0), P(0, 0, 0), 50));
+            Assert.Equal(0.0, MainSegments.Offset(P(50, 0, 0), P(0, 0, 0), P(100, 0, 0), 50).Value, 9);
+            Assert.Equal(5.0, MainSegments.Offset(P(500, 3, 4), P(0, 0, 0), P(1000, 0, 0), 50).Value, 9);
+        }
+
         // ---- CircuitTypes -----------------------------------------------------------------------------
 
         [Theory]
