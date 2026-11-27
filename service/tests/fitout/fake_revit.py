@@ -8,6 +8,7 @@ run added and what removing it left behind. A batch is all or nothing, as in the
 from __future__ import annotations
 
 import copy
+import math
 from typing import Any
 
 from plinth.revit.client import RevitError
@@ -22,6 +23,21 @@ FITTING = {"pipe": "OST_PipeFitting", "duct": "OST_DuctFitting", "conduit": "OST
 
 def _fail(error: str, data: Any = None) -> RevitError:
     return RevitError({"success": False, "error": error, "data": data})
+
+
+def _turn(a, b, c) -> float:
+    u = [y - x for x, y in zip(a, b)]
+    v = [y - x for x, y in zip(b, c)]
+    cos = sum(x * y for x, y in zip(u, v)) / (math.hypot(*u) * math.hypot(*v))
+    return math.degrees(math.acos(max(-1.0, min(1.0, cos))))
+
+
+def _on(at, segment, within: float = 300.0) -> bool:
+    """A point within ``within`` of a segment, between its ends (the add-in's search for the segment to tee into)."""
+    a, b = segment["a"], segment["b"]
+    d = [y - x for x, y in zip(a, b)]
+    t = sum((p - x) * dx for p, x, dx in zip(at, a, d)) / sum(x * x for x in d)
+    return 0 <= t <= 1 and math.dist(at, [x + t * dx for x, dx in zip(a, d)]) <= within
 
 
 class FitoutRevit:
@@ -358,6 +374,11 @@ class FitoutRevit:
         return {"instance_id": instance, "created_ids": created}
 
     def _create_mep_run(self, p):
+        """As the add-in: points on a straight line merged (one segment per kept leg, ``bends`` with their point
+        indices), an elbow per bend; an end joined to a pipe or duct segment away from its ends tees into it: the
+        segment is broken there (the far piece is a new element, the main is ``modified``) and a tee added, both in
+        that join's ``connections`` row. A join point off the segment named is looked for on the other segments of
+        that category within 300 mm (``joined``: where it went instead)."""
         kind = p["kind"]
         self._find_type(f"{kind}_type", p["type_name"])
         if kind in ("pipe", "duct"):
@@ -371,15 +392,46 @@ class FitoutRevit:
                 if p.get("require_connections"):
                     raise _fail(reason + " Nothing was created.")
                 failed.append({"at": end.split("_")[0], "element_id": p[end]["element_id"], "reason": reason})
+        points = [tuple(pt) for pt in p["points"]]
+        kept = [0] + [i for i in range(1, len(points) - 1) if _turn(points[i - 1], points[i], points[i + 1]) >= 0.5] + [
+            len(points) - 1]
         segments, fittings = [], []
-        for _ in range(len(p["points"]) - 1):
+        for a, b in zip(kept, kept[1:]):
             segments.append(self._new_id())
-            self.elements[segments[-1]] = {"category": CURVE[kind], "level": p["level"]}
-        for _ in range(len(p["points"]) - 2):
+            self.elements[segments[-1]] = {"category": CURVE[kind], "level": p["level"], "a": points[a], "b": points[b]}
+        for _ in kept[1:-1]:
             fittings.append(self._new_id())
             self.elements[fittings[-1]] = {"category": FITTING[kind], "level": p["level"]}
-        return {"kind": kind, "segment_ids": segments, "fitting_ids": fittings, "created_ids": segments + fittings,
-                "modified_ids": [], "failed_connections": failed}
+        created, connections, joined, modified = segments + fittings, [], [], []
+        for end, at in (("start_connect", points[0]), ("end_connect", points[-1])):
+            requested = (p.get(end) or {}).get("element_id")
+            if requested is None or any(f["at"] == end.split("_")[0] for f in failed):
+                continue
+            target = self.elements[requested]
+            if target["category"] not in CURVE.values() or "a" not in target:
+                continue
+            main = requested if _on(at, target) else next(
+                (i for i, e in sorted(self.elements.items()) if e["category"] == target["category"] and "a" in e
+                 and _on(at, e)), None)
+            if main is None:
+                continue
+            if main != requested:
+                joined.append({"at": end.split("_")[0], "requested_id": requested, "element_id": main})
+            seg = self.elements[main]
+            if min(math.dist(at, seg["a"]), math.dist(at, seg["b"])) <= 5:
+                connections.append({"at": end.split("_")[0], "element_id": main, "how": "end", "created_ids": []})
+                continue
+            tee, piece = self._new_id(), self._new_id()
+            self.elements[piece] = {**seg, "a": at}
+            seg["b"] = at
+            self.elements[tee] = {"category": FITTING[kind], "level": p["level"]}
+            fittings.append(tee)
+            created += [tee, piece]
+            modified.append(main)
+            connections.append({"at": end.split("_")[0], "element_id": main, "how": "tee", "created_ids": [tee, piece]})
+        return {"kind": kind, "segment_ids": segments, "fitting_ids": fittings, "created_ids": created,
+                "modified_ids": modified, "failed_connections": failed, "connections": connections,
+                "bends": [{"point_index": i} for i in kept[1:-1]], **({"joined": joined} if joined else {})}
 
     def _create_electrical_circuit(self, p):
         """As the add-in: every element needs a free electrical connector (else the call fails), unless best_effort,

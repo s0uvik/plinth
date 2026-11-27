@@ -207,6 +207,29 @@ def test_a_flat_pilot_keeps_the_flat_and_what_it_joins(world, fitout_answers):
     assert len(revit.calls) == calls  # stopped before Revit was asked anything
 
 
+def test_a_pilot_is_held_back_only_by_questions_about_what_it_builds():
+    # 2026-11-27: both large-living-room AC questions blocked every one-flat pilot, though each was about other flats'
+    # rooms (their instances are room keys, not records; their form must not matter)
+    from plinth.fitout.rooms import Question
+    inputs = session.Inputs.model_construct(systems=["furniture", "hvac", "plumbing"], flat="U1", level="Floor 1")
+
+    def asks(instances, topic="fitout_ac", held=frozenset({"ROOM-U1-LIVING", "FIT-U1-sofa-1"}), built=("hvac",)):
+        q = Question(id="q", topic=topic, text="?", options=[], instances=list(instances))
+        return session._asks_now(q, inputs, gone={"FIT-U2-sofa-1"}, held=set(held), built_systems=set(built))
+
+    assert asks(["ROOM-U1-LIVING", "ROOM-U2-LIVING"])  # one of its rooms is the pilot's
+    assert not asks(["ROOM-U2-LIVING", "ROOM-U3-LIVING"])  # another flat's rooms only
+    assert not asks(["FIT-U2-sofa-1"], topic="families")  # only what is not built now
+    assert asks(["FIT-U1-sofa-1"], topic="families")
+    assert asks([], topic="fitout_meter_room") is False  # no instances: its system has nothing in the pilot
+    assert asks([], topic="fitout_tank", built=("plumbing",))
+    assert asks([], topic="fitout_stack_kind")  # shapes every system
+    assert not asks(["ROOM-U1-LIVING"], topic="fitout_fire")  # fire is not built now
+    whole = session.Inputs.model_construct(systems=["hvac"], flat=None, level=None)
+    q = Question(id="q", topic="fitout_ac", text="?", options=[], instances=["ROOM-U2-LIVING"])
+    assert session._asks_now(q, whole, gone=set(), held=None, built_systems={"hvac"})  # not a pilot: as before
+
+
 def test_joins_and_circuits_revit_refuses_are_the_runs_issues(world, fitout_answers):
     store, _, revit = world
     revit.unjoinable = {"OST_PlumbingFixtures", "OST_ElectricalFixtures", "OST_LightingFixtures",

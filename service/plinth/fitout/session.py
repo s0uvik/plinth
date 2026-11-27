@@ -26,8 +26,10 @@ What it does, in order:
    rooms' records and the MEP records of the flat, with what they join (the branches, stacks and mains their pipes
    tee into, so the joins are tried), nothing else.
 3. ``build``: the plan as its own run (``BuildService``), with the add-in commands it needs; the run keeps the report
-   as ``fitout_report`` (building run, furniture run, systems, rules, answers). Joins and circuits Revit refuses are
-   the run's issues (built_with_issues), never silent.
+   as ``fitout_report`` (building run, furniture run, systems, rules, answers) and whose each element it builds on is
+   (``existing_runs``: the building's, the furniture run's, a pilot's), so a piece its tees break off a pilot's main is
+   that run's, and neither earlier run is removed before it. Joins and circuits Revit refuses are the run's issues
+   (built_with_issues), never silent.
 
 The MEP layout is an indicative coordination model: every report says so (``NOTICE``); an MEP engineer designs and
 checks the real systems.
@@ -98,6 +100,7 @@ class Inputs(_Model):
     furniture_document: str | None = None
     furniture_ops: dict[str, FamilyOp] = {}  # what the furniture run built, as its plan placed it
     earlier: dict[str, int] = {}  # key -> id of what the furniture run and the excluded runs built
+    earlier_runs: dict[str, str] = {}  # key -> the run of ``earlier`` that built it
     exclude_runs: list[str] = []
     flat: str | None = None
     level: str | None = None
@@ -108,6 +111,7 @@ class Planned(_Model):
     plan: BuildPlan | None = None
     ready: bool = False
     answers: dict[str, Any] = {}
+    owners: dict[str, str] = {}  # the plan's existing element key -> the run that built it
 
 
 # ------------------------------------------------------------------------------------------------ prepare
@@ -157,7 +161,7 @@ def prepare(store: RunStore, building_run: str, rules: str | FitoutRules, *, ans
     chosen = systems_of(systems)
     given = {k: v for k, v in (answers or {}).items() if not k.startswith("_")}
 
-    merged, furniture_ops, earlier, furniture_document = dict(given), {}, {}, None
+    merged, furniture_ops, earlier, earlier_runs, furniture_document = dict(given), {}, {}, {}, None
     if furniture_run:
         frun, frecord = _built_run(store, furniture_run, "the furniture")
         saved = frun.load("fitout_report") or {}
@@ -167,11 +171,14 @@ def prepare(store: RunStore, building_run: str, rules: str | FitoutRules, *, ans
         fplan = BuildPlan.model_validate(frun.load("plan"))
         furniture_ops = {op.key: op for op in fplan.ops if isinstance(op, FamilyOp) and op.key in created}
         earlier = {k: created[k] for k in furniture_ops}
+        earlier_runs = {k: furniture_run for k in earlier}
         merged = {**(saved.get("answers") or {}), **given}
         furniture_document = frecord.get("document_title")
     for rid in exclude_runs:
         _, xrecord = _built_run(store, rid, "the excluded")
-        earlier.update({k: v for k, v in (xrecord.get("created") or {}).items() if "#" not in k})
+        mine = {k: v for k, v in (xrecord.get("created") or {}).items() if "#" not in k}
+        earlier.update(mine)
+        earlier_runs.update({k: rid for k in mine})
 
     levels = to_plan.levels_of(building)
     if measured_level and measured_level not in levels:
@@ -194,7 +201,7 @@ def prepare(store: RunStore, building_run: str, rules: str | FitoutRules, *, ans
                   model=model, answers=merged, measurements=given_measurements, measured_level=measured_level,
                   systems=chosen, shaft_kinds=mep.shaft_kinds_from_sources(import_plan.get("sources") or {}),
                   furniture_run=furniture_run, furniture_document=furniture_document, furniture_ops=furniture_ops,
-                  earlier=earlier, exclude_runs=list(exclude_runs), flat=flat, level=level)
+                  earlier=earlier, earlier_runs=earlier_runs, exclude_runs=list(exclude_runs), flat=flat, level=level)
 
 
 # ------------------------------------------------------------------------------------------------ plan
@@ -235,19 +242,18 @@ def plan(revit: Any, inputs: Inputs, document: str | None) -> Planned:
             trimmed.update(pruned.trimmed)
 
     # a family question only about records not built now (left out, or built before) is not this plan's; a question
-    # of the MEP layout only one system needs, only when that system is built
+    # of the MEP layout only one system needs, only when that system is built; in a pilot, only what the pilot holds
     gone = other | pilot | set(inputs.earlier)
+    held = (set(record_system) - gone) | _pilot_rooms(inputs) if inputs.flat else None
+    built_systems = {record_system[k] for k in set(record_system) - gone}
     questions, not_now = [], []
     for q in found.questions:
-        system = QUESTION_SYSTEM.get(q.topic)
-        if (q.instances and set(q.instances) <= gone) or (system and system not in inputs.systems):
-            not_now.append(q)
-        else:
-            questions.append(q)
+        (questions if _asks_now(q, inputs, gone, held, built_systems) else not_now).append(q)
     left = [x for x in found.left_out if x.key not in gone]
     ready = not questions
     report = _report(inputs, found, built_plan, questions, not_now, left, dropped, trimmed, drift, ready)
-    return Planned(report=report, plan=built_plan, ready=ready, answers=inputs.answers)
+    owners = {k: inputs.earlier_runs.get(k, inputs.building_run) for k in (built_plan.existing if built_plan else {})}
+    return Planned(report=report, plan=built_plan, ready=ready, answers=inputs.answers, owners=owners)
 
 
 def plan_fitout(revit: Any, store: RunStore, building_run: str, document: str | None, rules: str | FitoutRules,
@@ -290,11 +296,32 @@ def check_drift(before: Mapping[str, FamilyOp], now: Mapping[str, FamilyOp]) -> 
             "built_not_planned_now": sorted(set(before) - set(now))}
 
 
+def _asks_now(q: Any, inputs: Inputs, gone: set[str], held: set[str] | None, built_systems: set[str]) -> bool:
+    """Whether a question holds this plan back. Not when its system is not built now, nor when all it is about
+    (its instances) is not built now. In a pilot (``held``: the records it builds and its rooms), only when one of
+    its instances is held (a question about another flat's living room does not stop this flat's pilot; the
+    instances' form does not matter: record keys, room keys, anything else is not held); one without instances only
+    when it shapes every system, or its system has records in the pilot."""
+    system = QUESTION_SYSTEM.get(q.topic)
+    if system and system not in inputs.systems:
+        return False
+    if q.instances and set(q.instances) <= gone:
+        return False
+    if held is None:
+        return True
+    if q.instances:
+        return bool(set(q.instances) & held)
+    return system is None or system in built_systems
+
+
+def _pilot_rooms(inputs: Inputs) -> set[str]:
+    return {r.key for r in inputs.model.rooms if r.flat == inputs.flat and (not inputs.level or r.level == inputs.level)}
+
+
 def _outside_pilot(inputs: Inputs, found: to_plan.FitoutPlan, record_system: Mapping[str, str]) -> set[str]:
     """Record keys outside a flat pilot: the flat's rooms' records and the flat's MEP records stay, with what they
     join (run ends, their ends in turn, circuit panels)."""
-    rooms_in = {r.key for r in inputs.model.rooms
-                if r.flat == inputs.flat and (not inputs.level or r.level == inputs.level)}
+    rooms_in = _pilot_rooms(inputs)
 
     def ours(rec: Any) -> bool:
         return rec.room_key in rooms_in or (rec.flat == inputs.flat and (not inputs.level or rec.level == inputs.level))
@@ -420,6 +447,6 @@ def build(planned: Planned, store: RunStore, document: str | None, *, connect: C
     needed = required_commands(planned.plan)
     service = BuildService(store, connect=connect or (lambda: RevitClient.connect(required_commands=needed)),
                            types=types if types is not None else TypeMap.load())
-    record = service.build_now(planned.plan, document)
+    record = service.build_now(planned.plan, document, owners=planned.owners)
     store.get(record["run_id"]).save("fitout_report", {**planned.report, "answers": planned.answers})
     return record

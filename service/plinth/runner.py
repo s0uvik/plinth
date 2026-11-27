@@ -17,7 +17,10 @@ installed template (``types_from_file``: only what the copy added is recorded, a
 and copy a type to another size (``family_type_copy``: duplicate before edit); a box family the user agreed to is
 created and loaded as a new family (``family_create``: recorded and removed with the run; a family of that name already
 in the project is used as it is and not recorded). Placed families, MEP runs (segments,
-fittings, pieces as key, key#2 / key#f1 / key#p1) and circuits follow in batches.
+fittings, pieces as key, key#2 / key#f1 / key#p1) and circuits follow in batches. A run teed into a main of this
+build names the main's segment its join point is on (from the bends the main's result reported); a piece a tee breaks
+off a main of the earlier run is that main's (``BuildResult.adopted``: its run removes it), never this run's; where
+the add-in joined another segment than the one named, and which mains it broke, go in ``BuildResult.mep_log``.
 
 What the add-in built but not wholly (a fit-out's best effort: a run's join to a family without a connector of its
 domain, a circuit's device without an electrical connector, a panel Revit refused, a circuit not made, a box family's
@@ -34,7 +37,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
 from plinth.plan import (KEY_SEPARATOR, PHASE_OF, TYPE_OPS, BeamOp, BuildPlan, ColumnOp, FamilyCreateOp, FamilyTypeCopyOp,
-                      Op, RailingOp, TypesFromFileOp, references)
+                      MepRunOp, Op, RailingOp, TypesFromFileOp, references)
 from plinth.revit import commands
 from plinth.revit.client import RevitError, RevitTimeout
 from plinth.revit.types import FamilyType, TypeMap
@@ -79,6 +82,9 @@ class BuildResult:
     error_data: Any = None
     failures: list[dict[str, Any]] = field(default_factory=list)
     issues: list[dict[str, Any]] = field(default_factory=list)  # built, but not wholly (see the module docstring)
+    # pieces this build's tees broke off mains of the earlier run: main key -> ids (the main's run's, not this run's)
+    adopted: dict[str, list[int]] = field(default_factory=dict)
+    mep_log: list[dict[str, Any]] = field(default_factory=list)  # joins made elsewhere on a main, mains broken
 
 
 def plan_batches(plan: BuildPlan) -> list[list[Op]]:
@@ -115,6 +121,8 @@ class Runner:
         self._type_ids: dict[tuple[str, str | None, str], int] = {}
         # Elements of an earlier run the plan builds on (BuildPlan.existing): looked up, never recorded nor removed.
         self._existing: dict[str, int] = {}
+        # Per MEP run built: the indices of its points where a new segment starts (commands.bends_of).
+        self._bends: dict[str, list[int]] = {}
 
     def build(self, plan: BuildPlan) -> BuildResult:
         by_key = plan.by_key()
@@ -122,6 +130,7 @@ class Runner:
         self._active = self.types
         self._type_ids = {}
         self._existing = dict(plan.existing)
+        self._bends = {}
         result = BuildResult(status="built", batches_total=len(batches), batches_succeeded=0)
         stopped = self._ensure_frame_types(plan, result)
         if stopped is not None:
@@ -135,7 +144,7 @@ class Runner:
                 result.batches_succeeded += 1
                 self.progress(index + 1, len(batches))
                 continue
-            subcommands = [commands.to_command(op, by_key, self._ids(result), self._active) for op in batch]
+            subcommands = [commands.to_command(op, by_key, self._ids(result), self._active, self._bends) for op in batch]
             log.info("batch %d of %d: %d ops (%s)", index + 1, len(batches), len(batch), batch[0].op)
             try:
                 data = self.revit.call("batch_execute", {"commands": subcommands}, timeout_seconds=BATCH_TIMEOUT_SECONDS)
@@ -145,11 +154,24 @@ class Runner:
                 failed = _failed_index(e.data)
                 return self._stop(result, "failed", e, batch[failed].key if failed is not None and 0 <= failed < len(batch) else None)
             for op, entry in zip(batch, data["results"]):
-                result.created.update(commands.created_entries(op, entry["data"]))
-                result.issues.extend(commands.issues(op, entry["data"]))
+                self._took(op, entry["data"], result)
             result.batches_succeeded += 1
             self.progress(index + 1, len(batches))
         return result
+
+    def _took(self, op: Op, data: dict[str, Any], result: BuildResult) -> None:
+        """Records what a batched op made and did not wholly do. An MEP run: its segments in order (and its bends, for
+        the runs teed into it later), the pieces its tees broke off an earlier run's main as that main's."""
+        if isinstance(op, MepRunOp):
+            adopted = commands.split_pieces(op, data, self._existing)
+            for main, ids in adopted.items():
+                result.adopted.setdefault(main, []).extend(ids)
+            result.created.update(commands.created_entries(op, data, {i for ids in adopted.values() for i in ids}))
+            self._bends[op.key] = commands.bends_of(op, data)
+            result.mep_log.extend(commands.mep_log(op, data))
+        else:
+            result.created.update(commands.created_entries(op, data))
+        result.issues.extend(commands.issues(op, data))
 
     def _ensure_frame_types(self, plan: BuildPlan, result: BuildResult) -> BuildResult | None:
         """Before anything is built, make sure every column and beam type the plan uses exists in the project:
@@ -190,7 +212,7 @@ class Runner:
             # Revit already gave the stair its railings (the add-in refuses a second set): they stand for this op.
             log.info("%s: stair %s came with its own railings; not adding more", op.key, op.stair_key)
             return None
-        command = commands.to_command(op, by_key, self._ids(result), self._active)
+        command = commands.to_command(op, by_key, self._ids(result), self._active, self._bends)
         type_op = op.op in TYPE_OPS
         if isinstance(op, FamilyTypeCopyOp):
             source_id = self._source_type_id(op)
