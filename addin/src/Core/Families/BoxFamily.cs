@@ -7,6 +7,12 @@
 // each at the centre of one of its faces (back = +Y, front = -Y, left = -X, right = +X, top, bottom); several on one face
 // are spread evenly along it (along the width for back, front, top and bottom, along the depth for left and right) so they
 // never coincide. Which connectors are valid and where they sit are decided here.
+// Power connectors (2026-11-27, after a Revit API review): the family editor offers only Power - Balanced and Power -
+// Unbalanced for a power connector, so a box makes PowerBalanced when PowerCircuit is asked or system_type is omitted
+// (PowerCircuit stays an accepted name, since callers think in circuits) and reports the type it made. voltage_v (0 < v <=
+// 1000, power connectors only) sets the connector's voltage; without it Revit's default voltage is left as it is.
+// The flex check asks OnFace whether each connector is still on its face (on its plane and inside its edges) at the flexed
+// size.
 
 using System;
 using System.Collections.Generic;
@@ -31,6 +37,9 @@ namespace Plinth.Revit.Core.Families
         /// <summary>pipe: the connector's diameter in mm; 0 for electrical.</summary>
         public double DiameterMm { get; set; }
 
+        /// <summary>electrical (power only): the voltage to set, in volts; null leaves Revit's default.</summary>
+        public double? VoltageV { get; set; }
+
         /// <summary>back, front, left, right, top or bottom.</summary>
         public string Face { get; set; }
     }
@@ -39,11 +48,21 @@ namespace Plinth.Revit.Core.Families
     {
         public const int MaxConnectors = 12;
         public const double MaxPipeDiameterMm = 600;
+        public const double MaxVoltageV = 1000;
+
+        /// <summary>The power connector type a box makes when system_type is omitted or PowerCircuit.</summary>
+        public const string DefaultPowerConnector = "PowerBalanced";
+
+        /// <summary>The power connector types; voltage_v is taken only for these.</summary>
+        public static readonly IReadOnlyList<string> PowerConnectorTypes = new[] { "PowerBalanced", "PowerUnBalanced" };
 
         /// <summary>The faces a connector may sit on, in the order they are listed.</summary>
         public static readonly IReadOnlyList<string> Faces = new[] { "back", "front", "left", "right", "top", "bottom" };
 
-        /// <summary>The ElectricalSystemType names a box connector takes (Revit's, less UndefinedSystemType).</summary>
+        /// <summary>
+        /// The ElectricalSystemType names a box connector's system_type takes (Revit's, less UndefinedSystemType);
+        /// PowerCircuit is made as PowerBalanced.
+        /// </summary>
         public static readonly IReadOnlyList<string> ElectricalSystemTypes = new[]
         {
             "PowerCircuit", "PowerBalanced", "PowerUnBalanced", "Data", "Communication", "Controls", "FireAlarm", "NurseCall",
@@ -57,7 +76,7 @@ namespace Plinth.Revit.Core.Families
             "FireProtectOther", "OtherPipe", "SupplyHydronic", "ReturnHydronic"
         };
 
-        private static readonly string[] ElectricalKeys = { "domain", "system_type", "face" };
+        private static readonly string[] ElectricalKeys = { "domain", "system_type", "voltage_v", "face" };
         private static readonly string[] PipeKeys = { "domain", "classification", "diameter_mm", "face" };
         public const double MaxSizeMm = 20000;
         public const int MaxNameLength = 120;
@@ -135,9 +154,10 @@ namespace Plinth.Revit.Core.Families
 
         /// <summary>
         /// Why the connectors param cannot be built, or null; connectors gets the validated list (empty when the param is
-        /// absent or null). Each item is {domain: electrical, system_type?: PowerCircuit, face?: back} or {domain: pipe,
-        /// classification: DomesticColdWater..., diameter_mm: > 0, face?: back}; names match case-insensitively and come back
-        /// as Revit spells them; an unknown key is an error, so a typo is never silently ignored.
+        /// absent or null). Each item is {domain: electrical, system_type?: PowerBalanced, voltage_v?: 230, face?: back} or
+        /// {domain: pipe, classification: DomesticColdWater..., diameter_mm: > 0, face?: back}; names match case-insensitively
+        /// and come back as Revit spells them, an electrical system_type as the type made (PowerCircuit or none: PowerBalanced);
+        /// an unknown key is an error, so a typo is never silently ignored.
         /// </summary>
         public static string ConnectorsError(JToken token, out List<BoxConnector> connectors)
         {
@@ -167,10 +187,21 @@ namespace Plinth.Revit.Core.Families
                 var connector = new BoxConnector { Domain = domain, Face = face };
                 if (domain == BoxConnector.Electrical)
                 {
-                    var given = item["system_type"] == null || item["system_type"].Type == JTokenType.Null ? "PowerCircuit" : Text(item["system_type"]);
-                    connector.SystemType = Match(ElectricalSystemTypes, given);
+                    var given = item["system_type"] == null || item["system_type"].Type == JTokenType.Null ? DefaultPowerConnector : Text(item["system_type"]);
+                    connector.SystemType = ElectricalConnectorType(Match(ElectricalSystemTypes, given));
                     if (connector.SystemType == null)
                         return at + ".system_type must be one of " + string.Join(", ", ElectricalSystemTypes);
+                    var voltage = item["voltage_v"];
+                    if (voltage != null && voltage.Type != JTokenType.Null)
+                    {
+                        var v = voltage.Type == JTokenType.Integer || voltage.Type == JTokenType.Float ? voltage.Value<double>() : double.NaN;
+                        if (double.IsNaN(v) || double.IsInfinity(v) || v <= 0 || v > MaxVoltageV)
+                            return at + ".voltage_v must be a number of volts above 0 and at most " + MaxVoltageV.ToString(CultureInfo.InvariantCulture);
+                        if (!PowerConnectorTypes.Contains(connector.SystemType))
+                            return at + ".voltage_v is only for a power connector (PowerCircuit, PowerBalanced or PowerUnBalanced), not "
+                                + connector.SystemType;
+                        connector.VoltageV = v;
+                    }
                 }
                 else
                 {
@@ -250,6 +281,32 @@ namespace Plinth.Revit.Core.Families
                 case "bottom": return 0;
                 default: throw new ArgumentException("unknown face " + face);
             }
+        }
+
+        /// <summary>The connector type a box makes for an asked ElectricalSystemType name: PowerCircuit becomes PowerBalanced.</summary>
+        public static string ElectricalConnectorType(string asked) =>
+            string.Equals(asked, "PowerCircuit", StringComparison.Ordinal) ? DefaultPowerConnector : asked;
+
+        /// <summary>
+        /// Why the point (mm about the origin) is not on the face of a box of this size, or null when it is: on the face's
+        /// plane and inside its edges, within toleranceMm. The flex check asks this at the flexed size.
+        /// </summary>
+        public static string OnFace(string face, double[] pointMm, double widthMm, double depthMm, double heightMm, double toleranceMm)
+        {
+            var normal = FaceNormal(face);
+            var axis = Array.FindIndex(normal, v => v != 0);
+            var plane = FaceCoordinate(face, widthMm, depthMm, heightMm);
+            if (Math.Abs(pointMm[axis] - plane) > toleranceMm)
+                return "it is at " + Number(pointMm[axis]) + " mm along " + "xyz"[axis] + ", off the face's plane at " + Number(plane) + " mm";
+            var box = Box(widthMm, depthMm, heightMm);
+            for (var i = 0; i < 3; i++)
+            {
+                if (i == axis) continue;
+                if (pointMm[i] < box[0][i] - toleranceMm || pointMm[i] > box[1][i] + toleranceMm)
+                    return "it is at " + Number(pointMm[i]) + " mm along " + "xyz"[i] + ", outside the face's edges at " + Number(box[0][i])
+                        + " to " + Number(box[1][i]) + " mm";
+            }
+            return null;
         }
 
         private static string Text(JToken token) => token != null && token.Type == JTokenType.String ? token.Value<string>() : null;

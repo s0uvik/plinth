@@ -97,6 +97,55 @@ namespace Plinth.Revit.Core.Tests
             Assert.Equal(expected, ConnectorMatch.Rank(connector, run));
         }
 
+        // ---- CircuitTypes -----------------------------------------------------------------------------
+
+        [Theory]
+        [InlineData(null, "PowerCircuit")]
+        [InlineData("PowerCircuit", "PowerCircuit")]
+        [InlineData("firealarm", "FireAlarm")]
+        [InlineData(" Data ", "Data")]
+        [InlineData("Communication", "Communication")]
+        [InlineData("Controls", "Controls")]
+        [InlineData("NurseCall", "NurseCall")]
+        [InlineData("Security", "Security")]
+        [InlineData("telephone", "Telephone")]
+        public void CircuitTypesAreTheEightRevitMakes(string given, string expected)
+        {
+            Assert.Null(CircuitTypes.Error(given, out var type));
+            Assert.Equal(expected, type);
+        }
+
+        [Theory]
+        [InlineData("PowerBalanced")]
+        [InlineData("PowerUnBalanced")]
+        [InlineData("UndefinedSystemType")]
+        [InlineData("Lighting")]
+        [InlineData("")]
+        [InlineData("1")]
+        public void ConnectorTypesAndOthersAreNotCircuitTypes(string given)
+        {
+            var error = CircuitTypes.Error(given, out var type);
+            Assert.Null(type);
+            Assert.Contains("is not a circuit type; use one of PowerCircuit, Data, Communication, Controls, FireAlarm, NurseCall, Security, Telephone", error);
+        }
+
+        [Theory]
+        [InlineData("PowerCircuit", "PowerBalanced", CircuitTypes.Joins)]
+        [InlineData("PowerCircuit", "PowerUnBalanced", CircuitTypes.Joins)]
+        [InlineData("PowerCircuit", "PowerCircuit", CircuitTypes.Joins)]
+        [InlineData("PowerCircuit", "Data", CircuitTypes.Refused)]
+        [InlineData("PowerCircuit", "UndefinedSystemType", CircuitTypes.RevitDecides)]
+        [InlineData("PowerCircuit", null, CircuitTypes.RevitDecides)]
+        [InlineData("Data", "Data", CircuitTypes.Joins)]
+        [InlineData("Data", "PowerBalanced", CircuitTypes.Refused)]
+        [InlineData("FireAlarm", "Security", CircuitTypes.Refused)]
+        [InlineData("FireAlarm", "UndefinedSystemType", CircuitTypes.RevitDecides)]
+        [InlineData("Telephone", null, CircuitTypes.RevitDecides)]
+        public void ConnectorsFitTheirCircuitType(string circuit, string connector, int expected)
+        {
+            Assert.Equal(expected, CircuitTypes.Fit(circuit, connector));
+        }
+
         // ---- TemplateFiles ----------------------------------------------------------------------------
 
         [Fact]
@@ -305,7 +354,7 @@ namespace Plinth.Revit.Core.Tests
         }
 
         [Fact]
-        public void BoxConnectorsAreOptionalAndDefaultToAPowerCircuitOnTheBack()
+        public void BoxConnectorsAreOptionalAndDefaultToAPowerBalancedOnTheBack()
         {
             Assert.Null(BoxFamily.ConnectorsError(null, out var none));
             Assert.Empty(none);
@@ -317,9 +366,63 @@ namespace Plinth.Revit.Core.Tests
                    {""domain"":""Pipe"",""classification"":""domesticcoldwater"",""diameter_mm"":15,""face"":""Bottom""},
                    {""domain"":""electrical"",""system_type"":""data"",""face"":""top""}]"), out var connectors));
             Assert.Equal(3, connectors.Count);
-            Assert.Equal(("electrical", "PowerCircuit", 0.0, "back"), Tuple(connectors[0]));
+            Assert.Equal(("electrical", "PowerBalanced", 0.0, "back"), Tuple(connectors[0]));
+            Assert.Null(connectors[0].VoltageV);
             Assert.Equal(("pipe", "DomesticColdWater", 15.0, "bottom"), Tuple(connectors[1]));
             Assert.Equal(("electrical", "Data", 0.0, "top"), Tuple(connectors[2]));
+        }
+
+        [Theory]
+        [InlineData(null, "PowerBalanced")]
+        [InlineData("PowerCircuit", "PowerBalanced")]
+        [InlineData("powercircuit", "PowerBalanced")]
+        [InlineData("PowerBalanced", "PowerBalanced")]
+        [InlineData("powerunbalanced", "PowerUnBalanced")]
+        [InlineData("FireAlarm", "FireAlarm")]
+        public void BoxPowerConnectorsAreMadeBalancedOrUnbalanced(string asked, string made)
+        {
+            var item = new JObject { ["domain"] = "electrical" };
+            if (asked != null) item["system_type"] = asked;
+            Assert.Null(BoxFamily.ConnectorsError(new JArray(item), out var connectors));
+            Assert.Equal(made, connectors[0].SystemType);
+        }
+
+        [Fact]
+        public void BoxPowerConnectorsTakeAVoltage()
+        {
+            Assert.Null(BoxFamily.ConnectorsError(JArray.Parse(
+                @"[{""domain"":""electrical"",""voltage_v"":230},
+                   {""domain"":""electrical"",""system_type"":""PowerCircuit"",""voltage_v"":110.5},
+                   {""domain"":""electrical"",""system_type"":""PowerUnBalanced"",""voltage_v"":1000},
+                   {""domain"":""electrical"",""voltage_v"":null}]"), out var connectors));
+            Assert.Equal(new double?[] { 230, 110.5, 1000, null }, connectors.Select(c => c.VoltageV).ToArray());
+        }
+
+        [Theory]
+        [InlineData(@"[{""domain"":""electrical"",""voltage_v"":0}]", "voltage_v must be a number of volts above 0 and at most 1000")]
+        [InlineData(@"[{""domain"":""electrical"",""voltage_v"":-230}]", "voltage_v must be")]
+        [InlineData(@"[{""domain"":""electrical"",""voltage_v"":1000.5}]", "voltage_v must be")]
+        [InlineData(@"[{""domain"":""electrical"",""voltage_v"":""230""}]", "voltage_v must be")]
+        [InlineData(@"[{""domain"":""electrical"",""system_type"":""Data"",""voltage_v"":24}]", "voltage_v is only for a power connector")]
+        [InlineData(@"[{""domain"":""pipe"",""classification"":""Sanitary"",""diameter_mm"":100,""voltage_v"":230}]", "does not take voltage_v")]
+        public void BadBoxConnectorVoltagesAreRefused(string json, string error)
+        {
+            Assert.Contains(error, BoxFamily.ConnectorsError(JToken.Parse(json), out _));
+        }
+
+        [Fact]
+        public void ABoxConnectorIsOnItsFaceWhenOnItsPlaneAndInsideItsEdges()
+        {
+            // 1200 wide, 600 deep, 900 high: x -600..600, y -600..0, z 0..900.
+            Assert.Null(BoxFamily.OnFace("back", P(0, 0, 450), 1200, 600, 900, 0.01));
+            Assert.Null(BoxFamily.OnFace("back", P(600, 0, 900), 1200, 600, 900, 0.01));      // a corner is on it
+            Assert.Null(BoxFamily.OnFace("right", P(600.005, -300, 450), 1200, 600, 900, 0.01));
+            Assert.Null(BoxFamily.OnFace("bottom", P(-100, -599, 0), 1200, 600, 900, 0.01));
+            Assert.Contains("off the face's plane", BoxFamily.OnFace("front", P(0, -560, 450), 1200, 600, 900, 0.01));
+            Assert.Contains("off the face's plane", BoxFamily.OnFace("top", P(0, -300, 850), 1200, 600, 900, 0.01));
+            Assert.Contains("along x, outside the face's edges at -600 to 600", BoxFamily.OnFace("back", P(650, 0, 450), 1200, 600, 900, 0.01));
+            Assert.Contains("along z, outside", BoxFamily.OnFace("left", P(-600, -300, 950), 1200, 600, 900, 0.01));
+            Assert.Contains("along y, outside", BoxFamily.OnFace("bottom", P(0, 10, 0), 1200, 600, 900, 0.01));
         }
 
         private static (string, string, double, string) Tuple(BoxConnector c) => (c.Domain, c.SystemType, c.DiameterMm, c.Face);
@@ -359,7 +462,7 @@ namespace Plinth.Revit.Core.Tests
         [Fact]
         public void BoxConnectorsSitAtTheirFaceCentresAndSpreadWhenTheyShareOne()
         {
-            BoxConnector On(string face) => new BoxConnector { Domain = "electrical", SystemType = "PowerCircuit", Face = face };
+            BoxConnector On(string face) => new BoxConnector { Domain = "electrical", SystemType = "PowerBalanced", Face = face };
             // 1200 wide, 600 deep, 900 high; the origin is the middle of the back edge at the level.
             var single = BoxFamily.ConnectorPositions(1200, 600, 900,
                 new[] { On("back"), On("front"), On("left"), On("right"), On("top"), On("bottom") });
