@@ -24,7 +24,7 @@ from pydantic import BaseModel
 from plinth import imports_api, logs
 from plinth.cad import overlay, reader as cad_reader, sheet as cad_sheet
 from plinth.cad.building import PlanRecognition, RecognisedBuilding
-from plinth.cad.project import ImportProject, ImportStore, LocationRequired, analyse, collect
+from plinth.cad.project import ImportProject, ImportStore, LocationRequired, Question, analyse, collect
 from plinth.cad.assumptions import ProfileRequired
 from plinth.imports_api import NotWired
 from plinth.imported import stage_questions
@@ -437,6 +437,24 @@ class ImportEstimateRequest(BaseModel):
     reference_xlsx: str | None = None  # the office's own estimate workbook to compare with
 
 
+class FitoutPlanRequest(BaseModel):
+    run_id: str  # the building's run (built from this import)
+    document_title: str
+    rules: str | None = None  # a fit-out rule set id or location profile; default the project location's
+    systems: list[str] | None = None  # of furniture, plumbing, electrical, hvac, fire; default all
+    furniture_run: str | None = None  # an earlier fit-out run whose furniture is built: joined, never placed again
+    flat: str | None = None  # a pilot of one flat (with its level)
+    level: str | None = None
+    exclude_runs: list[str] = []  # earlier fit-out runs (a pilot) whose elements are joined, not built again
+    answers: dict[str, Any] = {}  # over the answers given to the fit-out questions
+
+
+class FitoutBuildRequest(BaseModel):
+    run_id: str
+    document_title: str
+    partial: bool = False  # build what is planned although questions are open (their items wait)
+
+
 RUN_FILES = {  # files a run (or an import, for its estimate) serves, by name
     "selfcheck.html": "text/html", "selfcheck.json": "application/json",
     "drawings-comparison.html": "text/html", "drawings-comparison.json": "application/json",
@@ -717,6 +735,21 @@ def _evidence_layer(sheet: cad_sheet.Sheet, project: ImportProject, file: str) -
     return "\n".join(parts) if len(parts) > 2 else ""
 
 
+def fitout_answer(q: Question, answer: Any) -> Any:
+    """A fit-out answer typed as text is read as JSON when it is JSON ({"family": ..., "type": ...}, {"create": "box"},
+    [1.5, 1.5], 15), else kept as the words ("skip", "stair"): the fit-out reads structured answers. A bare number to a
+    question with options stays as typed, since the answer check would take it for an option's index."""
+    if not isinstance(answer, str):
+        return answer
+    try:
+        value = json.loads(answer)
+    except ValueError:
+        return answer
+    if q.options and isinstance(value, (int, float)) and not isinstance(value, bool):
+        return answer
+    return value
+
+
 def import_selfcheck(import_plan, building: RecognisedBuilding, answers: dict[str, Any], review_url: str | None):
     """The after-build hook of an import build: the self-check (T9) reads the model back, writes selfcheck.json /
     selfcheck.html in the run folder, and its summary goes in the run record."""
@@ -834,16 +867,17 @@ def add_import_routes(app: FastAPI, service: BuildService, imports: Imports) -> 
         with imports.edit:
             project = imports.project(import_id)
             try:
-                project.question(request.question_id)
+                asked = project.question(request.question_id)
             except KeyError as e:
                 raise HTTPException(404, f"No question {request.question_id}.") from e
             if isinstance(request.answer, str) and not request.answer.strip():
                 raise HTTPException(422, "The answer is empty.")
+            value = fitout_answer(asked, request.answer) if asked.key.get("stage") == "fitout" else request.answer
             try:
                 try:
-                    imports_api.apply_answer(project, request.question_id, request.answer)
+                    imports_api.apply_answer(project, request.question_id, value)
                 except NotWired:  # the answer as typed, recorded as the user's
-                    project.answer(request.question_id, request.answer, by="user")
+                    project.answer(request.question_id, value, by="user")
             except KeyError as e:
                 raise HTTPException(404, str(e)) from e
             except ValueError as e:
@@ -1125,6 +1159,213 @@ def add_import_routes(app: FastAPI, service: BuildService, imports: Imports) -> 
         if not path.is_file():
             raise HTTPException(404, "Not produced yet.")
         return FileResponse(path, media_type=RUN_FILES[name], filename=f"{import_id}-{name}")
+
+    add_fitout_routes(app, service, imports, finished, import_run)
+
+
+# ---- fit-out (PRD Step 10): furniture and MEP planned on a built run of an import, reviewed, then built as its own run
+
+FITOUT_PLAN = "fitout_plan"  # the reviewed plan, kept in the building run's folder: the build builds exactly it
+BUILT = ("built", "built_with_issues")
+
+
+def _fitout_items(report: dict[str, Any]) -> list[dict[str, Any]]:
+    """The plan's questions as stage items: what it waits for (blocks), then the room model's own (answered the same
+    way, but they never stop the plan)."""
+    items, seen = [], set()
+    for q, blocks in [(q, True) for q in report.get("questions") or []] + \
+                     [(q, False) for q in report.get("room_questions") or []]:
+        if q["id"] in seen:
+            continue
+        seen.add(q["id"])
+        items.append({"id": q["id"], "topic": q["topic"].removeprefix("fitout_"), "text": q["text"],
+                      "options": q.get("options") or [], "key": {"items": q.get("instances"), "blocks": blocks}})
+    return items
+
+
+def _fitout_rules(project: ImportProject, given: str | None) -> tuple[str, str]:
+    """The rule set to plan with: the one given, else the project location's (as the command line's --rules), said
+    as an assumption in the result; without a location or a rule set for it, the user is asked."""
+    from plinth.fitout import rules as fitout_rules
+
+    if given and given.strip():
+        return given.strip(), "given"
+    try:
+        found = fitout_rules.for_location(project.inputs.location, project.inputs.values.get("country"))
+    except (LocationRequired, fitout_rules.RulesRequired) as e:
+        raise HTTPException(409, {"errors": [f"{e} Or give the fit-out rule set (rules)."]}) from e
+    loc = project.inputs.location
+    where = ", ".join(x for x in (loc.city, loc.municipality, loc.state) if x)
+    return found.id, f"the project location ({where})"
+
+
+def _fitout_run(store: RunStore, run_id: str) -> dict[str, Any]:
+    """A fit-out run as the page lists it: what it builds on, its status, and its issues (joins and circuits Revit
+    refused: built, but not wholly; expected on families without connectors, never failures)."""
+    run = store.get(run_id)
+    record = (run.load("run") if run else None) or {"run_id": run_id, "status": "missing"}
+    report = (run.load("fitout_report") if run else None) or {}
+    keep = ("status", "document_title", "error", "hint", "failed_key", "question", "batches", "created_utc",
+            "finished_utc", "removed_utc")
+    return {"run_id": run_id, **{k: record.get(k) for k in keep},
+            "building_run": report.get("building_run"), "furniture_run": report.get("furniture_run"),
+            "systems": report.get("systems") or [], "flat": report.get("flat"), "level": report.get("level"),
+            "partial": bool(report.get("partial")), "elements": len(record.get("created") or {}),
+            "readback_ok": (record.get("readback") or {}).get("ok"), "issues": record.get("issues") or []}
+
+
+def _fitout_view(saved: dict[str, Any], building_run: str, stored: dict[str, Any] | None = None) -> dict[str, Any]:
+    """A saved plan as the page and the MCP tool show it. ``stale``: answers given since it was planned (plan again
+    to use them: the build builds what was reviewed)."""
+    planned = saved["planned"]
+    answers = planned.get("answers") or {}
+    plan = planned.get("plan")
+    return {"run_id": building_run, "document_title": saved["document_title"], "rules": saved["rules"],
+            "rules_from": saved["rules_from"], "planned_utc": saved["planned_utc"], "options": saved.get("request"),
+            "ready": planned["ready"], "buildable": plan is not None, "ops": len(plan["ops"]) if plan else 0,
+            "built_as": saved.get("built_as"), "report": planned["report"],
+            "stale": sorted(k for k, v in (stored or {}).items() if answers.get(k) != v)}
+
+
+def add_fitout_routes(app: FastAPI, service: BuildService, imports: Imports, finished, import_run) -> None:
+    """Plan (reads the document: families matched and measured; nothing built), review (questions are import
+    questions of stage "fitout"), build (only when asked: the page's button, the MCP tool), remove (/runs/{id}/remove)."""
+    from plinth.fitout import session
+
+    def building_run(import_id: str, run_id: str):
+        run, _ = import_run(import_id, run_id)
+        record = run.load("run") or {}
+        if record.get("status") not in BUILT:
+            raise HTTPException(409, f"Run {run_id} is {record.get('status')}: the fit-out goes on a built model.")
+        return run, record
+
+    def title_of(given: str, record: dict[str, Any]) -> str:
+        title = given.strip()
+        if not title:
+            raise HTTPException(422, "Enter the title of the Revit document the building was built in.")
+        if record.get("document_title") and title != record["document_title"]:
+            raise HTTPException(409, f"Run {record.get('run_id')} was built in {record['document_title']!r}, not in "
+                                     f"{title!r}: the fit-out goes in the building's own document.")
+        return title
+
+    @app.post("/imports/{import_id}/fitout/plan")
+    def fitout_plan(import_id: str, request: FitoutPlanRequest) -> dict[str, Any]:
+        """Plan the fit-out on a built run: nothing is built. The plan is kept with the run for the build."""
+        finished(import_id)
+        run, record = building_run(import_id, request.run_id)
+        title = title_of(request.document_title, record)
+        with imports.edit:
+            project = imports.project(import_id)
+            rules, rules_from = _fitout_rules(project, request.rules)
+            answers = {**stage_questions.stage_values(project, "fitout"), **request.answers}
+        try:
+            inputs = session.prepare(service.store, run.id, rules, answers=answers, systems=request.systems,
+                                     furniture_run=request.furniture_run or None, exclude_runs=request.exclude_runs,
+                                     flat=request.flat or None, level=request.level or None)
+        except session.SessionError as e:
+            raise HTTPException(409, {"errors": [str(e)]}) from e
+        (run.dir / f"{FITOUT_PLAN}.json").unlink(missing_ok=True)  # a failed plan leaves none to build
+
+        def plan(revit, run_) -> dict[str, Any]:
+            revit.check(session.PLAN_COMMANDS)
+            try:
+                planned = session.plan(revit, inputs, title)
+            except session.Drift as e:
+                return {"error": str(e), "stopped": True, "mismatches": e.mismatches}
+            except session.SessionError as e:
+                return {"error": str(e), "stopped": True}
+            run_.save(FITOUT_PLAN, {"planned": planned.model_dump(mode="json"), "document_title": title,
+                                    "rules": rules, "rules_from": rules_from, "planned_utc": _utc(),
+                                    "import_id": import_id,
+                                    "request": request.model_dump(exclude={"answers", "document_title", "run_id"})})
+            return {"ready": planned.ready}
+
+        try:
+            out = service.run_on(run.id, plan, "fitout_planning").get("fitout_planning") or {}
+        except Busy as e:
+            raise HTTPException(409, str(e)) from e
+        if out.get("mismatches"):
+            raise HTTPException(409, {"errors": [out["error"]], "drift": {
+                "furniture_run": request.furniture_run, "mismatches": out["mismatches"],
+                "what_to_do": "The furniture laid out now is not what that run built (different answers or "
+                              "measurements). Plan with the answers that run was built with, or remove the furniture "
+                              "run and build furniture and MEP together."}})
+        if out.get("stopped"):
+            raise HTTPException(409, {"errors": [out["error"]]})
+        if out.get("error"):
+            raise HTTPException(502, {"errors": [f"Planning the fit-out failed: {out['error']}"]
+                                                + ([out["hint"]] if out.get("hint") else [])})
+        saved = run.load(FITOUT_PLAN)
+        with imports.edit:
+            project = imports.project(import_id)
+            qs = stage_questions.merge(project, "fitout", _fitout_items(saved["planned"]["report"]))
+            imports.store.save(project)
+            stored = stage_questions.stage_values(project, "fitout")
+        return {**_fitout_view(saved, run.id, stored),
+                "questions": [q.model_dump(mode="json") for q in qs if q.open]}
+
+    @app.post("/imports/{import_id}/fitout/build", status_code=202)
+    def fitout_build(import_id: str, request: FitoutBuildRequest) -> dict[str, str]:
+        """Build the reviewed plan as its own run on top of the building's run (the user's go-ahead)."""
+        finished(import_id)
+        run, record = building_run(import_id, request.run_id)
+        saved = run.load(FITOUT_PLAN)
+        if saved is None:
+            raise HTTPException(409, "Plan the fit-out on this run first: nothing is built before you have reviewed "
+                                     "its plan.")
+        title = request.document_title.strip()
+        if title != saved["document_title"]:
+            raise HTTPException(409, f"The fit-out was planned in {saved['document_title']!r}, not in {title!r}; plan "
+                                     "it again in the document to build in.")
+        earlier = service.store.get(saved.get("built_as") or "")
+        earlier_record = (earlier.load("run") if earlier else None) or {}
+        if earlier and earlier_record.get("status") != "removed" and \
+                not (earlier_record.get("status") == "failed" and not earlier_record.get("created")):
+            raise HTTPException(409, f"This plan was already built as run {earlier.id}; remove that run to build it "
+                                     "again, or plan the fit-out again for what is not built yet.")
+        planned = session.Planned.model_validate(saved["planned"])
+        if planned.plan is None:
+            raise HTTPException(409, "Nothing to build: the plan has no ops (see what was left out and why).")
+        if not planned.ready and not request.partial:
+            open_qs = planned.report.get("questions") or []
+            raise HTTPException(409, {"errors": ["Not built: the fit-out has open questions. Answer them and plan "
+                                                 "again, or build what is ready (partial: their items wait)."]
+                                                + [f"{q['id']}: {q['text']}" for q in open_qs], "questions": open_qs})
+        report = {**planned.report, "answers": planned.answers, "import_id": import_id, "partial": request.partial,
+                  "planned_utc": saved["planned_utc"]}
+        try:
+            run_id = service.start(planned.plan, title, {"fitout_report": report},
+                                   require=session.required_commands(planned.plan))
+        except Busy as e:
+            raise HTTPException(409, str(e)) from e
+        run.save(FITOUT_PLAN, {**saved, "built_as": run_id})
+        with imports.edit:
+            imports.update(import_id, fitout_runs=(imports.record(import_id).get("fitout_runs") or []) + [run_id])
+        return {"run_id": run_id}
+
+    @app.get("/imports/{import_id}/fitout")
+    def fitout_state(import_id: str) -> dict[str, Any]:
+        """What the page shows on load: the built runs to fit out, the latest plan, the fit-out runs."""
+        from plinth.fitout.mepcore import NOTICE
+
+        record = imports.record(import_id)
+        if record is None:
+            raise HTTPException(404, "No such import.")
+        project = imports.store.get(import_id)
+        stored = stage_questions.stage_values(project, "fitout") if project else {}
+        buildings, latest = [], None
+        for run_id in record.get("runs") or []:
+            run = service.store.get(run_id)
+            data = (run.load("run") if run else None) or {}
+            if data.get("status") not in BUILT:
+                continue
+            buildings.append({"run_id": run_id, "status": data["status"], "document_title": data.get("document_title"),
+                              "finished_utc": data.get("finished_utc")})
+            saved = run.load(FITOUT_PLAN)
+            if saved and (latest is None or saved["planned_utc"] >= latest["planned_utc"]):
+                latest = _fitout_view(saved, run_id, stored)
+        return {"building_runs": buildings, "plan": latest, "systems": list(session.SYSTEMS), "notice": NOTICE,
+                "runs": [_fitout_run(service.store, r) for r in record.get("fitout_runs") or []]}
 
 
 def main() -> None:
