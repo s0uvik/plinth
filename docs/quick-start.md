@@ -69,7 +69,33 @@ approval, or delete anything it did not create.
   workbook to get a cell-by-cell comparison.
 - **Remove generated model.** This deletes exactly what this run created, nothing else.
 
-## 5. What we need from your trial
+## 5. Fit-out (furniture and MEP)
+
+Once the building is built, the **Fit-out** section at the bottom of the review page lays out furniture and the MEP
+(plumbing and drainage, electrical, HVAC, fire) on it, and builds them as their own run.
+
+> **The MEP is an indicative coordination model.** It is laid out from rules (NBC 2016 and typical practice for the
+> location), not designed: an MEP engineer must design and check the real systems.
+
+1. Choose the building run, check the Revit document title and tick the systems. Click **Plan fit-out**. Planning
+   reads the open project (family types and their sizes) and builds nothing.
+2. Read the plan: counts per system, the assumptions, and what was left out, not placed or not routed, with why.
+3. **Family questions.** Where no family type fits an item, Plinth asks. Pick one of the types offered, **skip** the
+   item, or let Plinth **create a plain box** family for it (it gets the pipe and electrical connectors the MEP joins
+   to). The questions are in the question list too. Answer, then click **Plan fit-out** again.
+4. Click **Build fit-out**. With questions still open, tick "build what is ready" to build the rest now.
+
+Build the **furniture first**, then plan the MEP with that run chosen under "Furniture already built in run": the MEP
+joins that furniture and never places it again. **Pilot one flat first** (flat and level), check it in Revit, then plan
+the rest, leaving out what the pilot built.
+
+**Issues are expected.** A run can end "Built, with issues": joins and circuits Revit refused, mostly on families
+without a connector of that kind. The model is built; each issue is listed under the run.
+
+**Remove** on a fit-out run deletes exactly what that run created. Remove the MEP run before the furniture run under
+it, and the fit-out runs before the building.
+
+## 6. What we need from your trial
 
 For each run, write down **everything you had to fix by hand in Revit afterwards**. That list is the real measure of
 the trial. For each item, note:
