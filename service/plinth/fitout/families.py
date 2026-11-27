@@ -404,7 +404,13 @@ def keyword_overlap(keywords: list[str], *texts: str) -> int:
         words |= _words(text or "")
     if any(_words(k[1:]) and _words(k[1:]) <= words for k in keywords if k.startswith("-")):
         return 0
-    return len(set().union(*(_words(k) for k in keywords if not k.startswith("-"))) & words)
+    wanted = set().union(*(_words(k) for k in keywords if not k.startswith("-"))) - GENERIC_WORDS
+    return len(wanted & words)
+
+
+# Words too common in type names to make a type worth offering on their own ("unit": a VAV unit is no split AC's
+# indoor unit; "standard", "default": every category has one).
+GENERIC_WORDS = frozenset({"unit", "type", "standard", "default", "system", "generic"})
 
 
 def plausible_size(need: Need, c: "Candidate") -> bool:

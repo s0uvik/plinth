@@ -124,3 +124,26 @@ def test_every_device_category_of_the_rules_is_a_revit_category(rule_set):
         for what, spec in cat.items():
             assert families.builtin_category(spec.category), (what, spec.category)
     assert families.builtin_category("Fire Protection") == "OST_FireProtection"
+
+
+TEMPLATE_PIPES = ["Default", "PVC - DWV", "PVC-C - Solvent Welded", "Copper - Soldered", "Carbon Steel - Threaded",
+                  "Cast Iron", "Chilled Water"]
+
+
+@pytest.mark.parametrize("system, wanted", [("cold_water", "PVC-C - Solvent Welded"),
+                                            ("hot_water", "PVC-C - Solvent Welded"), ("waste", "PVC - DWV"),
+                                            ("soil", "PVC - DWV"), ("rainwater", "PVC - DWV"),
+                                            ("fire", "Carbon Steel - Threaded")])
+def test_each_system_takes_a_pipe_type_of_its_kind(system, wanted):
+    """Water supply in CPVC, drainage in PVC DWV, a wet riser in steel: never supply in a drainage type."""
+    rec = mep_plan.run_record(run(system=system, slope_pct=None), LEVELS)
+    need = next(n for n in families.run_needs([rec]) if n.category == "pipe_type")
+    best = max(TEMPLATE_PIPES, key=lambda name: families.keyword_score(need.keywords, name))
+    assert best == wanted and families.keyword_score(need.keywords, best) > 0
+
+
+def test_a_generic_word_alone_does_not_make_a_type_worth_offering():
+    indoor = ["split", "indoor unit", "air conditioner", "fan coil", "wall mounted", "-vav"]
+    assert families.keyword_overlap(indoor, "M_Fan Coil Unit - Horizontal", "Standard") > 0
+    assert families.keyword_overlap(["condensing unit", "outdoor unit"], "M_Dry Type Transformer", "Standard") == 0
+    assert families.keyword_overlap(indoor, "M_VAV Unit - Parallel Fan Powered", "Standard") == 0

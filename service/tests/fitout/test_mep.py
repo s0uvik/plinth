@@ -544,6 +544,9 @@ def test_two_split_acs_in_each_large_living_room(sample_answered):
                                                                                                  "socket_16a"]
         assert math.dist(outs[0].insertion, outs[1].insertion) >= 850 + 100 or \
             abs(outs[0].elevation_mm - outs[1].elevation_mm) >= 600 + 100  # side by side, or one under the other
+        # the one answer for the class is listed back per room, with its area, so a different area is seen
+        applied = next(a for a in layout.assumptions if a.id == f"fitout:ac:applied:{room.key}")
+        assert applied.value == [1.5, 1.5] and f"{room.area_m2:.1f} m²" in applied.text
 
 
 def test_meters_and_common_board_by_the_ground_floor_stair(sample_answered):

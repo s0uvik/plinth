@@ -163,7 +163,7 @@ def test_a_weak_or_wrong_device_match_is_asked_not_picked(wb_rules):
     # offered only what shares a word and is not what the item is not: the ventilation unit for the exhaust fan, not
     # the fan coil; the switch (at its own size, offered) for the switchboard
     assert options["exhaust_fan"] == ["Ventilation Unit"]
-    assert options["ac_indoor"] == ["Ventilation Unit"]  # shares "unit"; not the fan coil, nor the air handling unit
+    assert options["ac_indoor"] == []  # "unit" alone is too generic: no ventilation unit, fan coil nor air handler
     assert options["socket_6a"] == [] and options["roof_outlet"] == []
     assert options["switchboard"] == ["Lighting Switches"]
     assert asked["switchboard"].options[-2:] == [{"create": "box", "size_mm": [250.0, 50.0, 150.0]}, "skip"]

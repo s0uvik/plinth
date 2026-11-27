@@ -44,7 +44,9 @@ def template(rules) -> dict:
         rows.append({"id": len(rows) + 1, "category": category, "family": family, "type": "Standard",
                      "placement": "WorkPlaneBased" if category in FACE_BASED else "OneLevelBased", "dims_mm": {}})
     return {TEMPLATE: {"family_types": rows, "mep_types": {
-        "pipe_type": [{"id": 901, "name": "PVC - DWV"}],
+        # Revit's metric plumbing template's pipe types: drainage in PVC DWV, water supply in CPVC, a wet riser in steel
+        "pipe_type": [{"id": 901, "name": "PVC - DWV"}, {"id": 903, "name": "PVC-C - Solvent Welded"},
+                      {"id": 904, "name": "Carbon Steel - Threaded"}],
         "conduit_type": [{"id": 902, "name": "Rigid Nonmetallic Conduit (RNC Sch 40)"}],
         "pipe_system_type": [{"id": 910 + i, "name": n, "classification": c} for i, (n, c) in enumerate(SYSTEM_TYPES)]}}}
 
@@ -358,3 +360,13 @@ def test_drift_compares_height_host_side_facing_down_and_category():
         assert drift["mismatches"] == [f"K: {said}"], change
     same = session.check_drift({"K": built}, {"K": built.model_copy(update={"offset_mm": 300.4})})
     assert same == {"compared": 1, "mismatches": [], "built_not_planned_now": []}
+
+
+def test_long_option_lists_keep_the_answers_that_always_apply():
+    from plinth.fitout.rooms import Question
+    types = [{"family": f"F{i}", "type": "T", "source": "template"} for i in range(20)]
+    q = Question(id="fitout:family:ac_indoor", topic="families", text="?", options=[*types, {"create": "box"}, "skip"],
+                 instances=["K1"])
+    options = session._question(q)["options"]
+    assert len(options) == session.MAX_LISTED_OPTIONS and options[-2:] == [{"create": "box"}, "skip"]
+    assert options[0] == types[0]

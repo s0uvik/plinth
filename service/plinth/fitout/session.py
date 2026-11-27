@@ -459,8 +459,16 @@ def _why(reason: str) -> str:
     return reason
 
 
+MAX_LISTED_OPTIONS = 12
+
+
 def _question(q) -> dict[str, Any]:
-    return {"id": q.id, "topic": q.topic, "text": q.text, "instances": len(q.instances), "options": q.options[:12]}
+    """A question for the report. Long option lists are cut, but never the answers that always apply ("create a
+    box", "skip", "none", ...): only family types are dropped, the best first kept."""
+    types = [o for o in q.options if isinstance(o, dict) and "family" in o]
+    always = [o for o in q.options if not (isinstance(o, dict) and "family" in o)]
+    options = types[:max(0, MAX_LISTED_OPTIONS - len(always))] + always
+    return {"id": q.id, "topic": q.topic, "text": q.text, "instances": len(q.instances), "options": options}
 
 
 def _mep_report(inputs: Inputs, found: to_plan.FitoutPlan, by_key: Mapping[str, Any]) -> dict[str, Any]:

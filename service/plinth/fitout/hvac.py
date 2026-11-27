@@ -69,6 +69,10 @@ def _units(given) -> list[float] | None:
     return None
 
 
+def _tr_text(units: list[float]) -> str:
+    return "no AC" if not units else " + ".join(f"{u:g} TR" for u in units) + f" ({len(units)} unit(s))"
+
+
 def _ac_sizes(ctx: Ctx, room: Room, beyond: dict[str, list[Room]]) -> list[float] | None:
     """The room's units in TR: from the sizing table, else answered (per room, the older per-room key, per class),
     else None (asked per class; ``beyond``: the rooms of each class past the table, for the question's text)."""
@@ -82,6 +86,11 @@ def _ac_sizes(ctx: Ctx, room: Room, beyond: dict[str, list[Room]]) -> list[float
     for qid in (f"fitout:ac:room:{room.key}", legacy, class_q):
         units = _units(ctx.answer(qid))
         if units is not None:
+            if qid == class_q:  # one answer for the class: say which room, at what area, it was applied to
+                ctx.assume(f"fitout:ac:applied:{room.key}", f"{room.name or room.key} ({room.area_m2 or 0:.1f} m², "
+                           f"{room.level}): {_tr_text(units)} from the answer for every {cls} room beyond the "
+                           f"sizing table ({class_q}); answer fitout:ac:room:{room.key} to change this room alone.",
+                           units, "user's answer", [room.key])
             return units
     rooms = beyond.get(cls, [room])
     areas = sorted({round(r.area_m2 or 0, 1) for r in rooms})

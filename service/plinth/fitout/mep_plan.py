@@ -45,6 +45,17 @@ MIN_LEG_MM = 50.0  # a leg shorter than this is merged into the next: no elbow f
 CLASSIFICATION = {"cold_water": "DomesticColdWater", "hot_water": "DomesticHotWater", "soil": "Sanitary",
                   "waste": "Sanitary", "vent": "Vent", "rainwater": "OtherPipe", "fire": "FireProtectWet"}
 
+# The pipe type each system's pipes are matched to (``type_keywords``; "-": not this). Water supply in Indian homes is
+# CPVC (Revit's metric templates: "PVC-C - Solvent Welded", else copper), never a drainage type; drainage and rainwater
+# are PVC/uPVC DWV; a wet riser is steel. Without these, every pipe took the first PVC type, so supply ran in PVC - DWV.
+PIPE_TYPE_KEYWORDS = {
+    "supply": ["pvc c", "cpvc", "solvent welded", "copper", "pex", "-dwv", "-chilled", "-cast iron"],
+    "drainage": ["pvc dwv", "dwv", "upvc", "pvc", "-pvc c", "-chilled", "-copper"],
+    "fire": ["carbon steel", "steel", "galvanised", "-dwv", "-pvc", "-chilled"],
+}
+PIPE_TYPE_OF = {"cold_water": "supply", "hot_water": "supply", "soil": "drainage", "waste": "drainage",
+                "vent": "drainage", "rainwater": "drainage", "fire": "fire"}
+
 # The fit-out's systems, as a build can be asked for them (furniture is the furniture layout's records).
 SYSTEMS = ("furniture", "plumbing", "electrical", "hvac", "fire")
 DEVICE_SYSTEM = {"power": "electrical", "lighting": "electrical", "data": "electrical", "hvac": "hvac",
@@ -116,6 +127,8 @@ def run_record(r: Run, levels: Mapping[str, float], keep: set[tuple[int, int, in
                            "source": _source(f"{r.system.replace('_', ' ')} {r.kind}", slope, r.source, r.note, short)}
     if r.kind != "conduit":
         rec["system"] = CLASSIFICATION[r.system]
+    if r.kind == "pipe":
+        rec["type_keywords"] = list(PIPE_TYPE_KEYWORDS[PIPE_TYPE_OF[r.system]])
     if r.connect_start:
         rec["start_key"] = r.connect_start
     if r.connect_end:
