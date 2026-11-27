@@ -6,6 +6,8 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  /* the page never scrolls sideways, whatever pokes past the sheet edge */
+  overflow-x: clip;
   text-size-adjust: 100%;
   scroll-behavior: smooth;
   scroll-padding-top: 4.5rem;
@@ -137,9 +139,11 @@ select {
   font-variation-settings: 'wdth' 106;
   text-decoration: none;
   cursor: pointer;
+  /* transform belongs to GSAP (the magnetic pull); the press uses the separate scale property */
   transition:
-    background-color 160ms ease,
-    transform 160ms ease;
+    background-color var(--dur-1) var(--ease-out),
+    border-color var(--dur-1) var(--ease-out),
+    scale var(--dur-1) var(--ease-out);
 }
 
 .btn:hover {
@@ -148,7 +152,7 @@ select {
 }
 
 .btn:active {
-  transform: translateY(1px);
+  scale: 0.97;
 }
 
 .btn--quiet {
@@ -171,4 +175,39 @@ select {
   .btn {
     transition: none;
   }
+}
+
+/* Lenis (smooth wheel scrolling) adds these classes to <html> while it runs */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+
+html.lenis {
+  scroll-behavior: auto;
+}
+
+/* SplitText wraps each heading line in a mask; the line inside rises out of it */
+.split-line-mask {
+  /* room for descenders and accents, taken back so the line spacing doesn't change */
+  padding-block: 0.06em 0.14em;
+  margin-block: -0.06em -0.14em;
+}
+
+/* a short status tag inside running text */
+.tag {
+  display: inline-block;
+  padding: 0.1em 0.5em;
+  border: var(--hair) solid currentColor;
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  line-height: 1.5;
+  vertical-align: 0.25em;
+}
+
+.tag--red {
+  color: var(--red-ink);
+  background: var(--red-wash);
 }
