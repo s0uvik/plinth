@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { gsap, ScrollTrigger, useGSAP } from '../lib/gsap';
+import { EASE, gsap, MQ, ScrollTrigger, useGSAP } from '../lib/gsap';
 import { DOORS, ESTIMATE_ROWS, WINDOWS, openingCentre, revisionCloud } from '../lib/plan';
 import {
   PLAN_VIEWBOX,
@@ -15,12 +15,12 @@ import { SectionHead } from './SectionHead';
 
 const STEPS = [
   {
-    title: 'Import the drawing folder',
-    body: 'Point Plinth at the folder of DWG sheets. Every sheet is classified as a plan, section, elevation, foundation or beam layout, and what Plinth recognised is drawn over the sheet so you can check it.',
+    title: 'Read the set',
+    body: 'Point Plinth at the folder of DWG sheets. It sorts every sheet (plan, section, elevation, foundation or beam layout, site) and draws what it recognised over the sheet, for you to check.',
   },
   {
-    title: 'Answer what the drawings leave open',
-    body: 'Plinth asks for the project location before it assumes anything. Every assumption it still has to make is listed with its reason, for you to confirm or change.',
+    title: 'Ask',
+    body: 'It asks for the location first, then for everything the drawings leave open. Each assumption is listed with its reason, for you to confirm or change.',
   },
   {
     title: 'Approve',
@@ -28,20 +28,26 @@ const STEPS = [
   },
   {
     title: 'Build',
-    body: 'Native walls, columns, beams, slabs, doors, windows, stairs, railings, rooms, shafts and levels. Revit elements, not imported geometry.',
+    body: 'Native levels, grids, columns, walls, floors, foundation slabs, shafts, beams, stairs, railings, doors, windows, room separation lines and rooms. Revit elements, not imported geometry.',
   },
   {
-    title: 'Self-check',
-    body: 'Plinth reads the model back and compares it with the plan and the drawings. It explains every difference it finds.',
+    title: 'Check',
+    body: 'Plinth reads the model back and compares it with the plan and with the drawings. Every difference is explained or flagged.',
   },
   {
-    title: 'Drawing set and estimate',
-    body: 'Sheets fitted to your office’s title block, with PDF, and a door/window estimate in your office’s own Excel format. Remove deletes exactly what the run created, and nothing else.',
+    title: 'Issue',
+    body: 'Sheets on your office’s title block with a PDF, and the door and window estimate in your own Excel format. Remove takes out exactly what the run made, and nothing else.',
   },
 ];
 
-const SHEET_KINDS = ['Plan', 'Section', 'Elevation', 'Foundation', 'Beam layout'];
-const ELEMENTS = ['Walls', 'Columns', 'Beams', 'Slabs', 'Doors', 'Windows', 'Stairs', 'Railings', 'Rooms', 'Shafts', 'Levels'];
+const SHEET_KINDS = ['Plan', 'Section', 'Elevation', 'Foundation', 'Beam layout', 'Site'];
+const ELEMENTS = ['Levels', 'Grids', 'Columns', 'Walls', 'Floors', 'Slabs', 'Beams', 'Stairs', 'Railings', 'Doors', 'Windows', 'Rooms'];
+const RECORD = [
+  { label: 'Elements built', value: 'about 1,365' },
+  { label: 'Revit warnings', value: '0' },
+  { label: 'Unexplained differences in the self-check', value: '0' },
+  { label: 'Furniture items placed, no clashes', value: '338' },
+];
 const SHEETS = [
   { no: 'A-101', name: 'Ground floor plan' },
   { no: 'A-201', name: 'Section A-A' },
@@ -94,11 +100,13 @@ function StoryFigure() {
             <PlanWalls className="pl-walls sf-recog-walls" pathLength />
             <PlanColumns className="pl-columns sf-recog-cols" />
             {tags.map((t, i) => (
-              <g key={i} className="sf-tag" transform={`translate(${t.x} ${t.y})`}>
-                <rect x={-11} y={-7} width={22} height={14} rx={1} />
-                <text y={3.5} textAnchor="middle">
-                  {t.mark}
-                </text>
+              <g key={i} transform={`translate(${t.x} ${t.y})`}>
+                <g className="sf-tag">
+                  <rect x={-11} y={-7} width={22} height={14} rx={1} />
+                  <text y={3.5} textAnchor="middle">
+                    {t.mark}
+                  </text>
+                </g>
               </g>
             ))}
           </g>
@@ -128,6 +136,9 @@ function StoryFigure() {
         <ul className="sf-elements">
           {ELEMENTS.map((e) => (
             <li key={e} className="sf-el">
+              <span className="sf-el__box">
+                <span className="sf-el__fill" />
+              </span>
               {e}
             </li>
           ))}
@@ -154,7 +165,7 @@ function StoryFigure() {
             ))}
           </div>
           <table className="sf-est">
-            <caption>Door/window estimate</caption>
+            <caption>Door and window estimate</caption>
             <thead>
               <tr>
                 <th>Mark</th>
@@ -197,48 +208,53 @@ export function RunStory() {
         });
       });
 
-      // One timeline, one unit per step. Labels mark the settled state of each step.
-      const tl = gsap.timeline({ paused: true, defaults: { ease: 'power2.inOut', duration: 0.5 } });
+      // One timeline, one unit per step. Each change happens in the first part of its unit; the rest is a settled
+      // state to read against. Labels mark those settled states.
+      const tl = gsap.timeline({ paused: true, defaults: { ease: EASE.inOut, duration: 0.5 } });
 
       tl.set(q('.sf-recog-walls .pl-wall'), { strokeDasharray: 1, strokeDashoffset: 1 })
         .set(q('.sf-recog-cols, .sf-tag, .sf-model, .sf-checks, .sf-stamp, .sf-result, .sf-out, .sf-question, .sf-elements'), { autoAlpha: 0 })
         .set(q('.sf-cloud'), { strokeDasharray: 1, strokeDashoffset: 1 })
         .set(q('.sf-kind__box'), { scale: 0 })
-        .set(q('.sf-el'), { '--on': 0 })
-        .set(q('.sf-question'), { y: 16 })
-        .set(q('.sf-stamp'), { scale: 1.6, rotation: -14 })
-        .set(q('.sf-result'), { y: 16 })
+        .set(q('.sf-el__fill'), { scale: 0 })
+        .set(q('.sf-el'), { autoAlpha: 0.35 })
+        .set(q('.sf-question'), { y: 18, rotation: 1.5 })
+        .set(q('.sf-stamp'), { scale: 1.7, rotation: -16 })
+        .set(q('.sf-result'), { y: 18 })
+        .set(q('.sf-tag'), { scale: 0.6, transformOrigin: '50% 50%' })
         .set(q('.sf-sheet'), { rotation: 0, x: 0, y: 0 })
         .set(q('.sf-est__row'), { autoAlpha: 0, x: -8 });
 
-      // 1. import: sheets classified, recognised elements drawn over the sheet
+      // 1. read: sheets sorted, recognised elements drawn over the sheet in redline
       tl.addLabel('s1', 0)
-        .to(q('.sf-kind__box'), { scale: 1, stagger: 0.06, duration: 0.2, ease: 'back.out(2)' }, 0.05)
-        .to(q('.sf-recog-walls .pl-wall'), { strokeDashoffset: 0, stagger: 0.015 }, 0.15)
-        .to(q('.sf-recog-cols'), { autoAlpha: 1 }, 0.4)
-        .to(q('.sf-tag'), { autoAlpha: 1, stagger: 0.02, duration: 0.2 }, 0.5)
+        .to(q('.sf-kind__box'), { scale: 1, stagger: 0.05, duration: 0.2, ease: EASE.stamp }, 0.05)
+        .to(q('.sf-recog-walls .pl-wall'), { strokeDashoffset: 0, stagger: 0.015, ease: EASE.draw }, 0.12)
+        .to(q('.sf-recog-cols'), { autoAlpha: 1, duration: 0.3 }, 0.4)
+        .to(q('.sf-tag'), { autoAlpha: 1, scale: 1, stagger: 0.02, duration: 0.25, ease: EASE.stamp }, 0.45)
         .addLabel('s1-end', 1)
-        // 2. questions: cloud the open item, ask
-        .to(q('.sf-cloud'), { strokeDashoffset: 0, duration: 0.4 }, 1.05)
-        .to(q('.sf-question'), { autoAlpha: 1, y: 0, duration: 0.35 }, 1.3)
+        // 2. ask: cloud the open item, the question card slides up
+        .to(q('.sf-cloud'), { strokeDashoffset: 0, duration: 0.45, ease: EASE.draw }, 1.05)
+        .to(q('.sf-question'), { autoAlpha: 1, y: 0, rotation: 0, duration: 0.4, ease: EASE.out }, 1.25)
         .addLabel('s2-end', 2)
-        // 3. approve: stamp lands
-        .to(q('.sf-stamp'), { autoAlpha: 1, scale: 1, rotation: -8, duration: 0.25, ease: 'power4.in' }, 2.1)
-        .to(q('.sf-question'), { autoAlpha: 0.35, duration: 0.3 }, 2.2)
+        // 3. approve: the stamp is set down on the question
+        .to(q('.sf-stamp'), { autoAlpha: 1, duration: 0.08, ease: 'none' }, 2.1)
+        .to(q('.sf-stamp'), { scale: 1, rotation: -8, duration: 0.3, ease: EASE.stamp }, 2.1)
+        .to(q('.sf-question'), { autoAlpha: 0.35, duration: 0.3 }, 2.25)
         .addLabel('s3-end', 3)
-        // 4. build: overlay gives way to the model
+        // 4. build: the overlay gives way to the model, the element list ticks off
         .to(q('.sf-stamp, .sf-question, .sf-cloud'), { autoAlpha: 0, duration: 0.3 }, 3.05)
-        .to(q('.sf-recog'), { autoAlpha: 0, duration: 0.3 }, 3.1)
-        .to(q('.sf-model'), { autoAlpha: 1, duration: 0.4 }, 3.15)
+        .to(q('.sf-recog'), { autoAlpha: 0, duration: 0.35 }, 3.1)
+        .to(q('.sf-model'), { autoAlpha: 1, duration: 0.45 }, 3.15)
         .to(q('.sf-elements'), { autoAlpha: 1, duration: 0.2 }, 3.15)
-        .to(q('.sf-el'), { '--on': 1, stagger: 0.05, duration: 0.15 }, 3.2)
+        .to(q('.sf-el'), { autoAlpha: 1, stagger: 0.04, duration: 0.12 }, 3.2)
+        .to(q('.sf-el__fill'), { scale: 1, stagger: 0.04, duration: 0.14, ease: EASE.stamp }, 3.22)
         .addLabel('s4-end', 4)
-        // 5. self-check
+        // 5. check: ticks against every recognised element, then the result
         .to(q('.sf-elements'), { autoAlpha: 0, duration: 0.3 }, 4.05)
         .to(q('.sf-checks'), { autoAlpha: 1, duration: 0.3 }, 4.1)
-        .to(q('.sf-result'), { autoAlpha: 1, y: 0, duration: 0.35 }, 4.3)
+        .to(q('.sf-result'), { autoAlpha: 1, y: 0, duration: 0.4, ease: EASE.out }, 4.25)
         .addLabel('s5-end', 5)
-        // 6. output: sheets fan out, estimate rows tick in
+        // 6. issue: sheets fan out, estimate rows tick in
         .to(q('.sf-result, .sf-checks'), { autoAlpha: 0, duration: 0.25 }, 5.05)
         .to(q('.sf-svg'), { autoAlpha: 0.12, duration: 0.3 }, 5.05)
         .to(q('.sf-out'), { autoAlpha: 1, duration: 0.25 }, 5.15)
@@ -248,27 +264,35 @@ export function RunStory() {
             rotation: (i: number) => [-9, -2, 5][i],
             x: (i: number) => [-6, 4, 14][i] + '%',
             y: (i: number) => [6, 0, 4][i] + '%',
-            duration: 0.4,
-            ease: 'power3.out',
+            duration: 0.45,
+            ease: EASE.out,
+            stagger: 0.04,
           },
           5.2,
         )
-        .to(q('.sf-est__row'), { autoAlpha: 1, x: 0, stagger: 0.07, duration: 0.15 }, 5.35)
+        .to(q('.sf-est__row'), { autoAlpha: 1, x: 0, stagger: 0.06, duration: 0.16, ease: EASE.out }, 5.35)
         .addLabel('s6-end', 6);
 
       const mm = gsap.matchMedia();
 
-      mm.add('(prefers-reduced-motion: no-preference)', () => {
+      mm.add(MQ.motion, () => {
+        // Scroll drives the drawing. Lenis already smooths the wheel, so the catch-up here stays short.
         ScrollTrigger.create({
           trigger: stepsList,
           start: 'top 62%',
           end: 'bottom 62%',
-          scrub: 0.6,
+          scrub: 0.4,
           animation: tl,
         });
+        // the progress rail beside the steps, drawn down the sheet as you read
+        gsap.fromTo(
+          q('.story-rail__fill'),
+          { scaleY: 0 },
+          { scaleY: 1, ease: 'none', scrollTrigger: { trigger: stepsList, start: 'top 62%', end: 'bottom 62%', scrub: true } },
+        );
       });
 
-      mm.add('(prefers-reduced-motion: reduce)', () => {
+      mm.add(MQ.reduced, () => {
         // No motion: jump straight to each step's settled state as it is reached.
         tl.seek('s1-end', false);
         steps.forEach((step, i) => {
@@ -289,30 +313,55 @@ export function RunStory() {
   return (
     <section className="section story" ref={root} aria-labelledby="run">
       <SectionHead
-        grid="B"
+        grid="C"
         id="run"
-        title="How a run goes"
-        lede="From a folder of DWG sheets to a model, a drawing set and an estimate. You stay in charge of the two steps that matter: answering and approving."
+        title="A run, from drawings to issued sheets"
+        lede="Start from a folder of DWG sheets, or from a written brief that Plinth plans for you. Either way, you stay in charge of the two steps that matter: answering and approving."
       />
       <div className="story__body">
         <div className="story__figure">
           <StoryFigure />
         </div>
-        <ol className="story-steps">
-          {STEPS.map((s, i) => (
-            <li key={s.title} className="story-step">
-              <span className="story-step__no" aria-hidden="true">
-                {i + 1}
-              </span>
-              <h3 className="story-step__title">
-                <span className="visually-hidden">Step {i + 1}: </span>
-                {s.title}
-              </h3>
-              <p className="story-step__body">{s.body}</p>
-            </li>
-          ))}
-        </ol>
+        <div className="story__steps">
+          <span className="story-rail" aria-hidden="true">
+            <span className="story-rail__fill" />
+          </span>
+          <ol className="story-steps">
+            {STEPS.map((s, i) => (
+              <li key={s.title} className="story-step">
+                <span className="story-step__no" aria-hidden="true">
+                  {i + 1}
+                </span>
+                <h3 className="story-step__title">
+                  <span className="visually-hidden">Step {i + 1}: </span>
+                  {s.title}
+                </h3>
+                <p className="story-step__body">{s.body}</p>
+              </li>
+            ))}
+          </ol>
+        </div>
       </div>
+
+      <aside className="record" aria-labelledby="record-title">
+        <div className="record__head">
+          <h3 id="record-title" className="record__title">
+            Test record
+          </h3>
+          <p className="record__lede">
+            One real G+4 RCC frame residential drawing set from West Bengal, India, run end to end and live-tested on
+            Revit 2026.
+          </p>
+        </div>
+        <dl className="record__list">
+          {RECORD.map((r) => (
+            <div key={r.label} className="record__row">
+              <dt>{r.label}</dt>
+              <dd>{r.value}</dd>
+            </div>
+          ))}
+        </dl>
+      </aside>
     </section>
   );
 }

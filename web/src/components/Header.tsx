@@ -1,14 +1,38 @@
+import { useRef } from 'react';
+import { gsap, useGSAP } from '../lib/gsap';
+import { MagneticLink } from './Magnetic';
+
 const NAV = [
-  { href: '#run', label: 'How a run goes' },
-  { href: '#output', label: 'What you get' },
+  { href: '#register', label: 'What it does' },
+  { href: '#run', label: 'A run' },
+  { href: '#talk', label: 'Talk to Revit' },
   { href: '#fit-out', label: 'Fit-out' },
-  { href: '#setup', label: 'Setup' },
+  { href: '#principles', label: 'Rules' },
   { href: '#status', label: 'Status' },
 ];
 
 export function Header() {
+  const root = useRef<HTMLElement>(null);
+
+  // A redline along the header's bottom edge shows how far down the sheet you are. It follows the scroll position
+  // exactly (no easing of its own), so it reads as state rather than animation.
+  useGSAP(
+    () => {
+      gsap.fromTo(
+        '.site-progress__fill',
+        { scaleX: 0 },
+        {
+          scaleX: 1,
+          ease: 'none',
+          scrollTrigger: { trigger: document.documentElement, start: 0, end: 'max', scrub: true },
+        },
+      );
+    },
+    { scope: root },
+  );
+
   return (
-    <header className="site-header">
+    <header className="site-header" ref={root}>
       <div className="site-header__inner">
         <a className="wordmark" href="#top" aria-label="Plinth, back to top">
           <svg className="wordmark__mark" viewBox="0 0 24 24" aria-hidden="true">
@@ -26,10 +50,13 @@ export function Header() {
             ))}
           </ul>
         </nav>
-        <a className="btn btn--small" href="#early-access">
+        <MagneticLink className="btn btn--small" href="#early-access">
           Request early access
-        </a>
+        </MagneticLink>
       </div>
+      <span className="site-progress" aria-hidden="true">
+        <span className="site-progress__fill" />
+      </span>
     </header>
   );
 }

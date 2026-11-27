@@ -160,3 +160,18 @@ export function revisionCloud(x: number, y: number, w: number, hgt: number, bump
   }
   return d;
 }
+
+/** Grid reference of a point on two grid lines, e.g. "2/B". */
+export function gridRef(x: number, y: number): string {
+  const gx = GRID_X.find((g) => g.x === x)?.id ?? '?';
+  const gy = GRID_Y.find((g) => g.y === y)?.id ?? '?';
+  return `${gx}/${gy}`;
+}
+
+/** Door schedule for the "talk to your model" illustration: the four doors of the example flat. */
+export const DOOR_SCHEDULE = [
+  { mark: 'D1', width: 1000, room: 'Living' },
+  { mark: 'D2', width: 900, room: 'Bedroom 1' },
+  { mark: 'D2', width: 900, room: 'Bedroom 2' },
+  { mark: 'D3', width: 750, room: 'Toilet' },
+];

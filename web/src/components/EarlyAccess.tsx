@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { MagneticButton } from './Magnetic';
 import { SectionHead } from './SectionHead';
 
 const NOT_OPEN = 'Sign-up opens soon. Nothing was sent: this form is not connected yet.';
@@ -16,12 +17,12 @@ export function EarlyAccess() {
   return (
     <section className="section access" aria-labelledby="early-access">
       <SectionHead
-        grid="H"
+        grid="J"
         id="early-access"
         title="Request early access"
-        lede="For BIM engineers, architects and small-to-mid architecture offices. India first."
+        lede="For BIM leads, architects and small-to-mid offices working in Revit. India first. Bring a drawing set you know well: a trial run on it is the real test."
       />
-      <form className="access__form" onSubmit={handleSubmit} noValidate={false}>
+      <form className="access__form" onSubmit={handleSubmit}>
         <div className="field">
           <label htmlFor="ea-email">Work email</label>
           <input id="ea-email" name="email" type="email" autoComplete="email" required />
@@ -40,9 +41,9 @@ export function EarlyAccess() {
           </select>
         </div>
         <div className="access__submit">
-          <button type="submit" className="btn">
+          <MagneticButton type="submit" className="btn">
             Request early access
-          </button>
+          </MagneticButton>
           <p className="access__msg" role="status" aria-live="polite">
             {message}
           </p>
