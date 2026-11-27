@@ -177,8 +177,10 @@ def test_fire_band_at_13_5_m_gives_its_provisions(sample_mep, wb_rules):
 def test_sample_asks_what_the_plan_does_not_tell(sample_mep):
     _, _, _, layout = sample_mep
     assert [q.id for q in layout.questions] == [
-        "fitout:ac:living dining:39", "fitout:ac:living dining:40",  # kitchens are their own rooms
+        "fitout:ac:living",  # the 16 living/dining rooms (39-40 m²; kitchens are their own rooms), asked once
         "fitout:meter_room", "fitout:underground_tank"]
+    ac = next(q for q in layout.questions if q.id == "fitout:ac:living")
+    assert len(ac.instances) == 16 and "16 room(s), 39" in ac.text and "fitout:ac:room:" in ac.text
     assert all(q.text for q in layout.questions)
     assumed = {a.id: a for a in layout.assumptions}
     assert assumed["fitout:persons_per_flat"].value == 5 and "16 flats" in assumed["fitout:persons_per_flat"].text
@@ -302,6 +304,25 @@ def test_answers_place_the_underground_tank_and_raise_the_fire_band(wb_rules):
     assert "fitout:underground_tank" not in {q.id for q in layout.questions}
 
 
+def test_a_room_beyond_the_ac_table_is_asked_per_class_and_answered_per_class_or_room(wb_rules):
+    hvac = wb_rules.hvac
+    small = wb_rules.model_copy(update={"hvac": hvac.model_copy(update={"split_ac": hvac.split_ac.model_copy(
+        update={"sizing": [hvac.split_ac.sizing[0]]})})})  # up to 11 m² only: the 22 m² bedroom is beyond
+    _, _, asked = fit(small)
+    q = {q.id: q for q in asked.questions}["fitout:ac:bedroom"]
+    assert q.instances == ["BED"] and q.options == ["none"] and "1 room(s), 22" in q.text
+    assert not [d for d in asked.devices if d.what == "ac_indoor"]
+
+    def units(answers):
+        _, _, layout = fit(small, answers)
+        assert not [q for q in layout.questions if q.id.startswith("fitout:ac:")]
+        return [d.rating for d in layout.in_room("BED") if d.what == "ac_indoor"]
+
+    assert units({"fitout:ac:bedroom": [1.0, 1.0]}) == ["1 TR", "1 TR"]  # every bedroom past the table
+    assert units({"fitout:ac:bedroom": [1.0, 1.0], "fitout:ac:room:BED": 1.5}) == ["1.5 TR"]  # one room's own
+    assert units({"fitout:ac:bedroom:22": "none", "fitout:ac:bedroom": 2.0}) == []  # the older per-room key
+
+
 def test_a_shaft_of_unknown_kind_and_a_large_living_room_are_asked(wb_rules):
     shaft = {"op": "shaft", "key": "SH", "base_level": "L0", "top_level": "L0", "base_offset_mm": -200,
              "points": [(9000, 0), (10000, 0), (10000, 1000), (9000, 1000)]}
@@ -332,7 +353,7 @@ def sample_answered(sample_import, wb_rules):
 def test_the_users_answers_leave_nothing_asked(sample_mep, sample_answered):
     _, model, lay, layout, answers = sample_answered
     assert answers == {
-        "fitout:ac:living dining:39": [1.5, 1.5], "fitout:ac:living dining:40": [1.5, 1.5],
+        "fitout:ac:living": [1.5, 1.5],
         "fitout:meter_room": {"near": "stair"}, "fitout:common_board": "meter_board", "fitout:front_side": "south",
         "fitout:underground_tank": {"side": "front", "near": "entrance"}, "fitout:overhead_tank_on": "stair_roof"}
     assert {q.id for q in sample_mep[3].questions} <= set(answers)  # every question the plan raises is answered

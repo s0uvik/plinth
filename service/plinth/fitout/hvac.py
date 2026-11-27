@@ -8,8 +8,12 @@ Why so: Indian apartments are cooled room by room with wall-mounted split units,
 goes high (``indoor_bottom_mm``) on an outside wall so the refrigerant pipe goes straight through the wall to the
 outdoor unit on brackets outside it (well within ``max_pipe_run_m``). It may sit above a window (its head is below
 the unit) but not above a door, nor over a wardrobe. The size steps with the room's area (``split_ac.sizing``);
-a room larger than the last step is asked (how many units of what size), never guessed: ``fitout:ac:<name>:<area>``
-answers one size in TR, a list of sizes (``[1.5, 1.5]``: two units) or "none". Several units in one room stand on its
+a room larger than the last step is asked (how many units of what size), never guessed, once per room class:
+``fitout:ac:<class>`` (``fitout:ac:living``) answers every room of that class beyond the table, with one size in TR, a
+list of sizes (``[1.5, 1.5]``: two units) or "none"; ``fitout:ac:room:<room key>`` overrides it for one room. The
+class is the room's first class the rule set cools (``split_ac.classes``), so the answer holds when another import of
+the same drawing names the room differently or measures it a little larger. The older per-room key
+``fitout:ac:<name>:<whole m²>`` is still accepted (before the class answer). Several units in one room stand on its
 outside walls as far apart as the walls let them (up to ``AC_SPACING_MM``, then nearest the middle), each with its
 outdoor unit outside its wall clear of the others; the electrical layout gives each its 16 A socket and circuit. Exhaust fans go high on a
 wall that opens to the outside or onto an open-to-sky duct (the toilets of the G+4 sample have no outside wall: their
@@ -36,22 +40,46 @@ def lay_out(ctx: Ctx) -> None:
     exhausts(ctx)
 
 
-def _ac_sizes(ctx: Ctx, room: Room) -> list[float] | None:
+def _ac_class(ctx: Ctx, room: Room) -> str:
+    """The class a room is cooled as: its first class in ``split_ac.classes``."""
+    ac = ctx.rules.hvac.split_ac
+    return next(c for c in ctx.classes(room) if c in ac.classes)
+
+
+def _units(given) -> list[float] | None:
+    """An AC answer's unit sizes: "none" -> [], a size or a list of sizes in TR; None when it is no such answer."""
+    if given == "none":
+        return []
+    if isinstance(given, (int, float)) and not isinstance(given, bool):
+        given = [given]
+    if isinstance(given, (list, tuple)) and given and \
+            all(isinstance(x, (int, float)) and not isinstance(x, bool) and x > 0 for x in given):
+        return [float(x) for x in given]
+    return None
+
+
+def _ac_sizes(ctx: Ctx, room: Room, beyond: dict[str, list[Room]]) -> list[float] | None:
+    """The room's units in TR: from the sizing table, else answered (per room, the older per-room key, per class),
+    else None (asked per class; ``beyond``: the rooms of each class past the table, for the question's text)."""
     ac = ctx.rules.hvac.split_ac
     tr = ac.tr_for(room.area_m2 or 0)
     if tr is not None:
         return [tr]
-    qid = f"fitout:ac:{normalise(room.name) or room.key}:{(room.area_m2 or 0):.0f}"  # whole m², so a small change in the geometry keeps the answer
-    given = ctx.answer(qid)
-    if given == "none":
-        return []
-    if isinstance(given, (int, float)):
-        given = [given]
-    if isinstance(given, (list, tuple)) and given and all(isinstance(x, (int, float)) and x > 0 for x in given):
-        return [float(x) for x in given]
-    ctx.ask(qid, "fitout_ac", f"How should \"{room.name}\" ({room.area_m2:.1f} m²) be air-conditioned? It is larger "
-            f"than the rule set's largest step ({ac.sizing[-1].max_area_m2:g} m² for {ac.sizing[-1].tr:g} TR): answer "
-            "the units' sizes in TR (e.g. [2.0, 1.5]) or none.", options=["none"], instances=[room.key])
+    cls = _ac_class(ctx, room)
+    legacy = f"fitout:ac:{normalise(room.name) or room.key}:{(room.area_m2 or 0):.0f}"  # whole m² (older answers)
+    class_q = f"fitout:ac:{cls}"
+    for qid in (f"fitout:ac:room:{room.key}", legacy, class_q):
+        units = _units(ctx.answer(qid))
+        if units is not None:
+            return units
+    rooms = beyond.get(cls, [room])
+    areas = sorted({round(r.area_m2 or 0, 1) for r in rooms})
+    span = f"{areas[0]:g} m²" if len(areas) == 1 else f"{areas[0]:g} to {areas[-1]:g} m²"
+    ctx.ask(class_q, "fitout_ac", f"How should the {cls} rooms larger than the rule set's largest step "
+            f"({ac.sizing[-1].max_area_m2:g} m² for {ac.sizing[-1].tr:g} TR) be air-conditioned? {len(rooms)} "
+            f"room(s), {span}. Answer the units' sizes in TR for each such room (e.g. [1.5, 1.5]: two units) or "
+            f"none; one room can be answered on its own with fitout:ac:room:<room key>.", options=["none"],
+            instances=[room.key])
     return None
 
 
@@ -61,10 +89,13 @@ def split_acs(ctx: Ctx) -> None:
                f"({', '.join(f'<= {s.max_area_m2:g} m²: {s.tr:g} TR' for s in ac.sizing)}), on an outside wall with "
                f"its underside at {ac.indoor_bottom_mm:g} mm and the outdoor unit on brackets outside",
                [s.model_dump() for s in ac.sizing], ac.source)
-    for room in ctx.fit_rooms:
-        if not any(c in ac.classes for c in ctx.classes(room)):
-            continue
-        sizes = _ac_sizes(ctx, room)
+    cooled = [r for r in ctx.fit_rooms if any(c in ac.classes for c in ctx.classes(r))]
+    beyond: dict[str, list[Room]] = {}
+    for room in cooled:
+        if ac.tr_for(room.area_m2 or 0) is None:
+            beyond.setdefault(_ac_class(ctx, room), []).append(room)
+    for room in cooled:
+        sizes = _ac_sizes(ctx, room, beyond)
         if sizes is None:
             ctx.unplace("ac_indoor", room, room.level, f"{room.area_m2:.1f} m² is beyond the sizing table: the units "
                         "are asked")

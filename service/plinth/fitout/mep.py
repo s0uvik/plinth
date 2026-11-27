@@ -20,8 +20,10 @@ same records with the same keys. It is an indicative coordination model (``NOTIC
 
 Answers (``answers``: question id -> value; each question's text says its shapes):
 
-- ``fitout:ac:<name>:<area>``: a room beyond the AC sizing table: a size in TR, a list (``[1.5, 1.5]``: two units,
-  spread on its outside walls, each with its socket and circuit) or "none" (``plinth.fitout.hvac``).
+- ``fitout:ac:<class>`` (``fitout:ac:living``): every room of that class beyond the AC sizing table: a size in TR, a
+  list (``[1.5, 1.5]``: two units, spread on its outside walls, each with its socket and circuit) or "none";
+  ``fitout:ac:room:<room key>`` overrides it for one room; the older ``fitout:ac:<name>:<whole m²>`` is still accepted
+  (``plinth.fitout.hvac``).
 - ``fitout:meter_room``: a room key, or a place on a wall (``{"near": "stair"}``, ``{"point": [x, y], "level": ..}``;
   ``plinth.fitout.siting``); the electrical riser starts at the meter board. ``fitout:common_board``: a room key,
   "meter_board" (beside it) or a place on a wall (``plinth.fitout.electrical``).
