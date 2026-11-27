@@ -193,6 +193,7 @@ def test_partial_build_and_mep_on_a_furniture_run(world, fitout_answers):
     furniture = plan(api, run_id, systems=["furniture"], flat="U1", level="Floor 1", answers=without_ac)
     assert furniture.json()["ready"]  # an HVAC question is not the furniture's
     frun = build(api, service, run_id).json()["run_id"]
+    assert service.store.get(frun).load("fitout_layout")  # kept, so the MEP pass on it lays nothing out again
     mep = plan(api, run_id, systems=["hvac"], furniture_run=frun, answers=without_ac)
     assert mep.status_code == 200, mep.text
     assert not mep.json()["ready"] and build(api, service, run_id).status_code == 409  # the AC questions are open
@@ -200,6 +201,12 @@ def test_partial_build_and_mep_on_a_furniture_run(world, fitout_answers):
     assert r.status_code == 202, r.text
     mrun = r.json()["run_id"]
     assert service.store.get(mrun).load("fitout_report")["furniture_run"] == frun
+    # each element the MEP run builds on is recorded with the run that built it (the page passes the plan's owners)
+    existing = service.store.get(mrun).load("plan").get("existing") or {}
+    owners = service.store.get(mrun).load("run").get("existing_runs") or {}
+    assert set(owners) == set(existing) and set(owners.values()) <= {frun, run_id}
+    if any(owner == frun for owner in owners.values()):
+        assert api.post(f"/runs/{frun}/remove").status_code == 409  # the MEP run on it goes first
     assert [x["run_id"] for x in api.get(f"/imports/{IMPORT_ID}/fitout").json()["runs"]] == [frun, mrun]
     assert api.post(f"/runs/{mrun}/remove").json()["status"] == "removed"  # the latest first
     assert api.post(f"/runs/{frun}/remove").json()["status"] == "removed"

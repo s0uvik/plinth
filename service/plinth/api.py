@@ -1331,11 +1331,13 @@ def add_fitout_routes(app: FastAPI, service: BuildService, imports: Imports, fin
             raise HTTPException(409, {"errors": ["Not built: the fit-out has open questions. Answer them and plan "
                                                  "again, or build what is ready (partial: their items wait)."]
                                                 + [f"{q['id']}: {q['text']}" for q in open_qs], "questions": open_qs})
-        report = {**planned.report, "answers": planned.answers, "import_id": import_id, "partial": request.partial,
-                  "planned_utc": saved["planned_utc"]}
+        # the run keeps the furniture layout it built (a later MEP run on it reuses it, no relayout) and the run each
+        # existing element belongs to (so pieces a tee splits off an earlier main stay that run's)
+        kept = session.attachments(planned, import_id=import_id, partial=request.partial,
+                                   planned_utc=saved["planned_utc"])
         try:
-            run_id = service.start(planned.plan, title, {"fitout_report": report},
-                                   require=session.required_commands(planned.plan))
+            run_id = service.start(planned.plan, title, kept, require=session.required_commands(planned.plan),
+                                   owners=planned.owners)
         except Busy as e:
             raise HTTPException(409, str(e)) from e
         run.save(FITOUT_PLAN, {**saved, "built_as": run_id})
