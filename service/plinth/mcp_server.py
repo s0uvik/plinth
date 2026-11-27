@@ -71,7 +71,10 @@ def build_server(api: Api | None = None, config: dict[str, Any] | None = None) -
             "into the Revit document title the user confirms. "
             "To model from the office's CAD drawings, use the plinth_import_ tools: start, follow the status, put every "
             "question to the user (never answer one yourself), and point them to the review page "
-            f"(http://{HOST}:{PORT}/import) to check the overlay before they approve."),
+            f"(http://{HOST}:{PORT}/import) to check the overlay before they approve. "
+            "On a built import, plinth_plan_fitout plans furniture and MEP (nothing built; its MEP is an indicative "
+            "coordination model an MEP engineer must design and check); build it with plinth_build_fitout only when "
+            "the user says so."),
     )
 
     @server.tool()
@@ -216,6 +219,87 @@ def add_import_tools(server: MCPServer, api: Api) -> None:
         lengths are on no drawing: they come back as questions (import questions); ask the user, answer, run again."""
         body = {"run_id": run_id or None, "reference_xlsx": reference_xlsx or None, "rules": rules or None}
         return api.call("POST", f"/imports/{import_id}/estimate", body)
+
+    add_fitout_tools(server, api)
+
+
+FITOUT_NOTICE = ("The MEP is an indicative coordination model laid out from rules, not an engineer's design: an MEP "
+                 "engineer must design and check the real systems. Always tell the user so.")
+
+
+def _fitout_summary(view: dict[str, Any]) -> dict[str, Any]:
+    """A plan as Claude reports it: what will be built, what waits on which question, what is left out and why
+    (lists cut to their first lines; the review page shows them all)."""
+    r = view["report"]
+    mep = r.get("mep") or {}
+
+    def first(rows: list, n: int = 25) -> dict[str, Any]:
+        return {"total": len(rows), "first": rows[:n]}
+
+    return {
+        **{k: view.get(k) for k in ("run_id", "document_title", "rules", "rules_from", "planned_utc", "ready",
+                                     "buildable", "ops", "built_as", "stale")},
+        "notice": r.get("notice"), "systems": r.get("systems"), "flat": r.get("flat"), "level": r.get("level"),
+        "furniture_run": r.get("furniture_run"), "op_counts": r.get("ops"),
+        "furniture": {item: x["in_plan"] for item, x in (r.get("items") or {}).items()},
+        "mep_counts": mep.get("counts"), "water": mep.get("water"),
+        "unplaced": first([f"{u['what']}: {u['reason']}" for u in mep.get("unplaced") or []]),
+        "unrouted": first([f"{u['what']}: {u['reason']}" for u in mep.get("unrouted") or []]),
+        "audit_problems": first([str(p) for p in mep.get("problems") or []]),
+        "assumptions": [f"{a['id']}: {a['text']}" for a in r.get("assumptions") or []],
+        "left_out_of_plan": r.get("left_out_of_plan"), "not_built_now": r.get("dropped"),
+        "furniture_check": r.get("furniture_check"),
+        "questions": view.get("questions") or r.get("questions"),
+    }
+
+
+def add_fitout_tools(server: MCPServer, api: Api) -> None:
+    """Fit-out (PRD Step 10): furniture and MEP on a built run of an import. Planning builds nothing; its questions are
+    import questions (answered with plinth_import_answer); building is a separate tool the user must ask for."""
+
+    @server.tool(description=(
+        "Plan the fit-out (furniture, plumbing and drainage, electrical, HVAC, fire) on a built run of this import, in "
+        "the open Revit document the building was built in (confirm the title with the user). It reads the document "
+        "(family types and their sizes) and builds NOTHING. systems: any of furniture, plumbing, electrical, hvac, fire "
+        "(default all); furniture_run: an earlier fit-out run whose furniture is built (the MEP joins it, never places "
+        "it again; build furniture first, then the MEP on top); flat and level: a pilot of one flat (suggest piloting "
+        "one flat first); exclude_runs: pilot runs whose elements are joined, not built again; rules: the fit-out rule "
+        "set, default the project location's. Returns what would be built, the assumptions, what is left out and why, "
+        "and the open questions, which are import questions now: put each to the user as written (never answer one "
+        "yourself), record the user's answers with plinth_import_answer (a family as {\"family\": ..., \"type\": ...}, "
+        "\"skip\" to leave the item out, {\"create\": \"box\"} only if the user agrees Plinth creates a plain box "
+        "family), then plan again. " + FITOUT_NOTICE + " If the furniture of furniture_run moved, it fails with the "
+        "items that differ and what to do."))
+    def plinth_plan_fitout(import_id: str, run_id: str, document_title: str, systems: list[str] | None = None,
+                           furniture_run: str = "", flat: str = "", level: str = "",
+                           exclude_runs: list[str] | None = None, rules: str = "",
+                           answers: dict[str, Any] | None = None) -> dict[str, Any]:
+        body = {"run_id": run_id, "document_title": document_title, "systems": systems or None,
+                "furniture_run": furniture_run or None, "flat": flat or None, "level": level or None,
+                "exclude_runs": exclude_runs or [], "rules": rules or None, "answers": answers or {}}
+        return _fitout_summary(api.call("POST", f"/imports/{import_id}/fitout/plan", body))
+
+    @server.tool(description=(
+        "Build the reviewed fit-out plan of this building run (the last plinth_plan_fitout) as its own run, removable "
+        "on its own. Calling this IS the user's go-ahead: show the user the plan summary (what is built, assumptions, "
+        "what is left out, the MEP notice) and call it ONLY when the user explicitly says to build. It is refused "
+        "without a plan, in another document, or with open questions unless partial=true (build what is ready; ask "
+        "the user before choosing partial). Returns a run_id: follow it with plinth_run_status until it is built or "
+        "built_with_issues. Issues (joins and circuits Revit refused on families without connectors) are expected on "
+        "real families and are not failures: report them. To undo it, plinth_remove with that run_id (only its "
+        "elements are deleted; remove the MEP run before the furniture run it was built on). " + FITOUT_NOTICE))
+    def plinth_build_fitout(import_id: str, run_id: str, document_title: str, partial: bool = False) -> dict[str, Any]:
+        out = api.call("POST", f"/imports/{import_id}/fitout/build",
+                       {"run_id": run_id, "document_title": document_title, "partial": partial})
+        return {**out, "follow_with": "plinth_run_status", "status_url": f"/runs/{out.get('run_id')}"}
+
+    @server.tool(description=(
+        "The fit-out of this import: the built runs it can go on, the latest plan's summary (with whether answers were "
+        "given since: then plan again) and every fit-out run with its status, elements and issues."))
+    def plinth_fitout_status(import_id: str) -> dict[str, Any]:
+        state = api.call("GET", f"/imports/{import_id}/fitout")
+        plan = state.get("plan")
+        return {**state, "plan": _fitout_summary(plan) if plan else None}
 
 
 def add_gateway_tools(server: MCPServer, api: Api, read_only: bool) -> None:
