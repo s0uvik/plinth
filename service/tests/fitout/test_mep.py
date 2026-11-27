@@ -17,7 +17,7 @@ import math
 from collections import Counter
 
 import pytest
-from shapely.geometry import Point, Polygon
+from shapely.geometry import LineString, Point, Polygon
 from shapely.ops import unary_union
 
 from plinth.fitout import furniture, mep, rooms, siting
@@ -55,11 +55,13 @@ def test_sample_counts_per_system(sample_mep):
         "exhaust_fan": 49, "geyser": 49, "ac_indoor": 48, "ac_outdoor": 48, "floor_trap": 33, "exit_sign": 9,
         "distribution_board": 17, "data_outlet": 16, "extinguisher": 17, "roof_outlet": 12, "overhead_tank": 2}
     assert Counter((r.kind, r.system) for r in layout.runs) == {
-        ("conduit", "power"): 639, ("conduit", "lighting"): 535, ("pipe", "cold_water"): 182, ("pipe", "waste"): 133,
+        ("conduit", "power"): 639, ("conduit", "lighting"): 535, ("pipe", "cold_water"): 182, ("pipe", "waste"): 137,
         ("pipe", "hot_water"): 113, ("pipe", "soil"): 51, ("pipe", "rainwater"): 12, ("pipe", "vent"): 2}
     assert Counter(c.kind for c in layout.circuits) == {"dedicated": 113, "lighting": 52, "sockets": 49, "power": 32}
     stacks = sorted(r.key.split("-")[-2] for r in layout.runs if r.key.split("-")[-2].endswith("_stack"))
-    assert stacks == ["soil_stack", "soil_stack", "vent_stack", "vent_stack", "waste_stack", "waste_stack"]
+    assert stacks == ["soil_stack", "soil_stack", "vent_stack", "vent_stack"] + ["waste_stack"] * 6
+    outside = [r for r in layout.runs if r.key.split("-")[-2] == "waste_stack" and "stack outside" in r.note]
+    assert len(outside) == 4  # one per kitchen column: the sinks above one another share it
     assert layout.notice == mep.NOTICE and "indicative" in layout.notice.lower()
 
 
@@ -91,6 +93,96 @@ def test_every_wc_drains_to_a_soil_stack_and_every_fixture_is_fed(sample_mep):
         if r.system in ("soil", "waste") and not r.key.split("-")[-2].endswith("_stack"):
             zs = [p[2] for p in r.points[1:]]
             assert all(a >= b - 1e-6 for a, b in zip(zs, zs[1:])), r.key
+
+
+def pipes_through_columns(plan, layout) -> list[tuple[str, str]]:
+    """(run, column) for every pipe segment passing through a column's footprint within the column's height."""
+    levels = {op.name: op.elevation_mm for op in plan.ops if getattr(op, "op", None) == "level"}
+    cols = []
+    for c in plan.ops:
+        if getattr(c, "op", None) != "column":
+            continue
+        b, h = (float(x) for x in c.type.split()[-1].split("x"))
+        a = math.radians(c.rotation_deg)
+        u, v = (math.cos(a), math.sin(a)), (-math.sin(a), math.cos(a))
+        poly = Polygon([(c.point[0] + sx * b / 2 * u[0] + sy * h / 2 * v[0], c.point[1] + sx * b / 2 * u[1] +
+                         sy * h / 2 * v[1]) for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1))])
+        cols.append((c.key, poly.buffer(-1), levels[c.level] + c.base_offset_mm, levels[c.top_level] + c.top_offset_mm))
+    out = []
+    for r in layout.runs:
+        if r.kind != "pipe":
+            continue
+        for a, b in zip(r.points, r.points[1:]):
+            g = LineString([a[:2], b[:2]]) if math.dist(a[:2], b[:2]) > 0.5 else Point(a[:2])
+            for key, poly, z0, z1 in cols:
+                if max(a[2], b[2]) > z0 + 1 and min(a[2], b[2]) < z1 - 1 and poly.intersects(g):
+                    out.append((r.key, key))
+    return out
+
+
+def drains_under_other_rooms(plan, model, layout) -> list[str]:
+    """Drains running under a floor (below its level) anywhere but under their own flat's wet rooms (toilets,
+    kitchens, utilities, balconies: their sunken floors, with their walls) and the ducts: over the ceiling of the
+    dwelling below."""
+    wet = {"toilet", "kitchen", "utility", "balcony"}
+    ducts = [Polygon(op.points).buffer(300, join_style="mitre") for op in plan.ops
+             if getattr(op, "op", None) == "shaft"]
+    out = []
+    for r in layout.runs:
+        if r.system not in ("soil", "waste") or r.key.split("-")[-2].endswith("stack"):
+            continue
+        floor = model.levels[r.level]
+        zone = unary_union([Polygon(x.polygon).buffer(300, join_style="mitre") for x in model.on_level(r.level)
+                            if x.polygon and x.flat == r.flat and x.classes and set(x.classes) <= wet] + ducts)
+        for a, b in zip(r.points, r.points[1:]):
+            if max(a[2], b[2]) < floor - 1 and math.dist(a[:2], b[:2]) > 1 and \
+                    LineString([a[:2], b[:2]]).difference(zone).length > 50:
+                out.append(r.key)
+                break
+    return out
+
+
+def _plan_length(points) -> float:
+    return sum(math.dist(a[:2], b[:2]) for a, b in zip(points, points[1:]))
+
+
+def _along_to_end(main, p) -> float:
+    """Plan length along ``main`` from where ``p`` tees in to its end."""
+    best = None
+    for i, (a, b) in enumerate(zip(main, main[1:])):
+        L = math.dist(a[:2], b[:2])
+        if L < 1:
+            continue
+        t = max(0.0, min(L, ((p[0] - a[0]) * (b[0] - a[0]) + (p[1] - a[1]) * (b[1] - a[1])) / L))
+        foot = (a[0] + (b[0] - a[0]) * t / L, a[1] + (b[1] - a[1]) * t / L)
+        if best is None or math.dist(foot, p[:2]) < best[0]:
+            best = (math.dist(foot, p[:2]), L - t + _plan_length(main[i + 1:]))
+    return best[1]
+
+
+def test_pipes_keep_off_the_columns_and_drains_under_their_own_wet_rooms(sample_mep, sample_answered):
+    for (result, model, lay, layout, *_) in (sample_mep, sample_answered):
+        assert pipes_through_columns(result.plan, layout) == []
+        assert drains_under_other_rooms(result.plan, model, layout) == []
+        # every drain within its size's length of its stack, falling all the way
+        rules = mep.load(layout.rule_set).plumbing.branches
+        runs = {r.key: r for r in layout.runs}
+        for r in layout.runs:
+            if r.system in ("soil", "waste") and r.connect_start and r.connect_start.startswith("FIT-"):
+                plan_len = _plan_length(r.points)
+                end = runs[r.connect_end]
+                if not end.key.split("-")[-2].endswith("stack"):  # into a branch: on along it to the stack
+                    plan_len += _along_to_end(end.points, r.points[-1])
+                assert plan_len <= rules.max_length_mm(r.size_mm) + 1, r.key
+                zs = [p[2] for p in r.points]
+                assert all(x >= y - 1e-6 for x, y in zip(zs, zs[1:])), r.key
+    # the kitchen sinks, too far from the ducts, drain through their exterior wall to a stack outside
+    _, _, lay, layout = sample_mep
+    for p in [p for p in lay.placed if p.item == "kitchen_sink"]:
+        drain = next(r for r in layout.runs if r.connect_start == p.key)
+        stack = next(r for r in layout.runs if r.key == drain.connect_end)
+        assert "stack outside" in stack.note and drain.points[0][2] == model.levels[drain.level] + 450
+        assert sum(math.dist(a[:2], b[:2]) for a, b in zip(drain.points, drain.points[1:])) <= 4500
 
 
 def test_every_load_is_on_a_circuit_of_its_board(sample_mep):
@@ -421,7 +513,7 @@ def test_the_users_answers_leave_nothing_asked(sample_mep, sample_answered):
         "extinguisher": 17, "data_outlet": 16, "roof_outlet": 12, "exit_sign": 9, "overhead_tank": 2,
         "underground_tank": 1, "pump": 1, "meter_board": 1}
     assert Counter((r.kind, r.system) for r in layout.runs) == {
-        ("conduit", "power"): 688, ("conduit", "lighting"): 535, ("pipe", "cold_water"): 184, ("pipe", "waste"): 133,
+        ("conduit", "power"): 688, ("conduit", "lighting"): 535, ("pipe", "cold_water"): 184, ("pipe", "waste"): 137,
         ("pipe", "hot_water"): 113, ("pipe", "soil"): 51, ("pipe", "rainwater"): 12, ("pipe", "vent"): 2}
     assert Counter(c.kind for c in layout.circuits) == {"dedicated": 130, "lighting": 52, "sockets": 49, "power": 32}
     assumed = {a.id: a for a in layout.assumptions}

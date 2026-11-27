@@ -32,8 +32,18 @@ How a branch is drawn (a "tree"): from its port (beside the stack or down-take, 
 the geyser) a main runs along the port's axis and then square to it to a header line laid parallel to the port axis,
 200 mm clear of every fixture it serves; each fixture's stub runs square into the header (moved along it when two would
 meet the header within 150 mm). So every tee is beside the middle of a straight piece of main, as create_mep_run needs.
-Drains fall at the rule's slope towards the stack; supply runs are level. A fixture farther from every stack than
-``max_length_m`` is not drawn: a nearer stack is asked.
+The main up to the header and the stubs step round the columns and beams in their way (``mepcore.detour``), and of the
+header lines tried the one clear of them is taken. Drains fall at the rule's slope towards the stack; supply runs are
+level.
+
+Where a drain may run: under its flat's wet rooms on its floor (their sunken floors: toilets, kitchens, utilities,
+balconies) and the ducts, never under the flat's other rooms (over the ceiling of the dwelling below), and no longer
+than its drain size allows (``branches.max_length_by_size_m``). A fixture the branch cannot serve so (the farthest
+first) is dropped from it and the branch laid again: a kitchen sink (``branches.outside_stack_fixtures``) then drains
+through its room's exterior wall, ``outside_outlet_mm`` up, to a stack of its own on the wall's outer face (shared by
+the sinks above it; clear from the ground to the roof of windows, doors and columns; an open vent above the roof);
+other fixtures, and a sink with no such wall, are listed as unrouted with why, and a nearer stack is asked
+(``fitout:stack_near:<room key>``).
 
 What is not drawn: the building drain and inspection chambers outside, vent branches from each trap, the municipal
 connection; they are listed in the stacks' notes.
@@ -46,11 +56,12 @@ from collections import defaultdict
 from typing import Literal
 
 from shapely.geometry import LineString, Point as SPoint, Polygon, box
+from shapely.ops import unary_union
 
 from plinth.fitout.furniture import Placed
 from plinth.fitout import siting
-from plinth.fitout.mepcore import (TEE_GAP_MM, Ctx, Duct, Host, Spot, WaterSizing, add, centre_of, dot, face_point,
-                                nearest_spot, pt, spread, sub, wall_spots)
+from plinth.fitout.mepcore import (TEE_GAP_MM, Ctx, Duct, Host, Spot, WaterSizing, add, along, centre_of, detour, dot,
+                                face_point, nearest_spot, pt, spread, sub, through, wall_spots)
 from plinth.fitout.rooms import Room
 from plinth.fitout.rules import Fixture, Size
 
@@ -60,6 +71,7 @@ HEADER_END_MM = 150.0  # and runs this far past the outermost tee
 STUB_GAP_MM = 150.0  # stubs meet a header at least this far apart
 HEADER_SHIFTS, HEADER_SHIFT_MM = 4, 300.0  # header lines tried farther out, to keep the run off doors and inside
 STAIR_ROOF_ANSWERS = ("stair_roof", "lift_roof", "mumty_roof")
+OUTSIDE_STANDOFF_MM = 50.0  # a stack on a wall's outer face stands this far off it (its clamps)
 
 
 class Fx:
@@ -95,6 +107,9 @@ class _Plumbing:
         self.cold_trees: list[tuple[Duct, str, str, list]] = []
         self.flats_by_duct: dict[str, set] = defaultdict(set)
         self.stair_roof: siting.StairRoof | None = None  # where the overhead tanks stand when answered so
+        self._zones: dict[tuple, object] = {}  # (level, flat or room) -> where its drains may run (zone())
+        self.far: list[tuple[Fx, str, str, str]] = []  # fixtures no duct's stack serves: (fixture, system, level, why)
+        self.outside: list[dict] = []  # stacks on the outer face: {key, xy, system, wall}
 
     # ---------------------------------------------------------------- run
 
@@ -244,20 +259,33 @@ class _Plumbing:
 
     # ---------------------------------------------------------------- trees
 
-    def tree(self, level: str, port: Point, axis: Literal["x", "y"], targets: list[Point], avoid: list = ()):
+    def tree(self, level: str, port: Point, axis: Literal["x", "y"], targets: list[Point], avoid: list = (),
+             obstacles: list = (), zone=None):
         """A main from ``port`` (leaving along ``axis``) to a header parallel to ``axis``, and a stub from each target
         square into the header. Returns (main points from the port, stubs from each target to beside the header,
-        tee points on the header) or None when it cannot be laid; a single target gets no header."""
+        tee points on the header) or None when it cannot be laid; a single target gets no header. The main up to the
+        header and the stubs step round ``obstacles`` (columns, beams: ``detour``); of the header lines tried, the
+        first that keeps inside ``zone`` (else the storey's footprint), then passes through the fewest obstacles,
+        then the fewest doors, then is shortest, is taken."""
         u = 0 if axis == "x" else 1
         v = 1 - u
+        ctx = self.ctx
+        allowed = zone if zone is not None else ctx.footprint(level)
 
         def P(a: float, b: float) -> Point:
             return pt((a, b) if u == 0 else (b, a))
 
+        def inside(path) -> bool:
+            if zone is None:
+                return ctx.inside(level, path)
+            return zone.covers(LineString(path)) if len(path) > 1 else zone.covers(SPoint(path[0]))
+
         if len(targets) == 1:
             t = targets[0]
-            mid = P(t[u], port[v])
-            return [port, mid, t], [], []
+            main = [port, P(t[u], port[v]), t]
+            if obstacles and through(main, obstacles):
+                main = detour(main, obstacles, allowed)
+            return main, [], []
         options = []
         vs = [t[v] for t in targets]
         cands = sorted([c for k in range(HEADER_SHIFTS) for c in (min(vs) - HEADER_CLEAR_MM - k * HEADER_SHIFT_MM,
@@ -277,22 +305,37 @@ class _Plumbing:
                 arrive.append(a)
                 side = 1 if t[v] > c else -1
                 end = P(a, c + side * TEE_GAP_MM)
-                stubs.append((t, [t, P(a, t[v]), end], P(a, c)))
+                path = [t, P(a, t[v]), end]
+                if obstacles and through(path, obstacles):
+                    path = detour(path, obstacles, allowed)
+                stubs.append((t, path, P(a, c)))
             lo, hi = min(arrive) - HEADER_END_MM, max(arrive) + HEADER_END_MM
             near, far = (lo, hi) if abs(port[u] - lo) <= abs(port[u] - hi) else (hi, lo)
             if abs(port[u] - near) < 100:
                 near += math.copysign(HEADER_END_MM, near - far)
-            main = [port, P(near, port[v]), P(near, c), P(far, c)]
+            head = [port, P(near, port[v]), P(near, c)]
+            if obstacles and through(head, obstacles):
+                head = detour(head, obstacles, allowed)
+            main = [*head, P(far, c)]
             stub_map = {id(t): s for t, s, _ in stubs}
             ordered = [stub_map[id(t)] for t in targets]
             tees = [next(p for t2, _, p in stubs if t2 is t) for t in targets]
-            inside = self.ctx.inside(level, main) and all(self.ctx.inside(level, s) for s in ordered)
+            ok = inside(main) and all(inside(s) for s in ordered)
+            hits = len(through(main, obstacles)) + sum(len(through(s, obstacles)) for s in ordered) if obstacles else 0
             crossing = sum(1 for path in [main, *ordered] for a, b in zip(path, path[1:])
                            for box_ in avoid if box_.intersects(LineString([a, b])))
-            options.append(((not inside, crossing, self.length(main)), main, ordered, tees))
+            options.append(((not ok, hits, crossing, self.length(main)), main, ordered, tees))
         options.sort(key=lambda o: o[0])
         _, main, stubs, tees = options[0]
         return main, stubs, tees
+
+    @staticmethod
+    def to_port(main: list[Point], stub: list[Point] | None, tee: Point | None) -> list[Point]:
+        """A fixture's drain in plan, from its outlet to beside the stack: its stub and the branch from its tee (or,
+        alone, the main reversed)."""
+        if stub is None:
+            return list(reversed(main))
+        return [*stub, tee, *reversed(main[:-1])]
 
     def door_boxes(self, level: str | None, below_z: float | None = None) -> list:
         """Plan boxes of a storey's doors (whose heads reach above ``below_z``): runs at that height keep off them."""
@@ -327,27 +370,94 @@ class _Plumbing:
                     ctx.unroute(f"{f.fid} drain", f"no {system} stack in a duct to drain to", start=f.key, level=level)
                 continue
             self.drain_tree(level, group, system, duct, stack, fxs)
+        self.far_fixtures()
+
+    def zone(self, level: str, room: Room):
+        """Where a drain under ``room``'s floor may run: the footprint (with their walls) of the wet rooms of its flat
+        on that floor, whose sunken floors carry the drains (rooms every class of which is a plumbing class: toilets,
+        kitchens, utilities, balconies; the fixture's own room when it is one), and the ducts. Nothing runs under a
+        flat's other rooms, so no drain crosses the ceiling of the dwelling below."""
+        key = (level, room.flat or room.key)
+        if key not in self._zones:
+            ctx = self.ctx
+            wet = set(self.rules.classes)
+            rooms = [r for r in ctx.fit_rooms if r.level == level and (r.flat or None) == (room.flat or None)
+                     and (room.flat is not None or r.key == room.key or not r.flat)
+                     and all(c in wet for c in ctx.classes(r))]
+            shapes = [Polygon(r.polygon, r.holes).buffer(max((f.thickness_mm or 0 for f in r.faces), default=0) or
+                                                         250, join_style="mitre") for r in rooms]
+            shapes += [d.poly.buffer(300, join_style="mitre") for d in ctx.ducts]
+            self._zones[key] = unary_union(shapes).buffer(5)
+        return self._zones[key]
 
     def drain_tree(self, level: str, group: str, system: str, duct: Duct, stack: str, fxs: list[Fx]) -> None:
+        """The flat's branch on ``level`` into ``stack``: laid over the fixtures it can serve (within its drain
+        size's length of the stack, under its flat's wet rooms, clear of columns and beams); a fixture that cannot be
+        served is dropped (the farthest first) and the branch laid again over the rest. The dropped fixtures get a
+        branch per room of their own into the stack (a toilet's own branch is shorter than the flat's); those still
+        not served are left to ``far_fixtures``."""
         ctx, br = self.ctx, self.rules.branches
-        sxy = duct.slot(system)
-        mean = (sum(f.drain[0] for f in fxs) / len(fxs), sum(f.drain[1] for f in fxs) / len(fxs))
-        port, n = duct.approach(sxy, mean)
-        axis = "y" if duct.long == "x" else "x"
-        far = [f for f in fxs if abs(f.drain[0] - port[0]) + abs(f.drain[1] - port[1]) > br.max_length_m * 1000]
-        for f in far:
-            ctx.ask(f"fitout:stack_near:{f.room.key}", "fitout_stack", f"Where does \"{f.room.name}\" on {level} "
-                    f"drain? Its fixtures are more than {br.max_length_m:g} m from the nearest stack (duct "
-                    f"{duct.key}); a duct or an outside stack near it is needed.", instances=[f.room.key])
-            ctx.unroute(f"{f.fid} drain", f"more than {br.max_length_m:g} m from the nearest {system} stack "
-                        "(a nearer stack is asked)", start=f.key, end=stack, level=level)
-        fxs = [f for f in fxs if f not in far]
-        if not fxs:
-            return
-        laid = self.tree(level, port, axis, [f.drain for f in fxs], self.door_boxes(self.below(level)))
-        main, stubs, tees = laid
-        slope = br.slope_pct[system] / 100
         floor = ctx.elev(level)
+        size = max(f.rule.outlet_mm for f in fxs)
+        obstacles = ctx.obstacles(floor - br.max_depth_below_floor_mm, floor, max(size, 100))
+        zone = self.zone(level, fxs[0].room)
+        kept, main, stubs, tees, dropped = self.fit_branch(level, system, duct, fxs, obstacles, zone)
+        if kept:
+            self.emit_branch(level, group, system, stack, kept, main, stubs, tees)
+        rooms: dict[str, list[Fx]] = defaultdict(list)
+        for f, _ in dropped:
+            rooms[f.room.key].append(f)
+        why = {f.key: w for f, w in dropped}
+        if kept or len(rooms) > 1:
+            dropped = []
+            for rk in sorted(rooms):
+                k2, m2, s2, t2, d2 = self.fit_branch(level, system, duct, rooms[rk], obstacles, zone)
+                if k2:
+                    self.emit_branch(level, group, system, stack, k2, m2, s2, t2)
+                dropped += [(f, why[f.key]) for f, _ in d2]
+        for f, w in dropped:
+            self.far.append((f, system, level, w))
+
+    def fit_branch(self, level: str, system: str, duct: Duct, fxs: list[Fx], obstacles, zone):
+        """The branch over as many of ``fxs`` as it can serve: (fixtures kept, main, stubs, tees, [(dropped
+        fixture, why)]), dropping the one failing farthest from the stack each time."""
+        br = self.rules.branches
+        sxy = duct.slot(system)
+        axis = "y" if duct.long == "x" else "x"
+        fxs, dropped = list(fxs), []
+        main, stubs, tees = [], [], []
+        while fxs:
+            mean = (sum(f.drain[0] for f in fxs) / len(fxs), sum(f.drain[1] for f in fxs) / len(fxs))
+            port, n = duct.approach(sxy, mean)
+            main, stubs, tees = self.tree(level, port, axis, [f.drain for f in fxs], self.door_boxes(self.below(level)),
+                                          obstacles, zone)
+            worst = None
+            for i, f in enumerate(fxs):
+                path = self.to_port(main, stubs[i] if stubs else None, tees[i] if tees else None)
+                length = self.length(path)
+                why = None
+                if length > br.max_length_mm(f.rule.outlet_mm):
+                    why = (f"its drain to the {system} stack in duct {duct.key} would run {length / 1000:.1f} m (more "
+                           f"than {br.max_length_mm(f.rule.outlet_mm) / 1000:g} m for {f.rule.outlet_mm:g} mm)")
+                elif not zone.covers(LineString(path)):
+                    why = (f"its drain to the {system} stack in duct {duct.key} would run under rooms of the floor "
+                           "other than its flat's wet rooms (over the ceiling of the dwelling below)")
+                elif through(path, obstacles):
+                    why = (f"its drain to the {system} stack in duct {duct.key} would pass through "
+                           f"{', '.join(through(path, obstacles))}")
+                if why and (worst is None or length > worst[0]):
+                    worst = (length, i, why)
+            if worst is None:
+                break
+            dropped.append((fxs.pop(worst[1]), worst[2]))
+        return fxs, main, stubs, tees, dropped
+
+    def emit_branch(self, level: str, group: str, system: str, stack: str, fxs: list[Fx], main, stubs, tees) -> None:
+        """The branch's runs: falling at the slope from its far end to beside the stack, arriving clear of the
+        other branches' tees by ``tee_spacing_mm``, each fixture's drain falling into it."""
+        ctx, br = self.ctx, self.rules.branches
+        floor = ctx.elev(level)
+        slope = br.slope_pct[system] / 100
         z_top = floor - br.depth_below_floor_mm
         stub_drop = max((slope * self.length(s) for s in stubs), default=0.0)
         rev = list(reversed(main))  # header end first, the port (beside the stack) last
@@ -401,6 +511,133 @@ class _Plumbing:
             ctx.add_run("pipe", system, level, pts, f.rule.outlet_mm, scope=f.room.key, what=f"{f.fid}_drain",
                         start=f.key, end=header.key, slope=br.slope_pct[system], room=f.room.key, flat=flat,
                         source=f.rule.source)
+
+    def far_fixtures(self) -> None:
+        """Fixtures no duct's stack can serve: a kitchen sink (``outside_stack_fixtures``) drains through its room's
+        exterior wall to a stack on its outer face; the rest, and those with no such wall, are listed as unrouted with
+        why and a nearer stack is asked (``fitout:stack_near:<room key>``)."""
+        ctx, br = self.ctx, self.rules.branches
+        for f, system, level, why in sorted(self.far, key=lambda x: (ctx.elev(x[2]), x[0].key)):
+            if f.fid in br.outside_stack_fixtures:
+                done, reason = self.outside_stack(f, system, level)
+                if done:
+                    continue
+                why = f"{why}; {reason}"
+            ctx.ask(f"fitout:stack_near:{f.room.key}", "fitout_stack", f"Where does \"{f.room.name}\" on {level} "
+                    f"drain? {why[0].upper()}{why[1:]}: a duct or an outside stack near it is needed.",
+                    instances=[f.room.key])
+            ctx.unroute(f"{f.fid} drain", f"{why} (a nearer stack is asked)", start=f.key, level=level)
+
+    def outside_stack(self, f: Fx, system: str, level: str) -> tuple[bool, str | None]:
+        """Drain ``f`` through an exterior wall of its room to a stack on the wall's outer face: one already there
+        on that face, else a new one where the face is clear (``outside_spot``), within the drain size's length,
+        nearest the outlet. The drain leaves the outlet at ``outside_outlet_mm`` above the floor and falls at the
+        slope to beside the stack. Returns (drained, why not)."""
+        ctx, br, st = self.ctx, self.rules.branches, self.rules.stacks
+        room = f.room
+        size = st.sizes_mm.get(system, 75)
+        limit = br.max_length_mm(f.rule.outlet_mm)
+        floor = ctx.elev(level)
+        obstacles = ctx.obstacles(floor, floor + br.outside_outlet_mm + 1, f.rule.outlet_mm)
+        best = None
+        faces = [fi for fi, face in enumerate(room.faces) if ctx.exterior(face)]
+        if not faces:
+            return False, "its room has no exterior wall for a stack outside"
+        for fi in faces:
+            face = room.faces[fi]
+            off = (face.thickness_mm or 250) + size / 2 + OUTSIDE_STANDOFF_MM
+            s_d = along(face, f.drain)
+            w_d = dot(sub(f.drain, face.start), face.inward)
+            spots = []
+            for o in self.outside:
+                if o["system"] != system:
+                    continue
+                s = along(face, o["xy"])
+                if abs(-dot(sub(o["xy"], face.start), face.inward) - off) < 5 and 0 <= s <= face.length_mm:
+                    spots.append((0, s, o))
+            s = size / 2 + 100
+            while s <= face.length_mm - size / 2 - 100 + 1e-6:
+                spots.append((1, s, None))
+                s += 50.0
+            for new, s, o in spots:
+                end = face_point(face, s, -(off - TEE_GAP_MM))
+                path = [f.drain, end] if abs(s - s_d) < 1 else [f.drain, face_point(face, s, w_d), end]
+                length = self.length(path)
+                if length > limit or (through(path, obstacles) and through(detour(path, obstacles), obstacles)):
+                    continue
+                key = (new, round(length), fi, s)
+                if best is not None and key >= best[0]:
+                    continue
+                q = pt(face_point(face, s, -off))
+                if o is None and not self.outside_spot(q, size, face):
+                    continue
+                best = (key, face, path, q, o)
+        if best is None:
+            return False, (f"no stretch of its room's exterior walls within {limit / 1000:g} m clear of windows, doors "
+                           "and columns on every floor for a stack outside")
+        _, face, path, q, o = best
+        if through(path, obstacles):
+            path = detour(path, obstacles)
+        if o is None:
+            bottom, top = self.stack_span()
+            through_slabs = sorted({op.level for op in ctx.ops_floor if ctx.elev(op.level) > ctx.elev(ctx.storeys[0])
+                                    and Polygon(op.points).covers(SPoint(q))}, key=ctx.elev)
+            run = ctx.add_run("pipe", system, ctx.storeys[0], [(*q, bottom), (*q, top)], size, scope=room.key,
+                              what=f"{system}_stack", source=st.source + "; " + br.source,
+                              note=f"{system} stack outside, on the outer face of wall {face.wall_key}, for the "
+                                   f"{f.rule.label.lower()}s above it too far from a duct; open vent above the roof; "
+                                   "foot to an inspection chamber (not drawn)" +
+                                   (f"; through the projection slabs at {', '.join(through_slabs)} in sleeves"
+                                    if through_slabs else ""))
+            if run is None:
+                return False, "its stack outside could not be drawn"
+            o = {"key": run.key, "xy": q, "system": system, "wall": face.wall_key}
+            self.outside.append(o)
+        slope = br.slope_pct[system] / 100
+        z0 = ctx.elev(level) + br.outside_outlet_mm
+        used = self.stack_tees[o["key"]]
+        L = self.length(path)
+        while any(abs((z0 - slope * L) - z) < br.tee_spacing_mm for z in used):
+            z0 -= 50
+        used.append(z0 - slope * L)
+        acc, pts = 0.0, []
+        for i, p in enumerate(path):
+            if i:
+                acc += math.dist(path[i - 1], p)
+            pts.append((*p, z0 - slope * acc))
+        ctx.add_run("pipe", system, level, pts, f.rule.outlet_mm, scope=room.key, what=f"{f.fid}_drain", start=f.key,
+                    end=o["key"], slope=br.slope_pct[system], room=room.key, flat=room.flat, source=br.source,
+                    note=f"through exterior wall {face.wall_key} to the stack outside, {L / 1000:.1f} m")
+        return True, None
+
+    def outside_spot(self, q: Point, size: float, face) -> bool:
+        """A stack outside at ``q`` stands clear from the ground to the roof: outside every storey's rooms (a roof
+        terrace over it, which the stack rises through as its vent, aside), off the columns, and not in front of a
+        window or door of any floor."""
+        ctx = self.ctx
+        p = SPoint(q)
+        for level in ctx.storeys:
+            if ctx.footprint(level).buffer(size / 2).covers(p):
+                over = [r for r in ctx.fit_rooms if r.level == level and r.polygon and
+                        Polygon(r.polygon).buffer(300, join_style="mitre").covers(p)]
+                if not (level == ctx.roof and over and all(ctx.outdoors(r) for r in over)):
+                    return False
+        if through([q, q], ctx.obstacles(-1e9, 1e9, size)):
+            return False
+        for r in ctx.model.rooms:
+            for o in r.openings:
+                if o.face is None or r.polygon is None:
+                    continue
+                fo = r.faces[o.face]
+                if abs(fo.direction[0] * face.direction[1] - fo.direction[1] * face.direction[0]) > 1e-3:
+                    continue
+                perp = -dot(sub(q, fo.start), fo.inward)
+                if not 0 < perp < (fo.thickness_mm or 250) + 400:
+                    continue
+                s0, s1 = sorted((along(fo, o.left), along(fo, o.right)))
+                if s0 - size / 2 - 100 < along(fo, q) < s1 + size / 2 + 100:
+                    return False
+        return True
 
     def cross_note(self, pts) -> str | None:
         doors = self.ctx.crossings(pts)
@@ -632,7 +869,8 @@ class _Plumbing:
         mean = (sum(p[0] for p in pts_t) / len(pts_t), sum(p[1] for p in pts_t) / len(pts_t))
         port, _ = d.approach(dxy, mean)
         axis = "y" if d.long == "x" else "x"
-        main, stubs, tees = self.tree(level, port, axis, pts_t, self.door_boxes(level, z))
+        obstacles = ctx.obstacles(z - 50, z + 50, sup.sizes_mm.get("branch", 25))
+        main, stubs, tees = self.tree(level, port, axis, pts_t, self.door_boxes(level, z), obstacles)
         flat = rooms[0].flat
         if len(items) == 1:
             pts = [(*p, z) for p in main] + [(*pts_t[0], ends[0])]
@@ -659,8 +897,9 @@ class _Plumbing:
             hot = [f for f in self.fixtures if f.room.key == room_key and f.rule.hot]
             axis = "x" if abs(front[0]) >= abs(front[1]) else "y"
             port = pt(inlet)
+            obstacles = ctx.obstacles(z - 50, z + 50, sup.sizes_mm.get("hot", 20))
             main, stubs, tees = self.tree(room.level, port, axis, [f.supply for f in hot],
-                                          self.door_boxes(room.level, z))
+                                          self.door_boxes(room.level, z), obstacles)
             if len(hot) == 1:
                 pts = [(*p, z) for p in main] + [(*hot[0].supply, hot[0].supply_z)]
                 ctx.add_run("pipe", "hot_water", room.level, pts, sup.sizes_mm.get("fixture", 15), scope=room.key,
@@ -856,6 +1095,8 @@ class _Plumbing:
                     continue
                 if any(tk.buffer(300).covers(SPoint(o)) for tk in tanks):
                     continue
+                if through([q, q], ctx.obstacles(ground, roof, size)):
+                    continue  # down past a column standing out of the wall
                 spots.append(sp)
             chosen = spread(spots, n, [centre_of(t)], min_gap=2000)
             for sp in chosen:

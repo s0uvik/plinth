@@ -310,6 +310,16 @@ class Branches(Sourced):
     max_depth_below_floor_mm: float = Field(gt=0)  # deepest a branch may arrive at its stack
     tee_spacing_mm: float = Field(gt=0)  # branches into one stack are this far apart vertically
     max_length_m: float = Field(gt=0)  # longer runs to the nearest stack are not drawn: a stack is asked
+    # the longest horizontal run from a fixture's outlet to its stack, by the fixture's drain size (mm -> m); a size
+    # not listed takes max_length_m
+    max_length_by_size_m: dict[float, float] = {}
+    # fixtures that may drain through their room's exterior wall to a stack of their own on its outer face when they
+    # are too far from a duct's stack (a kitchen sink); others are asked
+    outside_stack_fixtures: list[str] = []
+    outside_outlet_mm: float = Field(default=450, ge=0)  # such a drain leaves through the wall this high
+
+    def max_length_mm(self, size_mm: float) -> float:
+        return 1000 * self.max_length_by_size_m.get(float(size_mm), self.max_length_m)
 
 
 class Supply(Sourced):
