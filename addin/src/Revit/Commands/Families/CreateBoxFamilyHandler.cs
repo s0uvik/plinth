@@ -13,6 +13,9 @@
 // on one face are spread along it), hosted by that face so it follows the face when the type is resized; the flex check
 // checks it. Validated Revit-free (BoxFamily.ConnectorsError). A family of that name already in the project is used as it
 // is: its connectors are neither compared with those asked nor changed (that would need opening the family).
+// Power connectors (2026-11-27, after a Revit API review): a PowerCircuit connector asked (or no system_type) is made as
+// PowerBalanced, since the family editor offers only balanced or unbalanced power connectors and a PowerCircuit takes
+// both; the result reports the type made. voltage_v sets a power connector's voltage; without it Revit's default stays.
 
 using System;
 using System.Collections.Generic;
@@ -40,12 +43,15 @@ namespace Plinth.Revit.Commands.Families
             + "category set. A family named family_name already in the project is never overwritten: action already_there with its "
             + "family_id and type (created_ids empty). action created: family_id, type_id and created_ids (the family, its type and "
             + "anything the load added, e.g. its material) so a run can remove them. dry_run decides and changes nothing. Call directly, "
-            + "not inside batch_execute. connectors (optional, at most 12): {domain: electrical, system_type: PowerCircuit (default; "
-            + "or Data, Communication, Controls, FireAlarm...), face} or {domain: pipe, classification: DomesticColdWater, "
-            + "DomesticHotWater, Sanitary, Vent, FireProtectWet, OtherPipe..., diameter_mm, face}; face is back (+Y, default), front "
-            + "(-Y), left (-X), right (+X), top or bottom. Each sits at the centre of its face (several on one face are spread evenly "
-            + "along it) and follows the face when the type is resized; an electrical one has 1 pole and Revit's default voltage. "
-            + "The result lists connectors as created: domain, system_type or classification, face, position_mm about the origin, "
+            + "not inside batch_execute. connectors (optional, at most 12): {domain: electrical, system_type, voltage_v, face} or "
+            + "{domain: pipe, classification: DomesticColdWater, DomesticHotWater, Sanitary, Vent, FireProtectWet, OtherPipe..., "
+            + "diameter_mm, face}; face is back (+Y, default), front (-Y), left (-X), right (+X), top or bottom. An electrical "
+            + "system_type is PowerBalanced (default), PowerUnBalanced, PowerCircuit (made as PowerBalanced: Revit families have "
+            + "only balanced or unbalanced power connectors, and both join a PowerCircuit), Data, Communication, Controls, FireAlarm, "
+            + "NurseCall, Security or Telephone; voltage_v (power connectors only, above 0 and at most 1000) sets its voltage, "
+            + "otherwise Revit's default voltage is left. Each sits at the centre of its face (several on one face are spread evenly "
+            + "along it) and stays on the face when the type is resized; an electrical one has 1 pole. "
+            + "The result lists connectors as created: domain, system_type (the type made) or classification, face, position_mm about the origin, "
             + "diameter_mm (pipe), poles and voltage_v (electrical). An already_there family is used as it is: its connectors are not "
             + "checked against those asked.";
         public string ParametersSchema => @"{""type"":""object"",""properties"":{
@@ -57,7 +63,8 @@ namespace Plinth.Revit.Commands.Families
             ""template_path"":{""type"":""string"",""description"":""an .rft to use instead of the installed metric template""},
             ""connectors"":{""type"":""array"",""items"":{""type"":""object"",""properties"":{
                 ""domain"":{""type"":""string"",""enum"":[""electrical"",""pipe""]},
-                ""system_type"":{""type"":""string"",""description"":""electrical: an ElectricalSystemType, default PowerCircuit""},
+                ""system_type"":{""type"":""string"",""description"":""electrical: PowerBalanced (default), PowerUnBalanced, PowerCircuit (made as PowerBalanced), Data, Communication, Controls, FireAlarm, NurseCall, Security or Telephone""},
+                ""voltage_v"":{""type"":""number"",""description"":""electrical, power only: the connector's voltage in volts, above 0 and at most 1000; default Revit's""},
                 ""classification"":{""type"":""string"",""description"":""pipe: a PipeSystemType, e.g. DomesticColdWater, Sanitary""},
                 ""diameter_mm"":{""type"":""number"",""description"":""pipe: above 0, at most 600""},
                 ""face"":{""type"":""string"",""enum"":[""back"",""front"",""left"",""right"",""top"",""bottom""],""description"":""default back""}}},
@@ -202,6 +209,7 @@ namespace Plinth.Revit.Commands.Families
                     ["position_mm"] = new JArray(positions[i].Select(v => Math.Round(v, 1)))
                 };
                 if (c.Domain == BoxConnector.Pipe) item["diameter_mm"] = c.DiameterMm;
+                else item["voltage_v"] = c.VoltageV; // null: Revit's default, known once made
                 return item;
             }));
         }

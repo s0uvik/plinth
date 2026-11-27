@@ -154,6 +154,25 @@
   ul.plain li { padding: var(--s2) 0; border-top: 1px solid var(--grey-100); }
   ul.plain li:first-child { border-top: 0; }
   .accent-top { border-top: 3px solid var(--blue-600); }
+
+  /* fit-out */
+  .fitout-wrap { padding-bottom: var(--s7); }
+  .fit-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--s3) var(--s4);
+              margin-top: var(--s4); align-items: start; }
+  .fit-form select, #fitout-run { width: 100%; font: inherit; color: inherit; padding: var(--s2) var(--s3);
+              border: 1px solid var(--grey-200); border-radius: var(--radius); background: var(--grey-50); }
+  .checks { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s4); border: 0; padding: 0; margin: var(--s4) 0 0; }
+  .checks legend { font-weight: 600; padding: 0; margin-bottom: var(--s1); }
+  .checks label, label.inline { display: inline-flex; gap: var(--s2); align-items: center; font-weight: 400; margin: 0; }
+  .fit-counts { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--s3); margin-top: var(--s3); }
+  .fit-card { border: 1px solid var(--grey-200); border-radius: var(--radius); padding: var(--s3) var(--s4); font-size: var(--t-sm); }
+  .fit-card strong { display: block; margin-bottom: var(--s1); }
+  .fit-card div { color: var(--grey-600); }
+  details.fit { border-top: 1px solid var(--grey-100); padding: var(--s2) 0; font-size: var(--t-sm); }
+  details.fit summary { cursor: pointer; font-weight: 600; }
+  details.fit ul { margin: var(--s2) 0 0; padding-left: var(--s4); }
+  .fit-run { padding: var(--s3) 0; border-top: 1px solid var(--grey-100); }
+  .fit-run:first-child { border-top: 0; }
 </style>
 </head>
 <body>
@@ -254,6 +273,55 @@
   </aside>
 </main>
 
+<div class="wrap fitout-wrap hidden" id="fitout">
+  <section class="accent-top">
+    <h2>Fit-out: furniture and MEP</h2>
+    <p class="hint" style="margin-top: 0">Plinth lays out furniture and the MEP (plumbing and drainage, electrical, HVAC, fire) on a
+       built model and builds them as their own run, removable on its own. Planning reads the open document (its family
+       types and their sizes) and builds nothing; only <strong>Build fit-out</strong> builds.</p>
+    <div class="note warn"><strong>The MEP is an indicative coordination model.</strong>
+      <span id="fitout-notice">It comes from rules, not from an engineer's design: an MEP engineer must design and check the real systems.</span></div>
+    <div class="fit-form">
+      <div class="field"><label for="fitout-run">Building run</label><select id="fitout-run"></select></div>
+      <div class="field"><label for="fitout-title">Revit document</label><input type="text" id="fitout-title"
+           placeholder="The document the building was built in"></div>
+      <div class="field"><label for="fitout-furniture-run">Furniture already built in run <span class="opt">(optional)</span></label>
+        <select id="fitout-furniture-run"></select>
+        <p class="hint">Its furniture is joined by the MEP, never placed again; its answers are the defaults.</p></div>
+    </div>
+    <fieldset class="checks" id="fitout-systems">
+      <legend>Systems</legend>
+      <label><input type="checkbox" value="furniture" checked> Furniture</label>
+      <label><input type="checkbox" value="plumbing" checked> Plumbing &amp; drainage</label>
+      <label><input type="checkbox" value="electrical" checked> Electrical</label>
+      <label><input type="checkbox" value="hvac" checked> HVAC</label>
+      <label><input type="checkbox" value="fire" checked> Fire</label>
+    </fieldset>
+    <div class="fit-form">
+      <div class="field"><label for="fitout-flat">Pilot: one flat <span class="opt">(optional)</span></label>
+        <input type="text" id="fitout-flat" placeholder="e.g. U1"></div>
+      <div class="field"><label for="fitout-level">Pilot: on level</label>
+        <input type="text" id="fitout-level" placeholder="e.g. Floor 1"></div>
+      <div class="field" id="fitout-exclude"></div>
+    </div>
+    <p class="hint">Build furniture first, then the MEP on top of it (choose it above). Pilot one flat first to check
+       placement in Revit, then plan the rest leaving out what the pilot built.</p>
+    <div class="actions"><button class="secondary" id="fitout-plan">Plan fit-out</button>
+      <span class="muted small">Reads the document, builds nothing. A whole building can take a few minutes.</span></div>
+    <div id="fitout-plan-notice"></div>
+    <div id="fitout-report"></div>
+    <div id="fitout-questions"></div>
+    <div class="actions">
+      <label class="inline small"><input type="checkbox" id="fitout-partial"> Build what is ready (partial): the items
+        waiting on an open question are left for a later run</label></div>
+    <div class="actions"><button class="primary" id="fitout-build" disabled>Build fit-out</button>
+      <span class="muted small" id="fitout-build-why"></span></div>
+    <div id="fitout-build-notice"></div>
+    <h3>Fit-out runs</h3>
+    <div id="fitout-runs"><p class="empty small">None yet.</p></div>
+  </section>
+</div>
+
 <script>
 const $ = (id) => document.getElementById(id);
 const SEVERITY = {blocking: "Blocking", check: "To check", info: "For information"};
@@ -262,6 +330,7 @@ const ROLE = {floor_plan: "Floor plan", roof_plan: "Roof plan", site_plan: "Site
 const STAGES = [["reading", "Reading drawings"], ["recognising", "Recognising"], ["ready", "Ready for review"]];
 let importId = null, status = null, review = null, poll = null, runId = null, runPoll = null;
 let sheetN = null, elements = {}, vb = null, baseVb = null, pendingEvidence = null, loadSeq = 0;
+let fitout = null, fitPoll = null, fitRunShown = null;  // the fit-out state (GET /imports/{id}/fitout)
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -327,6 +396,10 @@ function openImport(id) {
   $("viewer").querySelector("svg")?.remove();
   $("viewer-empty").classList.remove("hidden");
   $("result-body").replaceChildren();
+  fitout = null; fitRunShown = null; clearInterval(fitPoll); fitPoll = null;
+  $("fitout").classList.add("hidden");
+  for (const id of ["fitout-report", "fitout-plan-notice", "fitout-build-notice"]) $(id).replaceChildren();
+  $("fitout-title").value = "";
   clearInterval(poll);
   poll = setInterval(refreshStatus, 1000);
   refreshStatus();
@@ -342,7 +415,7 @@ async function refreshStatus() {
   if (s.sheets.length) {
     $("review").classList.remove("hidden");
     showSheets(s);
-    if (first) await refreshReview();
+    if (first) { await refreshReview(); refreshFitout(); }
     if (first && runId === null && (s.runs || []).length) {  // an earlier import: show its latest build
       runId = s.runs[s.runs.length - 1];
       refreshRun();
@@ -613,6 +686,7 @@ function choicesFor(q) {
   const opts = q.options || [], raw = q.key?.options_raw, t = q.answer_type, id = q.id;
   const plain = opts.map(o => ({label: o, value: o}));
   const mapped = (test, shape) => opts.map(o => ({label: o, value: test(o) ? shape() : o}));
+  if (q.key?.stage === "fitout") return fitoutChoices(q);
   if (Array.isArray(raw) && raw.length && raw.length === opts.length)  // a plain option goes as its words, as before
     return opts.map((o, i) => ({label: o, value: isShape(raw[i]) ? raw[i] : o}));
   if (t === "opening_host")
@@ -639,6 +713,24 @@ function choicesFor(q) {
   return plain;
 }
 
+// A fit-out question's options: a family type ({"family", "type", "source"}, sent as JSON text by the service) is
+// offered by its name and sent as the object; family questions can also be answered with a plain box Plinth creates
+// (with the connectors the MEP joins to it), which is the user's OK to create that family.
+function fitoutChoices(q) {
+  const out = (q.options || []).map(o => {
+    let value = o;
+    try { const parsed = JSON.parse(o); if (isShape(parsed)) value = parsed; } catch (e) { /* words, e.g. "skip" */ }
+    const label = isShape(value) && value.family ? `${value.family}: ${value.type}${value.source ? ` (${value.source})` : ""}`
+                : o === "skip" ? "Leave it out (skip)" : o;
+    return {label, value};
+  });
+  if (q.topic === "fitout_families") out.push({label: "Create a plain box family", value: {create: "box"}});
+  return out;
+}
+const FITOUT_HINT = 'Type words or JSON. A family type: {"family": "…", "type": "…"} · leave the item out: skip · ' +
+  'a plain box Plinth creates: {"create": "box"} (optional "size_mm": [w, d, h]) · AC units in TR: [1.5, 1.5] · ' +
+  'a place: {"near": "stair"}';
+
 const isShape = (v) => v !== null && typeof v === "object";
 const isFixed = (k, v) => !ENUMS[k] && (typeof v === "boolean" || (typeof v === "string" && v !== ""));
 // A shape with nothing to fill in ({"skip": true}) is sent on click like a plain option.
@@ -649,7 +741,8 @@ const sameShape = (shape, a) => isShape(a) && Array.isArray(shape) === Array.isA
 function answerControls(q, current) {
   const box = el("div");
   const choices = choicesFor(q);
-  const free = ["text", "choice_or_text"].includes(q.answer_type) || !choices.length;
+  const fit = q.key?.stage === "fitout";  // answered in words or JSON (the service reads JSON text as JSON)
+  const free = ["text", "choice_or_text"].includes(q.answer_type) || !choices.length || fit;
   const formBox = el("div"), errors = el("div");  // a failed answer is shown here, by the question
   const buttons = [];
   let form = null;  // the open form: {node, read}
@@ -671,8 +764,9 @@ function answerControls(q, current) {
     box.append(opts);
   }
   if (free) {
-    const input = el("input", {type: "text", placeholder: "Your answer"});
+    const input = el("input", {type: "text", placeholder: fit ? "Your answer, in words or JSON" : "Your answer"});
     if (typeof current === "string") input.value = current;
+    else if (fit && current !== undefined && current !== null) input.value = JSON.stringify(current);
     const save = el("button", {class: "secondary small"}, "Save");
     save.onclick = () => busy(save, () => {
       if (!input.value.trim()) throw new Error("Type an answer first.");
@@ -680,6 +774,7 @@ function answerControls(q, current) {
     }, errors);
     input.onkeydown = (e) => { if (e.key === "Enter") save.click(); };
     box.append(el("div", {class: "q-input"}, input, save));
+    if (fit) box.append(el("p", {class: "hint"}, FITOUT_HINT));
   }
   box.append(formBox);
   // An answer being changed opens the form it fits, filled in; a question with nothing but a form opens it at once.
@@ -791,6 +886,7 @@ function answerText(a) {
 
 async function answer(questionId, value) {
   showReview(await call(`/imports/${importId}/answers`, {question_id: questionId, answer: value}));
+  if (fitout) refreshFitout();  // the plan shows what was answered since it was made
 }
 
 $("save-location").onclick = () => busy($("save-location"), async () => {
@@ -834,6 +930,7 @@ function updateButtons() {
   $("assume-why").textContent = !located ? "Set the project location first." : !open ? "No open questions." : "Answers the open questions from the location's rules; every one is listed back.";
   $("approve").disabled = !ready || !review?.readiness?.ready || review?.approved;
   $("build").disabled = !ready || !review?.approved;
+  if (fitout) updateFitoutButtons();
 }
 
 $("approve").onclick = () => busy($("approve"), async () => {
@@ -879,7 +976,10 @@ async function refreshRun() {
     if (q.searched && q.searched.length) box.append(el("div", {class: "muted"}, "Searched: " + q.searched.join("; ")));
     parts.push(box);
   }
-  if (["built", "built_with_issues"].includes(run.status)) parts.push(...afterBuild(run));
+  if (["built", "built_with_issues"].includes(run.status)) {
+    parts.push(...afterBuild(run));
+    if ($("fitout").classList.contains("hidden")) refreshFitout();  // a built model can be fitted out
+  }
   if (run.created && Object.keys(run.created).length && !["removed", "removing", "building", "queued"].includes(run.status)) {
     const remove = el("button", {class: "secondary small"}, "Remove generated model");
     remove.onclick = () => busy(remove, async () => { await call(`/runs/${runId}/remove`, {}); refreshRun(); });
@@ -966,12 +1066,239 @@ function showEstimate(data) {
 }
 
 function renderStageQuestions() {
-  for (const stage of ["drawings", "estimate"]) {
+  const what = {drawings: "the drawing set is complete", estimate: "the estimate is complete",
+                fitout: "the fit-out is planned again (they are in the question list too; plan again after answering)"};
+  for (const stage of ["drawings", "estimate", "fitout"]) {
     const box = $(`${stage}-questions`);
     if (!box) continue;
     const qs = allQuestions().filter(q => q.key?.stage === stage && !q.answered_by);
-    box.replaceChildren(...(qs.length ? [el("p", {class: "small muted"}, `To answer before the ${stage === "drawings" ? "drawing set" : "estimate"} is complete:`), ...qs.map(questionView)] : []));
+    box.replaceChildren(...(qs.length ? [el("h3", {}, stage === "fitout" ? `Fit-out questions (${qs.length})` : "Questions"),
+      el("p", {class: "small muted"}, `To answer before ${what[stage]}:`), ...qs.map(questionView)] : []));
   }
+}
+
+// ---- fit-out (Step 10): plan on a built run (reads the document, builds nothing), review, build as its own run
+
+const FIT_LABEL = {furniture: "Furniture", plumbing: "Plumbing & drainage", electrical: "Electrical", hvac: "HVAC", fire: "Fire"};
+const RUN_LABEL = {queued: "Waiting for Revit", building: "Building", built: "Built", built_with_issues: "Built, with issues",
+                   failed: "Failed", needs_input: "Needs your answer", removing: "Removing", removed: "Removed",
+                   remove_failed: "Removal failed", remove_incomplete: "Partly removed"};
+const ACTIVE = ["queued", "building", "removing"];
+
+async function refreshFitout() {
+  if (!importId) return;
+  let data;
+  try { data = await call(`/imports/${importId}/fitout`); } catch (e) { return; }
+  fitout = data;
+  $("fitout").classList.toggle("hidden", !data.building_runs.length);
+  if (!data.building_runs.length) return;
+  if (data.notice) $("fitout-notice").textContent = data.notice;
+  const select = $("fitout-run"), keep = select.value;
+  select.replaceChildren(...data.building_runs.map(b =>
+    el("option", {value: b.run_id}, `${b.run_id} · ${b.document_title || "?"} · ${RUN_LABEL[b.status] || b.status}`)));
+  select.value = data.building_runs.some(b => b.run_id === keep) ? keep : (data.plan?.run_id || data.building_runs.at(-1).run_id);
+  fillFitoutForm();
+  showFitoutPlan(data.plan);
+  showFitoutRuns(data.runs);
+  const active = data.runs.some(r => ACTIVE.includes(r.status));
+  if (active && !fitPoll) fitPoll = setInterval(refreshFitout, 1500);
+  if (!active && fitPoll) { clearInterval(fitPoll); fitPoll = null; }
+  updateFitoutButtons();
+}
+$("fitout-run").onchange = () => { fitRunShown = null; fillFitoutForm(); updateFitoutButtons(); };
+$("fitout-partial").onchange = () => updateFitoutButtons();
+
+// The form follows the building run chosen: its document's title, the furniture runs and pilots built on it.
+function fillFitoutForm() {
+  const runId_ = $("fitout-run").value;
+  const building = fitout.building_runs.find(b => b.run_id === runId_);
+  if (fitRunShown !== runId_) {
+    fitRunShown = runId_;
+    $("fitout-title").value = building?.document_title || $("title").value.trim();
+  }
+  const on = fitout.runs.filter(r => r.building_run === runId_ && ["built", "built_with_issues"].includes(r.status));
+  const fsel = $("fitout-furniture-run"), fkeep = fsel.value;
+  const furnished = on.filter(r => r.systems.includes("furniture"));
+  fsel.replaceChildren(el("option", {value: ""}, furnished.length ? "None: furniture in this plan" : "None built yet"),
+    ...furnished.map(r => el("option", {value: r.run_id}, `${r.run_id}${r.flat ? ` (pilot ${r.flat}${r.level ? ` on ${r.level}` : ""})` : ""}`)));
+  fsel.value = furnished.some(r => r.run_id === fkeep) ? fkeep : "";
+  const pilots = on.filter(r => r.flat);
+  const checked = new Set([...$("fitout-exclude").querySelectorAll("input:checked")].map(i => i.value));
+  $("fitout-exclude").replaceChildren(...(pilots.length ? [el("label", {}, "Leave out what pilots built"),
+    ...pilots.map(r => {
+      const box = el("input", {type: "checkbox", value: r.run_id});
+      box.checked = checked.has(r.run_id);
+      return el("label", {class: "inline small"}, box, `${r.run_id} (flat ${r.flat}${r.level ? ` on ${r.level}` : ""}): joined, not built again`);
+    })] : []));
+}
+
+function fitoutRequest() {
+  const systems = [...$("fitout-systems").querySelectorAll("input:checked")].map(i => i.value);
+  if (!systems.length) throw new Error("Tick at least one system to plan.");
+  const title = $("fitout-title").value.trim();
+  if (!title) throw new Error("Enter the title of the Revit document the building was built in.");
+  const flat = $("fitout-flat").value.trim(), level = $("fitout-level").value.trim();
+  if (level && !flat) throw new Error("A level narrows a pilot: give the flat too.");
+  return {run_id: $("fitout-run").value, document_title: title, systems,
+          furniture_run: $("fitout-furniture-run").value || null, flat: flat || null, level: level || null,
+          exclude_runs: [...$("fitout-exclude").querySelectorAll("input:checked")].map(i => i.value)};
+}
+
+$("fitout-plan").onclick = () => busy($("fitout-plan"), async () => {
+  const body = fitoutRequest();
+  try {
+    await call(`/imports/${importId}/fitout/plan`, body);
+  } catch (e) {
+    await refreshFitout();  // a failed plan leaves none to build
+    if (e.detail?.drift) $("fitout-report").replaceChildren(driftView(e.detail.drift));
+    throw e;
+  } finally {
+    await refreshReview();  // its questions are import questions now
+  }
+  await refreshFitout();
+  $("fitout-report").scrollIntoView({block: "start", behavior: "smooth"});
+}, $("fitout-plan-notice"));
+
+function driftView(d) {
+  return el("div", {class: "note error small"},
+    el("strong", {}, `The furniture moved: what is laid out now is not what run ${d.furniture_run} built.`),
+    el("ul", {}, ...d.mismatches.slice(0, 30).map(m => el("li", {}, m))),
+    d.mismatches.length > 30 ? el("div", {}, `and ${d.mismatches.length - 30} more`) : "",
+    el("div", {style: "margin-top: var(--s2)"}, d.what_to_do));
+}
+
+function fitDetails(title, lines) {
+  if (!lines.length) return "";
+  return el("details", {class: "fit"}, el("summary", {}, `${title} (${lines.length})`),
+            el("ul", {}, ...lines.slice(0, 300).map(l => el("li", {}, l))),
+            lines.length > 300 ? el("div", {class: "muted"}, `and ${lines.length - 300} more`) : "");
+}
+const counted = (o) => Object.entries(o || {}).map(([why, n]) => `${n} × ${why}`);
+const listed = (o) => Object.entries(o || {}).map(([k, n]) => `${k} ${n}`).join(", ");
+
+function showFitoutPlan(p) {
+  const box = $("fitout-report");
+  if (!p) { box.replaceChildren(el("p", {class: "empty small"}, "Not planned yet.")); return; }
+  const r = p.report, mep = r.mep;
+  const when = p.planned_utc.replace("T", " ").replace("+00:00", " UTC");
+  const pilot = r.flat ? ` · pilot: flat ${r.flat}${r.level ? ` on ${r.level}` : ""}` : "";
+  const parts = [el("h3", {}, "The plan"),
+    el("p", {class: "small", style: "margin: 0"}, `Planned ${when} on run ${p.run_id} in "${p.document_title}" with the ` +
+       `${p.rules} rules (${p.rules_from === "given" ? "as given" : `from ${p.rules_from}: an assumption`})` +
+       ` · ${r.systems.map(s => FIT_LABEL[s] || s).join(", ")}${pilot}` +
+       (r.furniture_run ? ` · on the furniture of run ${r.furniture_run}` : ""))];
+  const open = r.questions.length;
+  if (p.built_as) parts.push(el("div", {class: "note ok small"}, `Built as run ${p.built_as} (below). Plan again for what is not built yet.`));
+  else if (!p.buildable) parts.push(el("div", {class: "note warn small"}, "Nothing to build: see what was left out and why."));
+  else if (p.ready) parts.push(el("div", {class: "note ok small"}, `Ready to build: ${p.ops} ops (${listed(r.ops)}).`));
+  else {
+    const jump = el("button", {class: "link"}, "Answer them");
+    jump.onclick = () => $("fitout-questions").scrollIntoView({block: "start", behavior: "smooth"});
+    parts.push(el("div", {class: "note warn small"}, `${open} question${open === 1 ? "" : "s"} open: the items they ask about wait. `,
+      jump, el("div", {}, `${p.ops} ops planned (${listed(r.ops)}); build them now with "build what is ready", or answer and plan again.`)));
+  }
+  if (p.stale.length)
+    parts.push(el("div", {class: "note warn small"}, `Answered since this plan: ${p.stale.join(", ")}. Plan again to use the answers; the build builds the plan as reviewed.`));
+  if (r.notice) parts.push(el("div", {class: "note warn small"}, el("strong", {}, "MEP notice: "), r.notice));
+
+  const cards = [];
+  const items = Object.entries(r.items || {});
+  if (items.length) cards.push(el("div", {class: "fit-card"}, el("strong", {}, "Furniture"),
+    el("div", {}, `${items.reduce((n, [, x]) => n + x.laid_out, 0)} laid out, ${items.reduce((n, [, x]) => n + x.in_plan, 0)} in the plan` +
+       (items.some(([, x]) => x.built_before) ? `, ${items.reduce((n, [, x]) => n + x.built_before, 0)} built before` : "")),
+    el("div", {}, items.map(([k, x]) => `${k} ${x.in_plan}`).join(", "))));
+  for (const [system, c] of Object.entries(mep?.counts || {}))
+    cards.push(el("div", {class: "fit-card"}, el("strong", {}, FIT_LABEL[system] || system),
+      el("div", {}, `${c.laid_out} laid out, ${c.in_plan} in the plan`),
+      Object.keys(c.devices).length ? el("div", {}, `Devices: ${listed(c.devices)}`) : "",
+      Object.keys(c.runs).length ? el("div", {}, `Runs: ${listed(c.runs)}`) : "",
+      c.circuits ? el("div", {}, `Circuits: ${listed(c.circuits)}`) : ""));
+  if (mep?.water) cards.push(el("div", {class: "fit-card"}, el("strong", {}, "Water"),
+    el("div", {}, `${mep.water.persons} persons, ${mep.water.demand_lpd} L/day; underground ${mep.water.underground_l} L, ` +
+       `overhead ${Object.values(mep.water.overhead_l || {}).reduce((a, b) => a + b, 0)} L`)));
+  if (cards.length) parts.push(el("div", {class: "fit-counts"}, ...cards));
+  if (r.furniture_check) parts.push(el("p", {class: "small muted"}, `Furniture run ${r.furniture_run}: ${r.furniture_check.compared} items as built` +
+    (r.furniture_check.built_not_planned_now.length ? `; ${r.furniture_check.built_not_planned_now.length} built but not planned now (runs to them are left out)` : "")));
+
+  const notPlaced = items.flatMap(([k, x]) => Object.entries(x.not_placed).map(([why, n]) => `${k}: ${n} × ${why}`));
+  parts.push(
+    fitDetails("Assumptions (check each)", r.assumptions.map(a => `${a.id}: ${a.text}`)),
+    fitDetails("Left out of the plan, with why", counted(r.left_out_of_plan)),
+    fitDetails(`Not built now${r.circuits_trimmed ? ` (${r.circuits_trimmed} circuits without some devices)` : ""}`, counted(r.dropped)),
+    fitDetails("Furniture not placed", notPlaced),
+    fitDetails("MEP not placed", (mep?.unplaced || []).map(u => `${u.what}: ${u.reason}`)),
+    fitDetails("MEP not routed", (mep?.unrouted || []).map(u => `${u.what}: ${u.reason}`)),
+    fitDetails("Audit problems", (mep?.problems || []).map(String)),
+    fitDetails("Rooms not furnished", (r.skipped_rooms || []).map(s => `${s.room} ${s.name}: ${s.reason}`)),
+    fitDetails("Questions about what is not built now", (r.questions_not_needed_now || []).map(q => `${q.id}: ${q.text}`)),
+    fitDetails("Family types used", counted(r.family_types)));
+  box.replaceChildren(...parts);
+}
+
+function updateFitoutButtons() {
+  const p = fitout?.plan, why = $("fitout-build-why");
+  const busyRun = fitout?.runs.some(r => ACTIVE.includes(r.status));
+  let reason = "";
+  if (!p) reason = "Plan the fit-out first.";
+  else if (p.run_id !== $("fitout-run").value) reason = `The latest plan is for run ${p.run_id}; plan this run first.`;
+  else if (!p.buildable) reason = "The plan has nothing to build.";
+  else if (p.built_as) reason = `This plan was built as run ${p.built_as}.`;
+  else if (!p.ready && !$("fitout-partial").checked) reason = "Questions are open: answer them and plan again, or build what is ready.";
+  else if (busyRun) reason = "A fit-out run is in progress.";
+  $("fitout-build").disabled = !!reason;
+  why.textContent = reason || `Builds the ${p.ops} planned ops in "${p.document_title}" as one run you can remove on its own.`;
+}
+
+$("fitout-build").onclick = () => busy($("fitout-build"), async () => {
+  const p = fitout.plan;
+  await call(`/imports/${importId}/fitout/build`, {run_id: p.run_id, document_title: $("fitout-title").value.trim(),
+                                                  partial: $("fitout-partial").checked});
+  await refreshFitout();
+}, $("fitout-build-notice"));
+
+function showFitoutRuns(runs) {
+  const box = $("fitout-runs");
+  if (!runs.length) { box.replaceChildren(el("p", {class: "empty small"}, "None yet.")); return; }
+  box.replaceChildren(...[...runs].reverse().map(fitoutRunView));
+}
+
+// A run's issues are joins and circuits Revit refused (families without connectors): built, not wholly. Expected on
+// real families, they are listed, never failures.
+function fitoutRunView(r) {
+  const node = el("div", {class: "fit-run"});
+  const what = [r.systems.map(s => FIT_LABEL[s] || s).join(", "), r.flat ? `pilot ${r.flat}${r.level ? ` on ${r.level}` : ""}` : null,
+                r.furniture_run ? `on the furniture of ${r.furniture_run}` : null, r.partial ? "partial" : null].filter(Boolean).join(" · ");
+  node.append(el("div", {}, el("strong", {}, `${RUN_LABEL[r.status] || r.status}`), ` · run ${r.run_id}`),
+              el("div", {class: "small muted"}, `${what} · on run ${r.building_run} · ${r.elements} elements` +
+                 (r.readback_ok === false ? " · read-back differs" : "")));
+  if (r.batches && ACTIVE.includes(r.status)) node.append(el("div", {class: "bar"},
+    Object.assign(el("div"), {style: `width:${r.batches.total ? 100 * r.batches.succeeded / r.batches.total : 0}%`})));
+  if (r.error) node.append(el("div", {class: "note error small"}, r.hint ? el("strong", {}, r.hint) : "",
+    el("div", {}, r.error + (r.failed_key ? ` (at ${r.failed_key})` : ""))));
+  if (r.question) node.append(el("div", {class: "note warn small"}, el("strong", {}, r.question.text),
+    r.question.missing ? el("div", {}, r.question.missing) : ""));
+  if (r.issues.length) {
+    const byKind = {};
+    for (const i of r.issues) { const k = `${i.what}: ${String(i.reason).split(":")[0]}`; byKind[k] = (byKind[k] || 0) + 1; }
+    node.append(el("div", {class: "note warn small"},
+      el("strong", {}, `${r.issues.length} issue${r.issues.length === 1 ? "" : "s"}: built, but not wholly.`),
+      el("div", {}, "Joins and circuits Revit refused, mostly families without a connector of that kind. Expected on " +
+                    "real families, not failures; the model is built. Every one is in the run record."),
+      el("ul", {}, ...Object.entries(byKind).sort((a, b) => b[1] - a[1]).map(([k, n]) => el("li", {}, `${n} × ${k}`)))),
+      fitDetails("Each issue", r.issues.map(i => `${i.key} ${i.what}: ${i.reason}`)));
+  }
+  const notice = el("div");
+  if (r.elements && !["removed", ...ACTIVE].includes(r.status)) {
+    const remove = el("button", {class: "secondary small"}, "Remove");
+    remove.onclick = () => {
+      if (!confirm(`Remove fit-out run ${r.run_id}? Plinth deletes the ${r.elements} elements this run created (nothing else). ` +
+                   "Remove runs built on top of it first.")) return;
+      busy(remove, async () => { await call(`/runs/${r.run_id}/remove`, {}); await refreshFitout(); }, notice);
+    };
+    node.append(el("div", {class: "actions"}, remove));
+  }
+  node.append(notice);
+  return node;
 }
 
 loadEarlier();

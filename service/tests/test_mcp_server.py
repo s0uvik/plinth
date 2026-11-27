@@ -14,7 +14,8 @@ COMMANDS = [
 PLINTH_TOOLS = {"plinth_plan_from_brief", "plinth_preview", "plinth_check", "plinth_build", "plinth_run_status", "plinth_drawing_set", "plinth_remove",
              "plinth_import_start", "plinth_import_status", "plinth_import_questions", "plinth_import_answer",
              "plinth_import_set_location", "plinth_import_assume", "plinth_import_approve", "plinth_import_build",
-             "plinth_import_selfcheck", "plinth_import_drawings", "plinth_import_estimate"}
+             "plinth_import_selfcheck", "plinth_import_drawings", "plinth_import_estimate",
+             "plinth_plan_fitout", "plinth_build_fitout", "plinth_fitout_status"}
 GATEWAY_READS = {"revit_list_available_targets", "revit_get_current_target", "revit_health", "revit_get_operation_status",
                  "revit_lookup_message", "revit_analyze_usage_patterns", "revit_get_failure_records",
                  "revit_get_change_records", "revit_list_code_modules", "revit_list_bake_suggestions"}
@@ -135,3 +136,64 @@ def test_assume_tool_says_when_it_may_be_called():
     description = tools["plinth_import_assume"].description
     assert "NEVER call this unless the user explicitly said \"assume\"" in description
     assert "location" in description
+
+
+class FitoutApi(FakeApi):
+    """The service's answers to the fit-out endpoints: a plan with an open question, a run started."""
+    VIEW = {"run_id": "r1", "document_title": "G4", "rules": "west-bengal", "rules_from": "the project location (Kolkata)",
+            "planned_utc": "2026-11-27T10:00:00+00:00", "ready": False, "buildable": True, "ops": 120, "built_as": None,
+            "stale": [], "report": {"notice": "Indicative coordination model: ...", "systems": ["furniture", "hvac"],
+                                    "flat": "U1", "level": "Floor 1", "furniture_run": None, "ops": {"family": 120},
+                                    "items": {"sofa": {"in_plan": 4}}, "assumptions": [{"id": "a1", "text": "A"}],
+                                    "left_out_of_plan": {}, "dropped": {},
+                                    "mep": {"counts": {"hvac": {}}, "unplaced": [{"what": "ac", "reason": "no wall"}] * 30,
+                                            "unrouted": [], "problems": []},
+                                    "questions": [{"id": "fitout:ac:x", "text": "How?"}]},
+            "questions": [{"id": "fitout:ac:x", "text": "How?", "key": {"stage": "fitout"}}]}
+
+    def call(self, method, path, body=None):
+        if path == "/revit/commands":
+            return []
+        self.calls.append((method, path, body))
+        if path.endswith("/fitout/plan"):
+            return self.VIEW
+        if path.endswith("/fitout/build"):
+            return {"run_id": "f1"}
+        if path.endswith("/fitout"):
+            return {"building_runs": [], "plan": self.VIEW, "runs": [], "systems": [], "notice": "..."}
+        return {"ok": True}
+
+
+def test_fitout_tools_plan_build_and_report_through_the_service():
+    from plinth.mcp_server import _fitout_summary
+    api = FitoutApi()
+    server = build_server(api, {"toolsets": [], "read_only": False})
+    run(server.call_tool("plinth_plan_fitout", {"import_id": "i1", "run_id": "r1", "document_title": "G4",
+                                                "systems": ["furniture", "hvac"], "flat": "U1", "level": "Floor 1"}))
+    built = run(server.call_tool("plinth_build_fitout", {"import_id": "i1", "run_id": "r1", "document_title": "G4"}))
+    run(server.call_tool("plinth_fitout_status", {"import_id": "i1"}))
+    run(server.call_tool("plinth_import_answer", {"import_id": "i1", "question_id": "fitout:ac:x", "answer": [1.5, 1.5]}))
+    run(server.call_tool("plinth_run_status", {"run_id": "f1"}))
+    run(server.call_tool("plinth_remove", {"run_id": "f1"}))
+    assert api.calls == [
+        ("POST", "/imports/i1/fitout/plan", {"run_id": "r1", "document_title": "G4", "systems": ["furniture", "hvac"],
+                                             "furniture_run": None, "flat": "U1", "level": "Floor 1",
+                                             "exclude_runs": [], "rules": None, "answers": {}}),
+        ("POST", "/imports/i1/fitout/build", {"run_id": "r1", "document_title": "G4", "partial": False}),
+        ("GET", "/imports/i1/fitout", None),
+        ("POST", "/imports/i1/answers", {"question_id": "fitout:ac:x", "answer": [1.5, 1.5]}),
+        ("GET", "/runs/f1", None),
+        ("POST", "/runs/f1/remove", {}),
+    ]
+    summary = _fitout_summary(FitoutApi.VIEW)
+    assert summary["unplaced"] == {"total": 30, "first": ["ac: no wall"] * 25}
+    assert summary["questions"][0]["key"]["stage"] == "fitout" and summary["notice"].startswith("Indicative")
+    assert "plinth_run_status" in str(built)
+
+
+def test_fitout_tools_say_nothing_is_built_without_the_user_and_the_mep_notice():
+    tools = {t.name: t for t in run(build_server(FakeApi(), {"toolsets": [], "read_only": False}).list_tools())}
+    plan, build = tools["plinth_plan_fitout"].description, tools["plinth_build_fitout"].description
+    assert "builds NOTHING" in plan and "MEP engineer" in plan and "never answer one yourself" in plan
+    assert "ONLY when the user explicitly says to build" in build and "MEP engineer" in build
+    assert "partial" in build and "plinth_run_status" in build

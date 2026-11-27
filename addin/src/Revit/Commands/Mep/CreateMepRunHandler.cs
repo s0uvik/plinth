@@ -6,6 +6,13 @@
 // connection Revit refuses is reported in failed_connections with the reason and nothing of it is left (each in its own
 // sub-transaction); require_connections makes any such failure undo the whole run. created_ids lists every element
 // added (segments, fittings, the far piece of a broken main); modified_ids the mains that were broken.
+// Tees onto a multi-segment main (2026-11-27, live plumbing builds): the caller knows one id per main (its first segment),
+// but the join point usually lies on a later segment (a branch teeing into segment 4 of a 5-segment downtake), and each
+// tee breaks the main, so after earlier tees the original id covers only part of it. When the point is not beside the
+// given curve, the main's connected network is walked (through its connectors, fittings and in-line accessories, curves
+// of the same kind and MEP system, at most 1,000 elements) and the straight segment the point lies beside is teed into
+// (MainSegments in Core: 50 mm of main each side, within 300 mm of its line, the nearest if several). joined lists each
+// end that was joined to another element than the one asked; OFF_THE_MAIN says how many curves were searched.
 
 using System;
 using System.Collections.Generic;
@@ -26,6 +33,15 @@ namespace Plinth.Revit.Commands.Mep
         private const int MaxPoints = 200;
         private static readonly double Tolerance = Mm.ToFeet(1.0);
 
+        /// <summary>A tee needs this much main each side of the join point (mm).</summary>
+        private const double TeeMarginMm = 50;
+
+        /// <summary>How far beside a connected segment's line the join point may be when the main's network is searched (mm).</summary>
+        private const double MaxTeeOffsetMm = 300;
+
+        /// <summary>At most this many elements (curves and fittings) are visited when the main's network is searched.</summary>
+        private const int MaxNetworkElements = 1000;
+
         public string Name => "create_mep_run";
         public string Description =>
             "Create a pipe, duct, conduit or cable tray run along points [[x, y, z], ...] (mm, internal coordinates, z absolute) with an "
@@ -33,9 +49,12 @@ namespace Plinth.Revit.Commands.Mep
             + "pipe and duct need a system type (system_type_id or system_type_name); size: diameter, or width and height. "
             + "start_connect / end_connect {element_id, connector_id?} join that end to an element: a fixture's or equipment's nearest "
             + "free connector of the run's domain and system (the run is extended to it), a free end of a pipe or duct, or the middle "
-            + "of a pipe or duct (broken there, with a tee). Fittings or joins Revit refuses are listed in failed_connections with the "
-            + "reason; require_connections true undoes the whole run instead. Returns segment_ids, fitting_ids, created_ids (all "
-            + "added) and modified_ids (mains broken for a tee).";
+            + "of a pipe or duct (broken there, with a tee). For a tee the element may be any segment of the main: when the run's end "
+            + "is not beside it, the straight pipes or ducts connected to it (through fittings and accessories, same system) are "
+            + "searched for the one it is beside (50 mm of main each side, within 300 mm of its line, the nearest). Fittings or "
+            + "joins Revit refuses are listed in failed_connections with the reason; require_connections true undoes the whole run "
+            + "instead. Returns segment_ids, fitting_ids, created_ids (all added), modified_ids (mains broken for a tee) and joined "
+            + "[{at: start|end, requested_id, element_id}] for each end teed into another segment than the one given.";
         public string ParametersSchema => @"{""type"":""object"",""properties"":{
             ""kind"":{""type"":""string"",""enum"":[""pipe"",""duct"",""conduit"",""cable_tray""]},
             ""level"":{""type"":""string""},
@@ -159,6 +178,7 @@ namespace Plinth.Revit.Commands.Mep
             var bends = new JArray();
             var connections = new JArray();
             var failed = new JArray();
+            var joined = new JArray();
 
             using (var tx = new Transaction(doc, "Plinth: Create " + kind.Name + " run"))
             {
@@ -221,7 +241,13 @@ namespace Plinth.Revit.Commands.Mep
                             return null;
                         }, () => runEnd.IsConnected);
                         if (!ok.Item2) continue;
-                        if (target.Main != null) modifiedIds.Add(RevitCompat.GetId(target.Main.Id));
+                        if (target.Main != null)
+                        {
+                            var mainId = RevitCompat.GetId(target.Main.Id);
+                            modifiedIds.Add(mainId);
+                            if (mainId != target.ElementId)
+                                joined.Add(new JObject { ["at"] = target.End, ["requested_id"] = target.ElementId, ["element_id"] = mainId });
+                        }
                         fittingIds.AddRange(made.Where(id => doc.GetElement(RevitCompat.ToElementId(id)) is FamilyInstance));
                         createdIds.AddRange(made);
                         connections.Add(new JObject
@@ -261,6 +287,7 @@ namespace Plinth.Revit.Commands.Mep
                 bends,
                 connections,
                 failed_connections = failed,
+                joined,
                 dropped_point_indices = plan.Dropped.Select(i => i - shift).Where(i => i >= 0).ToArray(),
                 length_mm = Math.Round(segments.Sum(s => MepHelpers.ReadLengthMm(s, BuiltInParameter.CURVE_ELEM_LENGTH) ?? 0), 1),
                 diameter_mm = MepHelpers.ReadLengthMm(first, kind.Name == "pipe" ? BuiltInParameter.RBS_PIPE_DIAMETER_PARAM
@@ -382,14 +409,26 @@ namespace Plinth.Revit.Commands.Mep
                     target.Error = "MAIN_NOT_STRAIGHT: element " + elementId + " is not a straight " + kind.Name + ".";
                     return target;
                 }
-                var t = (near - line.GetEndPoint(0)).DotProduct(line.Direction);
-                var margin = Mm.ToFeet(50);
-                if (t < margin || t > line.Length - margin)
+                var nearMm = PointMm(near);
+                // The given curve first, as before (no limit on how far beside it the point is); else the main's network.
+                if (MainSegments.Offset(nearMm, PointMm(line.GetEndPoint(0)), PointMm(line.GetEndPoint(1)), TeeMarginMm) == null)
                 {
-                    target.Error = "OFF_THE_MAIN: the run's " + end + " is not beside the middle of " + kind.Name + " " + elementId
-                        + " (a tee needs 50 mm of main each side).";
-                    return target;
+                    var network = MainNetwork(main, kind);
+                    var lines = network.Select(c => (Line)((LocationCurve)c.Location).Curve).ToList();
+                    var index = MainSegments.Containing(nearMm,
+                        lines.Select(l => new[] { PointMm(l.GetEndPoint(0)), PointMm(l.GetEndPoint(1)) }).ToList(), TeeMarginMm, MaxTeeOffsetMm);
+                    if (index < 0)
+                    {
+                        target.Error = "OFF_THE_MAIN: the run's " + end + " is not beside the middle of " + kind.Name + " " + elementId
+                            + " nor of any straight " + kind.Name + " connected to it (" + network.Count + " searched, through fittings and "
+                            + "accessories; a tee needs " + TeeMarginMm + " mm of main each side and the point within " + MaxTeeOffsetMm
+                            + " mm of the main's line).";
+                        return target;
+                    }
+                    main = network[index];
+                    line = lines[index];
                 }
+                var t = (near - line.GetEndPoint(0)).DotProduct(line.Direction);
                 target.Main = main;
                 target.Point = line.GetEndPoint(0) + line.Direction * t;
                 return target;
@@ -491,6 +530,57 @@ namespace Plinth.Revit.Commands.Mep
             }
             return null;
         }
+
+        /// <summary>
+        /// The straight curves of the run's kind connected to the main, the main first: walked through their connectors, and
+        /// through fittings (elbows, tees, couplings, unions...) and in-line accessories (valves), never through fixtures or
+        /// equipment; a curve on another MEP system than the main's is not followed. Bounded: at most MaxNetworkElements
+        /// elements are visited.
+        /// </summary>
+        private static List<MEPCurve> MainNetwork(MEPCurve main, Kind kind)
+        {
+            var systemId = main.MEPSystem?.Id;
+            var curves = new List<MEPCurve>();
+            var visited = new HashSet<long> { RevitCompat.GetId(main.Id) };
+            var queue = new Queue<Element>();
+            queue.Enqueue(main);
+            while (queue.Count > 0)
+            {
+                var element = queue.Dequeue();
+                if (element is MEPCurve curve && (curve.Location as LocationCurve)?.Curve is Line) curves.Add(curve);
+                var manager = MepHelpers.GetConnectorManager(element);
+                if (manager == null) continue;
+                foreach (Connector c in manager.Connectors)
+                {
+                    if (c.Domain != kind.Domain || !c.IsConnected) continue;
+                    foreach (Connector other in c.AllRefs)
+                    {
+                        if (visited.Count >= MaxNetworkElements) return curves;
+                        if (other.ConnectorType == ConnectorType.Logical) continue;
+                        var owner = other.Owner;
+                        if (owner == null || !visited.Add(RevitCompat.GetId(owner.Id))) continue;
+                        if (owner is MEPCurve next)
+                        {
+                            if (next.GetType() != kind.CurveClass) continue;
+                            if (systemId != null && next.MEPSystem != null && next.MEPSystem.Id != systemId) continue;
+                            queue.Enqueue(next);
+                        }
+                        else if (owner is FamilyInstance && IsInLine(owner)) queue.Enqueue(owner);
+                    }
+                }
+            }
+            return curves;
+        }
+
+        /// <summary>A fitting or an accessory: the main runs on through it.</summary>
+        private static bool IsInLine(Element element)
+        {
+            var category = element.Category?.BuiltInCategory;
+            return category == BuiltInCategory.OST_PipeFitting || category == BuiltInCategory.OST_DuctFitting
+                || category == BuiltInCategory.OST_PipeAccessory || category == BuiltInCategory.OST_DuctAccessory;
+        }
+
+        private static double[] PointMm(XYZ p) => new[] { Mm.FromFeet(p.X, 3), Mm.FromFeet(p.Y, 3), Mm.FromFeet(p.Z, 3) };
 
         private static XYZ Feet(double[] mm) => new XYZ(Mm.ToFeet(mm[0]), Mm.ToFeet(mm[1]), Mm.ToFeet(mm[2]));
     }
