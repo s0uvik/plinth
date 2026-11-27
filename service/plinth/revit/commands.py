@@ -7,7 +7,8 @@ valid options on a miss.
 
 from __future__ import annotations
 
-from typing import Any
+import math
+from typing import Any, Collection, Mapping
 
 from plinth.plan import (KEY_SEPARATOR, BeamOp, CircuitOp, ColumnOp, DoorOp, FamilyCreateOp, FamilyOp, FamilyTypeCopyOp,
                       FloorOp, FloorTypeOp, FoundationSlabOp, GridOp, LevelOp, MepRunOp, Op, OpeningTypeOp, RailingOp,
@@ -60,9 +61,11 @@ MEP_CURVE = {"pipe": "OST_PipeCurves", "duct": "OST_DuctCurves", "conduit": "OST
 MEP_FITTING = {"pipe": "OST_PipeFitting", "duct": "OST_DuctFitting", "conduit": "OST_ConduitFitting",
                "cable_tray": "OST_CableTrayFitting"}
 CIRCUITS = "OST_ElectricalCircuit"
-# Run-store entry suffixes of an MEP run's elements: key, key#2... its segments; key#f1... its fittings (elbows, tees,
-# transitions); key#p1... other pieces (the far part of a main broken for a tee).
+# Run-store entry suffixes of an MEP run's elements: key, key#2... its segments in order along its points; key#f1... its
+# fittings (elbows, tees, transitions); key#p1... other pieces (the far part of a main broken for a tee). A piece
+# broken off a main of an earlier run (``BuildPlan.existing``) is that main's, not the run's (``split_pieces``).
 FITTING_MARK, PIECE_MARK = "f", "p"
+STRAIGHT_DEG = 0.5  # the add-in's RunPath.StraightDeg: a point turning the run less than this is merged, no segment
 
 # Revit's built-in category for railings (shown as "Railings"); a stair's own railings are counted under it too.
 RAILINGS = "OST_StairsRailing"
@@ -97,9 +100,11 @@ def _points(points: list[tuple[float, float]]) -> list[dict[str, float]]:
     return [{"x": x, "y": y} for x, y in points]
 
 
-def to_command(op: Op, plan: dict[str, Op], ids: dict[str, int], types: TypeMap = NO_MAPPING) -> dict[str, Any]:
+def to_command(op: Op, plan: dict[str, Op], ids: dict[str, int], types: TypeMap = NO_MAPPING,
+               bends: Mapping[str, list[int]] | None = None) -> dict[str, Any]:
     """One batch_execute sub-command for an op. ``ids`` maps already-built keys to element ids;
-    ``types`` converts logical type names to the project's own."""
+    ``types`` converts logical type names to the project's own; ``bends``: per MEP run built, the indices of its points
+    where a new segment starts (``bends_of``), so a run teed into it names the segment the join point is on."""
     match op:
         case LevelOp():
             return {"command": "create_level", "params": {"elevation": op.elevation_mm, "name": op.name}}
@@ -250,9 +255,10 @@ def to_command(op: Op, plan: dict[str, Op], ids: dict[str, int], types: TypeMap 
             for name, value in (("diameter", op.diameter_mm), ("width", op.width_mm), ("height", op.height_mm)):
                 if value is not None:
                     params[name] = value
-            for end, key in (("start_connect", op.start_key), ("end_connect", op.end_key)):
+            for end, key, at in (("start_connect", op.start_key, op.points[0]),
+                                 ("end_connect", op.end_key, op.points[-1])):
                 if key:
-                    params[end] = {"element_id": ids[key]}
+                    params[end] = {"element_id": ids[join_key(key, at, plan, ids, bends or {})]}
             return {"command": "create_mep_run", "params": params}
         case CircuitOp():
             params = {"element_ids": [ids[k] for k in op.device_keys], "system_type": op.system_type}
@@ -355,14 +361,93 @@ def created_ids(op: Op, data: dict[str, Any]) -> list[int]:
     return [data["elementId"]]
 
 
-def created_entries(op: Op, data: dict[str, Any]) -> dict[str, int]:
+def bends_of(op: MepRunOp, data: dict[str, Any]) -> list[int]:
+    """The indices of a built run's points where a new segment starts: the bends create_mep_run reports (``bends``:
+    each with its point_index in the run's own points; -1 or 0 when it was extended at its start to what it joins),
+    else the points the add-in keeps (RunPath: a point turning the run less than ``STRAIGHT_DEG`` is merged)."""
+    if data.get("bends") is not None:
+        return sorted(int(b["point_index"]) for b in data["bends"] if b.get("point_index") is not None)
+    out, last = [], op.points[0]
+    for i in range(1, len(op.points) - 1):
+        if _deflection(last, op.points[i], op.points[i + 1]) >= STRAIGHT_DEG:
+            out.append(i)
+            last = op.points[i]
+    return out
+
+
+def _deflection(a, b, c) -> float:
+    u = [q - p for p, q in zip(a, b)]
+    v = [q - p for p, q in zip(b, c)]
+    nu, nv = math.hypot(*u), math.hypot(*v)
+    if not nu or not nv:
+        return 0.0
+    return math.degrees(math.acos(max(-1.0, min(1.0, sum(x * y for x, y in zip(u, v)) / (nu * nv)))))
+
+
+def _leg_distance(p, a, b) -> float:
+    d = [y - x for x, y in zip(a, b)]
+    length2 = sum(x * x for x in d)
+    t = 0.0 if not length2 else max(0.0, min(1.0, sum((pi - ai) * di for pi, ai, di in zip(p, a, d)) / length2))
+    return math.dist(p, [ai + t * di for ai, di in zip(a, d)])
+
+
+def join_key(key: str, at: tuple[float, float, float], plan: Mapping[str, Op], ids: Mapping[str, int],
+             bends: Mapping[str, list[int]]) -> str:
+    """The run-store key to join at ``at``: for a run of this plan built with its bends known, its segment holding
+    the leg nearest the point (key, key#2...: a main of several segments, or one broken for a tee, has other ids
+    than its first); otherwise the key itself (an earlier run's main, a family). The add-in walks a main's connected
+    network from any of its segments to the one holding the point, so this is the shortest way, not the only one."""
+    main = plan.get(key)
+    if not isinstance(main, MepRunOp) or key not in bends:
+        return key
+    legs = list(zip(main.points, main.points[1:]))
+    leg = min(range(len(legs)), key=lambda j: _leg_distance(at, *legs[j]))
+    n = sum(1 for b in bends[key] if b <= leg)
+    segment = key if n == 0 else f"{key}{KEY_SEPARATOR}{n + 1}"
+    return segment if segment in ids else key
+
+
+def split_pieces(op: MepRunOp, data: dict[str, Any], existing: Collection[str]) -> dict[str, list[int]]:
+    """Pieces a run's tees broke off mains of an earlier run (``existing``): main key -> the piece ids. They are that
+    main's (its run removes them with it), never this run's: removing this run must not cut an earlier run's main. Per
+    join (create_mep_run's ``connections``: what each join added), what is neither a fitting nor a segment of this
+    run; without them, every such piece when only one end joins an earlier element."""
+    ends = {"start": op.start_key, "end": op.end_key}
+    if not any(k in existing for k in ends.values() if k):
+        return {}
+    own = set(data.get("segment_ids") or []) | set(data.get("fitting_ids") or [])
+    out: dict[str, list[int]] = {}
+    if data.get("connections") is not None:
+        for row in data["connections"]:
+            key = ends.get(row.get("at"))
+            pieces = [i for i in row.get("created_ids") or [] if i not in own]
+            if key in existing and pieces:
+                out.setdefault(key, []).extend(pieces)
+        return out
+    earlier = [k for k in ends.values() if k and k in existing]
+    pieces = [i for i in created_ids(op, data) if i not in own]
+    return {earlier[0]: pieces} if len(earlier) == 1 and pieces else {}
+
+
+def mep_log(op: MepRunOp, data: dict[str, Any]) -> list[dict[str, Any]]:
+    """What create_mep_run did beyond the plan, for the run's record: a join the add-in made into another segment of
+    the main than the one asked for (``joined``: at, requested_id, element_id), the mains it broke for a tee
+    (``modified_ids``)."""
+    out = [{"key": op.key, "what": "joined", **{k: row.get(k) for k in ("at", "requested_id", "element_id")}}
+           for row in data.get("joined") or []]
+    out += [{"key": op.key, "what": "main_broken", "element_id": i} for i in data.get("modified_ids") or []]
+    return out
+
+
+def created_entries(op: Op, data: dict[str, Any], not_ours: Collection[int] = ()) -> dict[str, int]:
     """Run-store entries for what a command made for an op. An MEP run's entries say which are segments, fittings and
-    other pieces (key, key#2... / key#f1... / key#p1...), so the read-back can count each in its category."""
+    other pieces (key, key#2... / key#f1... / key#p1...), so the read-back can count each in its category; pieces
+    ``not_ours`` (broken off an earlier run's main: ``split_pieces``) are left to that main's run."""
     if not isinstance(op, MepRunOp):
         return created_keys(op, created_ids(op, data))
     segments = list(data.get("segment_ids") or [])
     fittings = [i for i in data.get("fitting_ids") or [] if i not in segments]
-    others = [i for i in created_ids(op, data) if i not in segments and i not in fittings]
+    others = [i for i in created_ids(op, data) if i not in segments and i not in fittings and i not in not_ours]
     entries = created_keys(op, segments)
     entries.update({f"{op.key}{KEY_SEPARATOR}{FITTING_MARK}{n}": i for n, i in enumerate(fittings, 1)})
     entries.update({f"{op.key}{KEY_SEPARATOR}{PIECE_MARK}{n}": i for n, i in enumerate(others, 1)})
@@ -392,7 +477,8 @@ def issues(op: Op, data: dict[str, Any], response: dict[str, Any] | None = None)
                 out.append({"key": op.key, "what": "panel", "element_id": data.get("panel_id"),
                             "reason": data["panel_error"]})
             elif op.panel_key and data.get("circuit_id") is not None and (response or {}).get("rolled_back_by_failure"):
-                said = "; ".join(str(f.get("message") or f) if isinstance(f, dict) else str(f)
+                # the add-in's FailureScope writes each failure's text as "description" (older shapes: "message")
+                said = "; ".join(str(f.get("description") or f.get("message") or f) if isinstance(f, dict) else str(f)
                                  for f in (response or {}).get("failures") or [])
                 out.append({"key": op.key, "what": "panel", "element_id": data.get("panel_id"),
                             "reason": "Revit undid the panel assignment" + (f": {said}" if said else "")})

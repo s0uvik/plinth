@@ -119,6 +119,20 @@ def test_an_item_at_two_sizes_gets_a_box_family_per_size():
     assert [op["family"] for op in to_plan._type_ops(found.choices.values())] == ["Plinth Bed"]
 
 
+def test_one_box_family_at_two_sizes_with_connectors_plans_once():
+    # 2026-11-27 review: the connectors were set on the first size's op after comparing, so the second size's
+    # identical op no longer compared equal and planning stopped with "asked at two sizes"
+    records = [{"key": f"G{i}", "item": "geyser", "label": "Geyser", "category": "Mechanical Equipment",
+                "keywords": ["water heater"], "width_mm": w, "depth_mm": 300, "height_mm": 600}
+               for i, w in enumerate((400, 450))]
+    needs = families.needs_from(records)
+    found = families.resolve(needs, revit(), {"fitout:family:geyser": {"create": "box", "size_mm": [450, 300, 600]}},
+                             templates=[])
+    power = [{"domain": "electrical", "system_type": "PowerCircuit", "voltage_v": 230.0}]
+    (op,) = to_plan._type_ops(found.choices.values(), {"plinth geyser": power})
+    assert op["family"] == "Plinth Geyser" and op["connectors"] == power
+
+
 def test_the_command_mapping():
     plan = BuildPlan.model_validate({"ops": [
         {"op": "level", "key": "L0", "name": "L0", "elevation_mm": 0},

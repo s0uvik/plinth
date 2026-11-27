@@ -5,6 +5,7 @@ plan); the systems asked for and a one-flat pilot leave out the rest and whateve
 refuses are the run's issues."""
 
 import json
+import math
 from collections import Counter
 
 import pytest
@@ -94,11 +95,16 @@ def test_furniture_and_mep_are_one_plan_built_read_back_and_removed(world, fitou
     ops = Counter(op.op for op in planned.plan.ops)
     assert ops["family"] > 1500 and ops["mep_run"] > 1500 and ops["circuit"] > 200
     by_key = planned.plan.by_key()
-    # the runs end at the furniture fixtures of the same plan, best effort; runs joining runs require their joins
+    # the runs end at the furniture fixtures of the same plan; every run is best effort, those joining runs too (an
+    # elbow a real type cannot make at a size is an issue, never a stop)
     wc_runs = [op for op in planned.plan.ops if op.op == "mep_run" and "-wc-" in (op.start_key or "")]
-    assert wc_runs and all(by_key[op.start_key].op == "family" and not op.require_connections for op in wc_runs)
+    assert wc_runs and all(by_key[op.start_key].op == "family" for op in wc_runs)
     stacks = [op for op in planned.plan.ops if op.op == "mep_run" and op.key.split("-")[-2].endswith("_stack")]
-    assert stacks and all(op.require_connections for op in stacks)
+    assert stacks and not [op for op in planned.plan.ops if op.op == "mep_run" and op.require_connections]
+    # no leg is too short for an elbow
+    short = [op.key for op in planned.plan.ops if op.op == "mep_run" and len(op.points) > 2
+             and min(math.dist(a, b) for a, b in zip(op.points, op.points[1:])) < 50]
+    assert not short, short[:5]
     assert all(op.best_effort for op in planned.plan.ops if op.op == "circuit")
     # ceiling lights face down at the ceiling's height (no ceilings in the model); wall points on their wall's side
     lights = [op for op in planned.plan.ops if op.op == "family" and "-light-" in op.key]
@@ -128,6 +134,9 @@ def test_mep_on_top_of_a_furniture_run_joins_its_furniture_and_stops_when_it_mov
     frun = build(world, furniture)
     assert frun["status"] == "built"
     furniture_keys = {op.key for op in furniture.plan.ops if op.op == "family"}
+    # the run keeps the layout it built; the template types it copied in are project types now, and measure
+    assert store.get(frun["run_id"]).load("fitout_layout")["layout"]["placed"]
+    measure_copies(revit)
 
     planned = plan(world, fitout_answers, systems=MEP, furniture_run=frun["run_id"])
     assert planned.ready, planned.report["questions"]
@@ -152,6 +161,53 @@ def test_mep_on_top_of_a_furniture_run_joins_its_furniture_and_stops_when_it_mov
     with pytest.raises(session.Drift) as stopped:
         plan(world, fitout_answers, systems=MEP, furniture_run=frun["run_id"])
     assert len(stopped.value.mismatches) == 1 and stopped.value.mismatches[0].startswith(moved["key"] + ": point")
+
+
+def measure_copies(revit):
+    """What a real document answers once a furniture run copied template types in: they measure (the fake measures no
+    type without a box), here 600 x 600 x 900 about the middle of their back, unlike the rule sizes they were laid out
+    at. Planning on that run lays out nothing again (2026-11-27 review: 350 items moved)."""
+    for e in revit.elements.values():
+        if e.get("is_type") and e.get("kind") == "family_type" and e.get("made_by") == "copy" and not e.get("box"):
+            e["box"] = {"min": [-300.0, -600.0, 0.0], "max": [300.0, 0.0, 900.0]}
+
+
+def test_mep_on_a_furniture_run_that_saved_no_layout_is_planned_as_it_was_built(world, fitout_answers):
+    # a run built before fitout_layout was kept, and before the product was renamed: its bed box family is
+    # "B2M Bed" (the user's run 2026-11-16T21-08-19Z-d7b3); its copied types measure now
+    store, run_id, revit = world
+    bed = {"fitout:family:bed": {"create": "box"}}
+    furniture = plan(world, bed, systems=["furniture"])
+    frun = build(world, furniture)
+    assert frun["status"] == "built"
+    fr = store.get(frun["run_id"])
+    (fr.dir / "fitout_layout.json").unlink()
+    saved, record = fr.load("plan"), fr.load("run")
+    renamed = {"Plinth Bed": "B2M Bed", "1500 x 2000 x 450mm (Plinth)": "1500 x 2000 x 450mm (B2M)"}
+    for op in saved["ops"]:
+        for k in ("family", "type"):
+            if op.get(k) in renamed:
+                op[k] = renamed[op[k]]
+        if op["op"] == "family_create":
+            old, op["key"] = op["key"], "FIT-FAMILY-B2M-BED"
+            record["created"] = {k.replace(old, op["key"]): v for k, v in record["created"].items()}
+    fr.save("plan", saved)
+    fr.update(created=record["created"])
+    for e in revit.elements.values():
+        for k in ("family", "type"):
+            if e.get(k) in renamed:
+                e[k] = renamed[e[k]]
+    measure_copies(revit)
+
+    planned = plan(world, {**fitout_answers, **bed}, systems=MEP, furniture_run=frun["run_id"])  # no Drift
+    assert planned.report["furniture_check"]["compared"] == len([op for op in saved["ops"] if op["op"] == "family"])
+    assert not [op for op in planned.plan.ops if op.op == "family_create"]  # B2M Bed is that run's: no Plinth Bed
+    assert build(world, planned)["status"] in ("built", "built_with_issues")
+    # what an earlier run built and the plan joins must still be there
+    gone = next(i for k, i in record["created"].items() if k.startswith("FIT-") and "-wc-" in k)
+    revit.elements.pop(gone)
+    with pytest.raises(session.SessionError, match="no longer in the model"):
+        plan(world, {**fitout_answers, **bed}, systems=MEP, furniture_run=frun["run_id"])
 
 
 def test_the_systems_asked_for_leave_out_the_rest_and_what_joins_it(world, fitout_answers):
@@ -199,6 +255,29 @@ def test_a_flat_pilot_keeps_the_flat_and_what_it_joins(world, fitout_answers):
     with pytest.raises(session.SessionError, match="no rooms of flat 'U9'"):
         plan(world, fitout_answers, flat="U9", level="Floor 1")
     assert len(revit.calls) == calls  # stopped before Revit was asked anything
+
+
+def test_a_pilot_is_held_back_only_by_questions_about_what_it_builds():
+    # 2026-11-27: both large-living-room AC questions blocked every one-flat pilot, though each was about other flats'
+    # rooms (their instances are room keys, not records; their form must not matter)
+    from plinth.fitout.rooms import Question
+    inputs = session.Inputs.model_construct(systems=["furniture", "hvac", "plumbing"], flat="U1", level="Floor 1")
+
+    def asks(instances, topic="fitout_ac", held=frozenset({"ROOM-U1-LIVING", "FIT-U1-sofa-1"}), built=("hvac",)):
+        q = Question(id="q", topic=topic, text="?", options=[], instances=list(instances))
+        return session._asks_now(q, inputs, gone={"FIT-U2-sofa-1"}, held=set(held), built_systems=set(built))
+
+    assert asks(["ROOM-U1-LIVING", "ROOM-U2-LIVING"])  # one of its rooms is the pilot's
+    assert not asks(["ROOM-U2-LIVING", "ROOM-U3-LIVING"])  # another flat's rooms only
+    assert not asks(["FIT-U2-sofa-1"], topic="families")  # only what is not built now
+    assert asks(["FIT-U1-sofa-1"], topic="families")
+    assert asks([], topic="fitout_meter_room") is False  # no instances: its system has nothing in the pilot
+    assert asks([], topic="fitout_tank", built=("plumbing",))
+    assert asks([], topic="fitout_stack_kind")  # shapes every system
+    assert not asks(["ROOM-U1-LIVING"], topic="fitout_fire")  # fire is not built now
+    whole = session.Inputs.model_construct(systems=["hvac"], flat=None, level=None)
+    q = Question(id="q", topic="fitout_ac", text="?", options=[], instances=["ROOM-U2-LIVING"])
+    assert session._asks_now(q, whole, gone=set(), held=None, built_systems={"hvac"})  # not a pilot: as before
 
 
 def test_joins_and_circuits_revit_refuses_are_the_runs_issues(world, fitout_answers):
@@ -249,3 +328,23 @@ def test_the_command_line_plans_and_builds_a_pilot_with_its_mep(world, fitout_an
     built = [r for r in store.list() if r["run_id"] != run_id]
     assert len(built) == 1 and built[0]["status"] == "built"
     assert fitout_build.main(argv[:-2] + ["--systems", "gas"], connect=lambda: revit, store=store) == 2
+    capsys.readouterr()
+    # an answer planning cannot take is said, not a traceback
+    bad = json.dumps({**fitout_answers, "fitout:family:bed": {"create": "cylinder"}})
+    assert fitout_build.main(argv[:-2] + ["--answers", bad], connect=lambda: revit, store=store) == 2
+    assert "the fit-out cannot be planned: fitout:family:bed: create 'cylinder' is not 'box'" in capsys.readouterr().out
+
+
+def test_drift_compares_height_host_side_facing_down_and_category():
+    from plinth.plan import FamilyOp
+    built = FamilyOp(op="family", key="K", category="OST_ElectricalFixtures", family="F", type="T", level="L1",
+                     point=(0, 0), offset_mm=300, host_key="W1", toward=(0, 200))
+    for change, said in (({"offset_mm": 900}, "offset 300 -> 900"), ({"host_key": "W2"}, "host W1 -> W2"),
+                         ({"toward": (0, -200)}, "side (0.0, 200.0) -> (0, -200)"),
+                         ({"toward": None}, "side (0.0, 200.0) -> None"),
+                         ({"face_down": True}, "face down False -> True"),
+                         ({"category": "OST_LightingDevices"}, "category OST_ElectricalFixtures -> OST_LightingDevices")):
+        drift = session.check_drift({"K": built}, {"K": built.model_copy(update=change)})
+        assert drift["mismatches"] == [f"K: {said}"], change
+    same = session.check_drift({"K": built}, {"K": built.model_copy(update={"offset_mm": 300.4})})
+    assert same == {"compared": 1, "mismatches": [], "built_not_planned_now": []}

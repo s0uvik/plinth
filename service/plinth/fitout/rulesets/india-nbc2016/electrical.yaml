@@ -217,13 +217,17 @@ electrical:
     value: "a meter space on the ground floor near the entrance, one meter per flat plus the common meter"
     source: "Typical Indian multi-dwelling practice; the supply authority decides"
     verified: false
+  supply_voltage_v:  # what electrical connectors (a box family's) and circuits are made at
+    value: 230
+    source: "IS 12360 voltage bands: 230 V single phase (400 V three phase), 50 Hz, the Indian standard supply; as recalled"
+    verified: false
 
   # What F1/F5 match a family type by; sizes are nominal (width along the wall, depth from it, height).
   devices:
     light:
       label: Ceiling light point
       category: Lighting Fixtures
-      keywords: [ceiling light, downlight, light, luminaire, lamp]
+      keywords: [ceiling light, downlight, light, luminaire, lamp, "-120v", "-277v"]  # "-": not this (a US type)
       size: {width_mm: 300, depth_mm: 300, height_mm: 100}
       load: light
       source: "Typical residential light point"
@@ -231,7 +235,7 @@ electrical:
     fan:
       label: Ceiling fan
       category: Electrical Fixtures
-      keywords: [ceiling fan, fan]
+      keywords: [ceiling fan, fan, "-coil", "-exhaust"]
       size: {width_mm: 1200, depth_mm: 1200, height_mm: 400}
       load: fan
       source: "Typical 1200 mm sweep ceiling fan"
@@ -246,7 +250,7 @@ electrical:
     socket_6a:
       label: 6 A socket outlet
       category: Electrical Fixtures
-      keywords: [receptacle, socket, outlet, duplex, 6a]
+      keywords: [receptacle, socket, outlet, 6a, "-duplex", "-gfci", "-120v"]  # a US duplex is no Indian socket
       size: {width_mm: 100, depth_mm: 50, height_mm: 100}
       load: socket_6a
       source: "IS 1293 6 A socket outlet"
@@ -254,7 +258,7 @@ electrical:
     socket_16a:
       label: 16 A power socket
       category: Electrical Fixtures
-      keywords: [receptacle, power, socket, 16a, outlet]
+      keywords: [receptacle, power, socket, 16a, outlet, "-duplex", "-gfci", "-120v"]
       size: {width_mm: 100, depth_mm: 50, height_mm: 100}
       load: socket_16a
       source: "IS 1293 16 A socket outlet"
@@ -283,7 +287,7 @@ electrical:
     meter_board:
       label: Meter board
       category: Electrical Equipment
-      keywords: [meter, meter board, panel, switchboard]
+      keywords: [meter, meter board, panel, switchboard, "-transformer"]
       size: {width_mm: 1500, depth_mm: 250, height_mm: 900}
       source: "Supply licensee practice: one meter per flat plus the common meter on a board"
       verified: false
