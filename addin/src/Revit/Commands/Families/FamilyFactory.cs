@@ -21,7 +21,10 @@
 // (ConnectorElement.CreateElectricalConnector / CreatePipeConnector with the face's reference, the same overloads in Revit
 // 2024 to 2027), then moved along that face to where BoxFamily.ConnectorPositions puts it (the API documents a face-only
 // connector as placed at the plane's origin and movable along the face). Being hosted by the face, it follows the face
-// when Width, Depth or Height changes; the flex check checks that it does.
+// when Width, Depth or Height changes; the flex check checks each stays on its face's plane and inside its edges (the
+// back and bottom never move in the flex, so for them only the edge check can fail; see BoxFlexCheck).
+// A power connector is made as PowerBalanced when PowerCircuit is asked (the family editor offers only balanced or
+// unbalanced power connectors) and its voltage is set only when voltage_v is given (2026-11-27, after a Revit API review).
 
 using System;
 using System.Collections.Generic;
@@ -499,18 +502,25 @@ namespace Plinth.Revit.Commands.Families
                     Expect(box, XYZ.BasisX, built.Cx - w2 / 2, built.Cx + w2 / 2, "Width");
                     Expect(box, XYZ.BasisY, built.Cy - d2, built.Cy, "Depth (the back staying on the origin)");
                     Expect(box, XYZ.BasisZ, built.Z0, built.Z0 + h2, "Height (the base staying on the level)");
-                    // Each connector stays on its face: on the face's plane after the face moved (front, left, right, top).
+                    // Each connector stays on its face at the flexed size: on the face's plane and inside the face's edges
+                    // (BoxFamily.OnFace). The flex moves the front, left, right and top faces, so for a connector on one of
+                    // those the plane check shows it moved with its face. The back (the pinned origin plane) and the bottom
+                    // (the level) never move, so for them only the edge check can fail: it shows the connector was not
+                    // carried off the face while its edges moved out. Moving the back and bottom too would test their
+                    // connectors harder but means unpinning the origin plane and moving the family's Ref. Level, which the
+                    // template may hold in place (as the beam's stretch check found); checking the edges is simpler and
+                    // still catches a connector that drifts off its face.
+                    double w2Mm = Mm.FromFeet(w2, 6), d2Mm = Mm.FromFeet(d2, 6), h2Mm = Mm.FromFeet(h2, 6);
                     foreach (var made in built.Connectors)
                     {
                         var face = made.Item1.Face;
-                        var normal = Vector(BoxFamily.FaceNormal(face));
-                        var axis = new XYZ(Math.Abs(normal.X), Math.Abs(normal.Y), Math.Abs(normal.Z));
                         var origin = FamilyBuilder.Step(step + ": read the " + face + " connector", () => made.Item2.Origin);
-                        var actual = (origin - built.Origin).DotProduct(axis);
-                        var expected = Mm.ToFeet(BoxFamily.FaceCoordinate(face, Mm.FromFeet(w2, 6), Mm.FromFeet(d2, 6), Mm.FromFeet(h2, 6)));
-                        if (Math.Abs(actual - expected) > FamilyBuilder.Tolerance)
-                            throw new FamilyBuildException(step, "the " + made.Item1.Domain + " connector on the " + face + " face does not follow "
-                                + "the face: it is at " + Mm.FromFeet(actual) + " mm, the face at " + Mm.FromFeet(expected) + " mm");
+                        var at = origin - built.Origin;
+                        var why = BoxFamily.OnFace(face, new[] { Mm.FromFeet(at.X, 6), Mm.FromFeet(at.Y, 6), Mm.FromFeet(at.Z, 6) },
+                            w2Mm, d2Mm, h2Mm, Mm.FromFeet(FamilyBuilder.Tolerance, 6));
+                        if (why != null)
+                            throw new FamilyBuildException(step, "the " + made.Item1.Domain + " connector on the " + face
+                                + " face does not stay on its face when Width, Depth and Height change: " + why);
                     }
                 }
                 finally
@@ -519,7 +529,7 @@ namespace Plinth.Revit.Commands.Families
                 }
             }
             var result = new JObject { ["width_depth_height_flex"] = true, ["origin"] = "middle of the back edge, at the level" };
-            if (built.Connectors.Count > 0) result["connectors_follow_their_faces"] = true;
+            if (built.Connectors.Count > 0) result["connectors_stay_on_their_faces"] = true;
             return result;
         }
 
@@ -1047,8 +1057,10 @@ namespace Plinth.Revit.Commands.Families
         /// <summary>
         /// An electrical or pipe connector on the extrusion's face, moved along the face to target (family coordinates).
         /// A pipe connector gets the asked diameter (its Radius is read-only: the CONNECTOR_RADIUS parameter is set, else
-        /// CONNECTOR_DIAMETER). An electrical connector is set to 1 pole where it has the parameter (a single-phase device,
-        /// the indicative default); its voltage and load stay Revit's defaults, since the box knows nothing of the real
+        /// CONNECTOR_DIAMETER). An electrical connector is made as spec.SystemType (BoxFamily has already turned PowerCircuit
+        /// into PowerBalanced, the family editor offering only balanced or unbalanced power connectors) and set to 1 pole
+        /// where it has the parameter (a single-phase device, the indicative default); its voltage is set (RBS_ELEC_VOLTAGE)
+        /// only when voltage_v was given, else it and the load stay Revit's defaults, since the box knows nothing of the real
         /// device (they are read back into the result).
         /// </summary>
         public ConnectorElement AddConnector(Extrusion extrusion, BoxConnector spec, XYZ target)
@@ -1064,6 +1076,19 @@ namespace Plinth.Revit.Commands.Families
                     ?? throw new InvalidOperationException("Revit returned no connector");
                 var poles = connector.get_Parameter(BuiltInParameter.RBS_ELEC_NUMBER_OF_POLES);
                 if (poles != null && !poles.IsReadOnly && poles.StorageType == StorageType.Integer && poles.AsInteger() != 1) poles.Set(1);
+                if (spec.VoltageV.HasValue)
+                {
+                    var voltage = connector.get_Parameter(BuiltInParameter.RBS_ELEC_VOLTAGE);
+                    if (voltage == null || voltage.IsReadOnly || voltage.StorageType != StorageType.Double)
+                        throw new InvalidOperationException("the " + spec.SystemType + " connector's voltage cannot be set");
+                    var internalVolts = UnitUtils.ConvertToInternalUnits(spec.VoltageV.Value, UnitTypeId.Volts);
+                    if (!voltage.Set(internalVolts))
+                        throw new InvalidOperationException("Revit refused the voltage " + spec.VoltageV.Value + " V");
+                    Doc.Regenerate();
+                    var readBack = UnitUtils.ConvertFromInternalUnits(voltage.AsDouble(), UnitTypeId.Volts);
+                    if (Math.Abs(readBack - spec.VoltageV.Value) > 0.01)
+                        throw new InvalidOperationException("the connector's voltage is " + Math.Round(readBack, 2) + " V, not " + spec.VoltageV.Value + " V");
+                }
             }
             else
             {
