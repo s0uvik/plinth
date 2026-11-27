@@ -127,7 +127,8 @@ def fake_runner(state):
             stood_in = {op.key for op in plan.ops if op.op == "railing" and f"{op.stair_key}#2" in created}
             assert set(op.key for op in plan.ops) - stood_in <= {k.split("#")[0] for k in created}
             return SimpleNamespace(status="built", batches_total=1, batches_succeeded=1, created=dict(created),
-                                   error=None, error_code=None, failed_key=None, error_data=None, failures=[])
+                                   error=None, error_code=None, failed_key=None, error_data=None, failures=[],
+                                   issues=[])
 
         def verify(self, plan, created):
             return {"ok": True}

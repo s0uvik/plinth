@@ -15,6 +15,7 @@ drawing set into a Revit model, drawing set and estimate (Step 9); a BIM enginee
 | `addin/tests` | Core tests, run on .NET 8 and .NET Framework 4.8 |
 | `service/plinth/revit` | Python client: discovery, pipe/TCP connection, `RevitClient` |
 | `service/scripts` | Gate scripts run against a live Revit |
+| `web` | Marketing landing page (Vite, React, GSAP); see [`web/README.md`](web/README.md) |
 
 Much of the add-in is derived from [rvt-mcp](https://github.com/bimwright/rvt-mcp) (Apache-2.0); see `NOTICE`.
 

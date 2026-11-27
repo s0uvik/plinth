@@ -1,10 +1,12 @@
-"""Questions the later stages of an import ask (drawing set, estimate), kept with the import's own questions.
+"""Questions the later stages of an import ask (drawing set, estimate, build, fit-out), kept with the import's own
+questions.
 
-The drawing set (``plinth.imported.drawings``) and the estimate (``plinth.imported.estimate``) refuse to guess: what they
-cannot derive comes back as a question whose id is the answer key they read (``drawing:elevation:<file>``,
-``estimate:material:D1`` ...). Here those become import questions, so the review page and the MCP tools ask them like
-any other, and an answer is stored twice: on the question (the record of who answered what) and in
-``project.inputs.values[id]``, where the stage reads it on its next run.
+The drawing set (``plinth.imported.drawings``), the estimate (``plinth.imported.estimate``) and the fit-out
+(``plinth.fitout.session``) refuse to guess: what they cannot derive comes back as a question whose id is the answer key
+they read (``drawing:elevation:<file>``, ``estimate:material:D1``, ``fitout:family:sofa`` ...). Here those become import
+questions, so the review page and the MCP tools ask them like any other, and an answer is stored twice: on the
+question (the record of who answered what) and in ``project.inputs.values[id]``, where the stage reads it on its next
+run.
 
 Stage questions never block a build (severity "check"): they block only their own stage, which says so when it runs.
 An open stage question the stage no longer asks is dropped; answered ones stay as the record.
@@ -12,11 +14,12 @@ An open stage question the stage no longer asks is dropped; answered ones stay a
 
 from __future__ import annotations
 
+import json
 from typing import Any, Iterable
 
 from plinth.cad.project import ImportProject, Question
 
-STAGES = ("drawings", "estimate", "build")
+STAGES = ("drawings", "estimate", "build", "fitout")
 
 
 def merge(project: ImportProject, stage: str, items: Iterable[dict[str, Any]]) -> list[Question]:
@@ -29,7 +32,7 @@ def merge(project: ImportProject, stage: str, items: Iterable[dict[str, Any]]) -
                          if not (q.key.get("stage") == stage and q.open and q.id not in wanted)]
     out = []
     for item in items:
-        options = [str(o) for o in item.get("options") or [] if o is not None]
+        options = [_option_text(o) for o in item.get("options") or [] if o is not None]
         key = {"stage": stage, "answer_key": item["id"], **(item.get("key") or {})}
         try:
             q = project.question(item["id"])
@@ -45,6 +48,12 @@ def merge(project: ImportProject, stage: str, items: Iterable[dict[str, Any]]) -
                 q.instances = list(item.get("instances") or q.instances)
         out.append(q)
     return sorted(out, key=lambda q: not q.open)
+
+
+def _option_text(option: Any) -> str:
+    """An option as the text the user picks. A structured one (a fit-out family: {"family", "type", ...}) is JSON, so
+    picking it sends the value itself back (the answers endpoint reads JSON for fit-out questions), never a repr."""
+    return option if isinstance(option, str) else json.dumps(option, ensure_ascii=False)
 
 
 def from_build(project: ImportProject, run: dict[str, Any]) -> list[Question]:

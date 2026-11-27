@@ -22,15 +22,24 @@ How it decides, per need:
   (along its back) and depth. Within ``SIZE_TOL_MM`` it fits.
 - the best keyword match wins; among equals a type that fits (the project's before a template's), then one that can
   be copied to the size, then any, the closest first. Templates are only searched when the project has no type that
-  fits.
+  fits. A weak or wrong match is asked about rather than picked (a BIM engineer would see it at once): a type is
+  picked on its own only with ``MIN_SCORE`` (more than one of the item's later, single-word keywords: "fan" alone
+  does not make a fan coil unit an exhaust fan), none of the item's negative keywords ("-gfci", "-120v": a US
+  receptacle is no Indian socket), and a size within ``SIZE_RATIO`` of the item's (a 114 mm switch is no 250 mm
+  switchboard, nor copied to one).
+- MEP curve types (pipe, duct, conduit, cable tray): a project type is only used when the project has fittings of
+  its kind (a project made from a template without them gives every bend a refused elbow); else a template's type is
+  copied in with the fittings its routing preferences bring (assumed: the listing does not say), the discipline's
+  template first (Plumbing for pipes, Electrical for conduits). A name the source lists more than once (conduit
+  types come in pairs, with and without fittings) is copied by its id, never by the name.
 - adapt a copy: when the chosen type's size differs and the family has the size parameters (writable Width, Depth or
   Length), a copy of the type is made at the size (a family_type_copy op; the type itself is never changed);
   otherwise the closest type is used as it is and the difference is listed.
-- nothing with a keyword in the category: a question (``fitout:family:<need>``) with the category's other types as
-  options; the answer {"family", "type"} (any type of the category, project or template), "skip", or
-  {"create": "box"} (optionally "name", "size_mm" [w, d, h], "material"): Plinth creates a plain box family for it at
-  build (a ``family_create`` op, removed with the run), its origin at the middle of its back, front -Y, base at the
-  level, so it needs no measuring.
+- nothing picked: a question (``fitout:family:<need>``) offering the category's types that share a word with the
+  item's keywords, best first (none that share nothing); the answer {"family", "type"} (any type of the category,
+  project or template), "skip", or {"create": "box"} (optionally "name", "type", "size_mm" [w, d, h], "material"),
+  both always offered: Plinth creates a plain box family for it at build (a ``family_create`` op, removed with the
+  run), its origin at the middle of its back, front -Y, base at the level, so it needs no measuring.
 
 Category names in the rules are Revit's English display names ("Plumbing Fixtures"); ``CATEGORIES`` maps them to
 built-in categories, so matching does not depend on Revit's language. A type the user names is looked for in the
@@ -63,6 +72,13 @@ TEMPLATE_PREFERENCE = ("residential", "default", "systems", "plumbing", "electri
 LIST_TIMEOUT_SECONDS = 600  # opening a template for the first time takes a while (the add-in caches the listing)
 MAX_OPTIONS = 12  # other types offered in a question
 COPY_SUFFIX = "(Plinth)"
+MIN_SCORE = 1.5  # keyword score a type needs to be picked on its own (one later single-word keyword scores 1)
+SIZE_RATIO = 2.5  # a type more than this many times larger or smaller than the item (width or depth) is not picked
+# MEP curve kinds -> the category of their fittings, and the template discipline whose types bring them.
+FITTING_CATEGORY = {"pipe_type": "OST_PipeFitting", "duct_type": "OST_DuctFitting", "conduit_type": "OST_ConduitFitting",
+                    "cable_tray_type": "OST_CableTrayFitting"}
+DISCIPLINE = {"pipe_type": "plumbing", "pipe_system_type": "plumbing", "duct_type": "mechanical",
+              "duct_system_type": "mechanical", "conduit_type": "electrical", "cable_tray_type": "electrical"}
 
 # Revit category display names (English, as the rule sets write them) -> built-in categories.
 CATEGORIES = {
@@ -76,6 +92,7 @@ CATEGORIES = {
     "OST_CommunicationDevices", "data devices": "OST_DataDevices", "security devices": "OST_SecurityDevices",
     "telephone devices": "OST_TelephoneDevices", "nurse call devices": "OST_NurseCallDevices",
     "generic models": "OST_GenericModel", "plumbing equipment": "OST_PlumbingEquipment",
+    "fire protection": "OST_FireProtection",  # Revit 2023+ (extinguishers, hose reels, landing valves)
 }
 # MEP type kinds (list_types_in_file / copy_types_from_file) -> the project category get_available_family_types lists.
 MEP_KIND_CATEGORY = {"pipe_type": "OST_PipeCurves", "pipe_system_type": "OST_PipingSystem",
@@ -105,6 +122,9 @@ class Need(_Model):
     height_mm: float | None = None  # furniture: the rule's (or the layout record's) height, for a box Plinth creates
     classification: str | None = None  # MEP system types: Sanitary, DomesticColdWater, SupplyAir...
     keys: list[str] = []  # the layout records (or runs) that need it
+    # an MEP device (its records say what it is fixed to): made at its rule's size, so a type far from it is another
+    # thing, not the same at another size (furniture, a counter's legs above all, is sized to the room)
+    device: bool = False
 
     @property
     def mep(self) -> bool:
@@ -124,6 +144,7 @@ class Candidate(_Model):
     depth_param: str | None = None  # "Depth" or "Length": the parameter that holds the depth
     size_params: list[str] = []  # writable size parameters (project types); template types: the ones listed
     score: float = 0
+    ambiguous: bool = False  # its name is listed more than once in its source: copied by its id (``type_id``)
 
 
 Front = Literal["-y", "+y", "-x", "+x"]
@@ -225,6 +246,42 @@ class Choice(_Model):
     measured: Measurement | None = None
     front: Front = "-y"
     box: BoxFamily | None = None
+    source_id: int | None = None  # template: its id in the file, when the name alone is ambiguous there
+
+
+class EarlierBox(_Model):
+    """A box family an earlier fit-out run's plan created (its family_create op): its names, size and the connectors
+    it was asked for. ``element_id``: the family's id when that run made it (its run-store entry); None when the family
+    was already there then (its connectors are not known)."""
+
+    run: str
+    key: str
+    element_id: int | None = None
+    family: str
+    type: str
+    category: str
+    width_mm: float
+    depth_mm: float
+    height_mm: float
+    connectors: list[dict[str, Any]] = []
+
+
+class AsBuilt(_Model):
+    """What earlier fit-out runs brought into the project, so planning on top of them sees the families as those runs
+    chose them, not as the project now has them:
+
+    - ``hidden``: (family, type) an earlier run that saved no layout copied in from a template, copied to a size or
+      created as a box. Hidden from the project's listing, they are matched again as they were then (a template type,
+      unmeasured, laid out at the rule's or the copy's size), so the layout is the one that run built; measured now,
+      their real footprint would move every item it placed.
+    - ``copies``: {family, base_type, values_mm, name}: a size copy that run made, so the same copy keeps its name
+      (made as "750x450mm (B2M)" before the product was renamed) instead of a second copy.
+    - ``boxes``: the box families earlier runs created: an item answered {"create": "box"} at the same category and
+      size gets that family and type (an older run's "B2M Bed"), not a new one."""
+
+    hidden: list[tuple[str | None, str]] = []
+    copies: list[dict[str, Any]] = []
+    boxes: list[EarlierBox] = []
 
 
 class Resolution(_Model):
@@ -276,7 +333,7 @@ def needs_from(records: Iterable[Any]) -> list[Need]:
         entry = grouped.setdefault(nid, {"id": nid, "item": item, "label": _get(record, "label") or item,
                                          "category": category, "keywords": list(_get(record, "keywords") or [item]),
                                          "width_mm": width, "depth_mm": depth, "height_mm": _get(record, "height_mm"),
-                                         "keys": []})
+                                         "device": _get(record, "host_kind") is not None, "keys": []})
         entry["keys"].append(_get(record, "key"))
     return [Need(**v) for _, v in sorted(grouped.items())]
 
@@ -324,16 +381,40 @@ def _words(text: str) -> set[str]:
 
 def keyword_score(keywords: list[str], *texts: str) -> float:
     """How well a type's names match an item's keywords: each keyword whose words all appear counts its word count,
-    the item's first keyword half a point more. 0: no keyword in it."""
+    the item's first keyword half a point more. 0: no keyword in it, or one of its negative keywords ("-gfci": the
+    rules' way to say what the item is not)."""
     words: set[str] = set()
     for text in texts:
         words |= _words(text or "")
+    if any(_words(k[1:]) and _words(k[1:]) <= words for k in keywords if k.startswith("-")):
+        return 0.0
     score = 0.0
-    for i, keyword in enumerate(keywords):
+    for i, keyword in enumerate(k for k in keywords if not k.startswith("-")):
         kw = _words(keyword)
         if kw and kw <= words:
             score += len(kw) + (0.5 if i == 0 else 0)
     return score
+
+
+def keyword_overlap(keywords: list[str], *texts: str) -> int:
+    """How many of the words of an item's keywords a type's names share (0 with a negative keyword): what makes a
+    type worth offering when nothing is picked."""
+    words: set[str] = set()
+    for text in texts:
+        words |= _words(text or "")
+    if any(_words(k[1:]) and _words(k[1:]) <= words for k in keywords if k.startswith("-")):
+        return 0
+    return len(set().union(*(_words(k) for k in keywords if not k.startswith("-"))) & words)
+
+
+def plausible_size(need: Need, c: "Candidate") -> bool:
+    """An MEP device's type is within ``SIZE_RATIO`` of the device's width and depth (either way), or a size is not
+    known; any size for furniture."""
+    if not need.device or None in (need.width_mm, need.depth_mm, c.width_mm, c.depth_mm) or not all(
+            (need.width_mm, need.depth_mm, c.width_mm, c.depth_mm)):
+        return True
+    return all(1 / SIZE_RATIO <= have / want <= SIZE_RATIO
+               for have, want in ((c.width_mm, need.width_mm), (c.depth_mm, need.depth_mm)))
 
 
 SIZE_IN_NAME = re.compile(r"(\d{3,4}(?:\.\d+)?)\s*(?:mm)?\s*[xX×]\s*(\d{3,4}(?:\.\d+)?)")
@@ -355,8 +436,11 @@ def _miss(need: Need, c: Candidate) -> float | None:
 
 
 def _sizable(need: Need, c: Candidate) -> dict[str, float] | None:
-    """The size parameters to set on a copy of the type to make it the item's size, when the family has them."""
+    """The size parameters to set on a copy of the type to make it the item's size, when the family has them and the
+    item's size is within ``SIZE_RATIO`` of the type's (a copy is the same thing at another size, not another thing)."""
     if need.width_mm is None or need.depth_mm is None or c.width_mm is None or c.depth_mm is None:
+        return None
+    if not plausible_size(need, c):
         return None
     values: dict[str, float] = {}
     if abs(c.width_mm - need.width_mm) > SIZE_TOL_MM:
@@ -375,7 +459,20 @@ def _rank(need: Need, c: Candidate) -> tuple:
     fit = 0 if miss is not None and miss <= SIZE_TOL_MM else 1 if _sizable(need, c) else 2
     # A type that fits: the project's first. One to adapt or use as it is: the closest first (the least changed).
     closeness = 0 if fit == 0 else (miss if miss is not None else 1e9)
-    return (-c.score, fit, closeness, 0 if c.source == "project" else 1, c.family or "", c.type)
+    # MEP types: a name listed once before one of a pair, the discipline's template before the others
+    stem = (c.path or "").replace("/", "\\").rsplit("\\", 1)[-1].lower()
+    discipline = 0 if not need.mep or c.source == "project" or stem.startswith(DISCIPLINE.get(need.category, "-")) else 1
+    return (-c.score, int(c.ambiguous), discipline, fit, closeness, 0 if c.source == "project" else 1, c.family or "",
+            c.type)
+
+
+def _pickable(need: Need, c: Candidate) -> bool:
+    """A type picked without asking. An MEP device's: a strong enough keyword match at a plausible size (a fan coil
+    unit is no exhaust fan, a troffer no toilet light); furniture and MEP run types: any keyword match (furniture names
+    are plain, and a run type is matched with its classification)."""
+    if not need.device:
+        return need.mep or c.score > 0
+    return c.score >= MIN_SCORE and plausible_size(need, c)
 
 
 def _dims(dims: dict[str, Any], name: str) -> tuple[float | None, float | None, str | None]:
@@ -398,10 +495,13 @@ def _dims(dims: dict[str, Any], name: str) -> tuple[float | None, float | None, 
 class _Search:
     """One resolve pass: project and template listings fetched once per category and file."""
 
-    def __init__(self, revit: Revit, year: int | str | None, language: str | None, templates: list[str] | None):
+    def __init__(self, revit: Revit, year: int | str | None, language: str | None, templates: list[str] | None,
+                 hidden: Iterable[tuple[str | None, str]] = ()):
         self.revit = revit
         self.year, self.language = year, language
         self._templates = templates
+        # project types not to see (AsBuilt.hidden): (family, type), casefolded
+        self._hidden = {((f or "").casefold(), t.casefold()) for f, t in hidden}
         self._project: dict[str, list[dict[str, Any]]] = {}
         self._params: dict[int, dict[str, Any]] = {}
         self._files: dict[str, dict[str, Any]] = {}
@@ -413,7 +513,8 @@ class _Search:
         if category not in self._project:
             bic = MEP_KIND_CATEGORY.get(category, category)
             listing = self.revit.call("get_available_family_types", {"builtInCategory": bic})
-            self._project[category] = [t for g in listing.get("categories") or [] for t in g.get("types") or []]
+            self._project[category] = [t for g in listing.get("categories") or [] for t in g.get("types") or []
+                                       if not self._is_hidden(t)]
             if "project" not in self.searched:
                 self.searched.append("project")
         return self._project[category]
@@ -424,14 +525,21 @@ class _Search:
         if "*" not in self._project:
             listing = self.revit.call("get_available_family_types", {})
             self._project["*"] = [{**t, "builtInCategory": g.get("builtInCategory")}
-                                  for g in listing.get("categories") or [] for t in g.get("types") or []]
+                                  for g in listing.get("categories") or [] for t in g.get("types") or []
+                                  if not self._is_hidden(t)]
         return self._project["*"]
+
+    def _is_hidden(self, row: dict[str, Any]) -> bool:
+        return bool(self._hidden) and ((row.get("familyName") or "").casefold(),
+                                       (row.get("typeName") or "").casefold()) in self._hidden
 
     def project_candidates(self, need: Need, rows: list[dict[str, Any]] | None = None, scored: bool = True) -> list[Candidate]:
         rows = self.project_rows(need.category) if rows is None else rows
         if need.mep:
+            names = [r["typeName"].casefold() for r in rows]
             return [Candidate(source="project", type_id=r["typeId"], category=need.category, family=None,
-                              type=r["typeName"], score=self._mep_score(need, r["typeName"], None))
+                              type=r["typeName"], score=self._mep_score(need, r["typeName"], None),
+                              ambiguous=names.count(r["typeName"].casefold()) > 1)
                     for r in rows if not scored or self._mep_score(need, r["typeName"], None) > 0]
         picked = [(r, keyword_score(need.keywords, r.get("familyName", ""), r.get("typeName", ""))) for r in rows]
         picked = [(r, s) for r, s in picked if s > 0 or not scored]
@@ -488,11 +596,14 @@ class _Search:
         for path in self.template_paths():
             listing = self.template_listing(path)
             if need.mep:
-                for r in (listing.get("mep_types") or {}).get(need.category) or []:
+                rows = (listing.get("mep_types") or {}).get(need.category) or []
+                names = [r["name"].casefold() for r in rows]
+                for r in rows:
                     score = self._mep_score(need, r["name"], r.get("classification"))
                     if score > 0 or not scored:
                         out.append(Candidate(source="template", path=path, type_id=r.get("id"), category=need.category,
-                                             family=None, type=r["name"], score=score))
+                                             family=None, type=r["name"], score=score,
+                                             ambiguous=names.count(r["name"].casefold()) > 1))
                 continue
             for r in listing.get("family_types") or []:
                 if r.get("category") != need.category:
@@ -507,6 +618,11 @@ class _Search:
                                      width_mm=width, depth_mm=depth, depth_param=param, size_params=listed, score=score))
         return out
 
+    def has_fittings(self, kind: str) -> bool:
+        """Whether the project has fitting families for an MEP curve kind (a pipe's elbows, tees...): without them
+        Revit refuses every elbow of a run of the project's own types."""
+        return bool(self.project_rows(FITTING_CATEGORY[kind])) if kind in FITTING_CATEGORY else True
+
     @staticmethod
     def _mep_score(need: Need, name: str, classification: str | None) -> float:
         score = keyword_score(need.keywords, name)
@@ -520,13 +636,16 @@ class _Search:
 # ------------------------------------------------------------------------------------------------ resolve
 
 def resolve(needs: list[Need], revit: Revit, answers: dict[str, Any] | None = None, *, year: int | str | None = None,
-            language: str | None = None, templates: list[str] | None = None, search: "_Search | None" = None) -> Resolution:
+            language: str | None = None, templates: list[str] | None = None, search: "_Search | None" = None,
+            as_built: AsBuilt | None = None) -> Resolution:
     """Match every need to a family type (or MEP type), adapt a copy for a size, or ask. ``templates``: the template
     files to search instead of the installed ones for the running Revit year (``year`` for another installed year,
     ``language`` for another language folder). An answer is looked up by the need's question id, then by its item
-    (``fitout:family:<item>``, so one answer serves every size of an item)."""
+    (``fitout:family:<item>``, so one answer serves every size of an item). ``as_built``: what earlier fit-out runs
+    brought in (``AsBuilt``: their types hidden, their copies' and boxes' names kept)."""
     answers = answers or {}
-    search = search or _Search(revit, year, language, templates)
+    as_built = as_built or AsBuilt()
+    search = search or _Search(revit, year, language, templates, as_built.hidden)
     choices: dict[str, Choice] = {}
     questions: list[Question] = []
     assumptions: list[Assumption] = []
@@ -543,7 +662,8 @@ def resolve(needs: list[Need], revit: Revit, answers: dict[str, Any] | None = No
             skipped.append(need.id)
             continue
         if is_create(answer):
-            choice, note = box_choice(need, answer, per_size=len(box_sizes.get(need.item, ())) > 1)
+            choice, note = box_choice(need, answer, per_size=len(box_sizes.get(need.item, ())) > 1,
+                                      earlier=as_built.boxes)
             choices[need.id] = choice
             assumptions.append(note)
             continue
@@ -557,13 +677,30 @@ def resolve(needs: list[Need], revit: Revit, answers: dict[str, Any] | None = No
             candidates = [chosen]
         else:
             candidates = search.project_candidates(need)
-            if not any(_fits(need, c) for c in candidates):
-                candidates += search.template_candidates(need)
+            no_fittings = need.mep and not search.has_fittings(need.category)
+            if no_fittings or not any(_fits(need, c) and _pickable(need, c) and not c.ambiguous for c in candidates):
+                found = search.template_candidates(need)
+                if no_fittings:  # a template type named as one of the project's would be found there, as it is
+                    mine = {c.type.casefold() for c in candidates}
+                    found = [c for c in found if c.type.casefold() not in mine] or found
+                # a project curve type without fittings only when no template has one
+                candidates = (found or candidates) if no_fittings else candidates + found
+                if no_fittings and found:
+                    assumptions.append(Assumption(
+                        id=f"fitout:mep-fittings:{need.id}", text=f"{need.label}: the project has no "
+                        f"{need.category.removesuffix('_type').replace('_', ' ')} fittings, so its own types would get no "
+                        f"elbows or tees; a template's type is copied in with the fittings its routing preferences bring "
+                        f"(assumed: the template listing does not say which types have them)",
+                        value=FITTING_CATEGORY[need.category], source="family match", instances=need.keys))
+            candidates = [c for c in candidates if isinstance(answer, dict) or _pickable(need, c)]
         if not candidates:
-            questions.append(_question(need, search))
+            weak = not isinstance(answer, dict) and (search.project_candidates(need) or search.template_candidates(need))
+            questions.append(_question(need, search, None if not weak else (
+                f"No family type matches {need.label} well enough to be picked on its own (a type sharing only a "
+                f"word with it, of another kind, or far from its size). " + _choose_text(need))))
             continue
         best = min(candidates, key=lambda c: _rank(need, c))
-        choice, notes = _choose(need, best, answered=isinstance(answer, dict))
+        choice, notes = _choose(need, best, answered=isinstance(answer, dict), copies=as_built.copies)
         choices[need.id] = choice
         assumptions.extend(notes)
     return Resolution(choices=choices, questions=questions, assumptions=assumptions, skipped=skipped,
@@ -599,21 +736,25 @@ def box_type_name(w: float, d: float, h: float) -> str:
     return f"{_mm(w)} x {_mm(d)} x {_mm(h)}mm {BOX_TYPE_SUFFIX}"
 
 
-def box_choice(need: Need, answer: dict[str, Any], *, per_size: bool = False) -> tuple[Choice, Assumption]:
+def box_choice(need: Need, answer: dict[str, Any], *, per_size: bool = False,
+               earlier: Iterable[EarlierBox] = ()) -> tuple[Choice, Assumption]:
     """The user said Plinth creates a plain box family for the item (only then: families are found, adapted, and created
-    only with the user's OK): {"create": "box"}, optionally "name" (default "Plinth <Label>"), "size_mm" [w, d, h]
-    (default the need's size: the rule's first size, or the layout record's) and "material". Its box is known from its
-    own geometry (origin at the middle of its back, front -Y, base at the level), so it is never measured. ``per_size``:
-    the item is placed at several sizes and no size was given, so each size gets its own family ("Plinth Bed 1200x2000")."""
+    only with the user's OK): {"create": "box"}, optionally "name" (default "Plinth <Label>"), "type" (default
+    "<w> x <d> x <h>mm (Plinth)"), "size_mm" [w, d, h] (default the need's size: the rule's first size, or the layout
+    record's) and "material". Its box is known from its own geometry (origin at the middle of its back, front -Y, base
+    at the level), so it is never measured. ``per_size``: the item is placed at several sizes and no size was given, so
+    each size gets its own family ("Plinth Bed 1200x2000"). ``earlier``: box families earlier fit-out runs created; one
+    of the same category and size, when the answer names none, is the item's (its family and type names as that run
+    made them), so a later run places that family and makes no second one."""
     where = f"fitout:family:{need.item}"
     if answer.get("create") != "box":
         raise ValueError(f"{where}: create {answer.get('create')!r} is not 'box', the only family Plinth creates")
     if need.mep:
         raise ValueError(f"{where}: Plinth creates box families for placed items, not {need.category} types")
-    unknown = set(answer) - {"create", "name", "size_mm", "material", "includes"}
+    unknown = set(answer) - {"create", "name", "type", "size_mm", "material", "includes"}
     if unknown:
         raise ValueError(f"{where}: {', '.join(sorted(unknown))} do not apply to a box Plinth creates "
-                         f"(it takes name, size_mm [w, d, h], material, includes)")
+                         f"(it takes name, type, size_mm [w, d, h], material, includes)")
     size = answer.get("size_mm")
     if size is not None:
         if (not isinstance(size, (list, tuple)) or len(size) != 3
@@ -628,12 +769,19 @@ def box_choice(need: Need, answer: dict[str, Any], *, per_size: bool = False) ->
     name = str(answer.get("name") or f"Plinth {need.label}").strip()
     if per_size and not answer.get("name"):
         name += f" {_mm(w)}x{_mm(d)}"
+    type_name = str(answer.get("type") or box_type_name(w, d, h)).strip()
+    made = None if answer.get("name") else next(
+        (b for b in earlier if b.category == need.category
+         and max(abs(b.width_mm - w), abs(b.depth_mm - d), abs(b.height_mm - h)) <= 0.5), None)
+    if made is not None:
+        name, type_name = made.family, str(answer.get("type") or made.type)
     bad = sorted({c for c in name if c in BOX_NAME_FORBIDDEN or ord(c) < 32})
     if not name or name.endswith(".") or len(name) > 120 or bad:
         raise ValueError(f"{where}: {name!r} cannot be a family name (it is also a file name: no "
                          f"{' '.join(sorted(BOX_NAME_FORBIDDEN))}, no dot at the end, at most 120 characters)")
+    if not type_name or len(type_name) > 120 or any(ord(c) < 32 for c in type_name):
+        raise ValueError(f"{where}: {type_name!r} cannot be a type name")
     material = answer.get("material")
-    type_name = box_type_name(w, d, h)
     measured = Measurement(family=name, type=type_name, placement="OneLevelBased", min=(-w / 2, -d, 0.0),
                            max=(w / 2, 0.0, h), source=BOX_SOURCE)
     choice = Choice(need=need.id, category=need.category, family=name, type=type_name, source="create",
@@ -645,7 +793,8 @@ def box_choice(need: Need, answer: dict[str, Any], *, per_size: bool = False) ->
              f"{_mm(w)} x {_mm(d)} x {_mm(h)} mm, from Revit's metric template for its category (else the generic "
              f"model's), with Width, Depth, Height and Material parameters, its origin at the middle of its back, front "
              f"-Y, base at the level; a new family, removed with the fit-out run (a family of that name already in the "
-             f"project is used as it is, never overwritten)",
+             f"project is used as it is, never overwritten)"
+             + (f"; the family run {made.run} created for it, as that run named it" if made is not None else ""),
         value={"family": name, "type": type_name, "size_mm": [w, d, h], "category": need.category,
                **({"material": material} if material else {})},
         source="user's answer", instances=need.keys)
@@ -694,24 +843,31 @@ def _size(w: float | None, d: float | None) -> str:
     return f"{round(w)} x {round(d)}" if w is not None and d is not None else "unknown size"
 
 
-def _choose(need: Need, c: Candidate, answered: bool) -> tuple[Choice, list[Assumption]]:
+def _choose(need: Need, c: Candidate, answered: bool,
+            copies: Iterable[dict[str, Any]] = ()) -> tuple[Choice, list[Assumption]]:
     kind = "family_type" if not need.mep else need.category
     base = dict(need=need.id, category=c.category if not need.mep else MEP_KIND_CATEGORY.get(need.category, need.category),
                 family=c.family, source=c.source, path=c.path, placement=c.placement, kind=kind, answered=answered,
-                type_id=c.type_id if c.source == "project" else None)
+                type_id=c.type_id if c.source == "project" else None,
+                source_id=c.type_id if c.source == "template" and c.ambiguous else None)
     notes: list[Assumption] = []
     where = "the project" if c.source == "project" else (c.path or "").rsplit("\\", 1)[-1]
     name = f"{c.family}: {c.type}" if c.family else c.type
     if c.source == "template":
+        twin = (f" (by its id {c.type_id}: the file lists more than one type of that name, e.g. one with fittings and "
+                f"one without; which it is, is not listed)" if c.ambiguous else "")
         notes.append(Assumption(id=f"fitout:family-source:{need.id}", text=f"{need.label}: {name} from {where}, copied "
-                                f"into the project as a new type", value={"family": c.family, "type": c.type, "path": c.path},
+                                f"into the project as a new type{twin}", value={"family": c.family, "type": c.type,
+                                                                               "path": c.path, "source_id": c.type_id},
                                 source="installed template", instances=need.keys))
     miss = _miss(need, c)
     if miss is not None and miss <= SIZE_TOL_MM:
         return Choice(type=c.type, width_mm=c.width_mm, depth_mm=c.depth_mm, **base), notes
     values = _sizable(need, c)
     if values:
-        copy_name = f"{_size(need.width_mm, need.depth_mm).replace(' ', '')}mm {COPY_SUFFIX}"
+        copy_name = next((x["name"] for x in copies if (x.get("family"), x.get("base_type")) == (c.family, c.type)
+                          and dict(x.get("values_mm") or {}) == values),  # an earlier run's copy keeps its name
+                         f"{_size(need.width_mm, need.depth_mm).replace(' ', '')}mm {COPY_SUFFIX}")
         notes.append(Assumption(id=f"fitout:family-copy:{need.id}", text=f"{need.label}: a copy of {name} "
                                 f"({_size(c.width_mm, c.depth_mm)}) made at {_size(need.width_mm, need.depth_mm)} as "
                                 f"{copy_name!r}; {c.type!r} itself is not changed", value=values,
@@ -735,20 +891,47 @@ def _choose(need: Need, c: Candidate, answered: bool) -> tuple[Choice, list[Assu
     return Choice(type=c.type, width_mm=c.width_mm, depth_mm=c.depth_mm, differences=differences, **base), notes
 
 
+def _choose_text(need: Need) -> str:
+    """What the user may answer, in the answer's own shapes."""
+    box = (f', {{"create": "box"}} for a plain box Plinth creates at {_size(need.width_mm, need.depth_mm)} mm (or '
+           f'{{"create": "box", "size_mm": [w, d, h]}})' if not need.mep else "")
+    return (f'Answer {{"family": "<family>", "type": "<type>"}} (one of the options, or any type in the project or '
+            f'the templates; it may be copied to the size){box}, or "skip" to leave it out; or load a family into the '
+            f'project and plan again.')
+
+
 def _question(need: Need, search: _Search, why: str | None = None) -> Question:
-    """Nothing with the item's keywords: ask, offering the category's other types (project first)."""
+    """Nothing picked: ask, offering the category's types that share a word with the item's keywords (best first, at
+    a plausible size before others; none that share nothing: a fan coil unit is not offered for an exit sign), then
+    a box Plinth creates and "skip"."""
     others = search.project_candidates(need, scored=False) + search.template_candidates(need, scored=False)
+    ranked = []
+    for c in others:
+        overlap = keyword_overlap(need.keywords, c.family or "", c.type)
+        if overlap:
+            ranked.append(((-keyword_score(need.keywords, c.family or "", c.type), -overlap,
+                            0 if plausible_size(need, c) else 1, 0 if c.source == "project" else 1, c.family or "",
+                            c.type), c))
     options: list[Any] = []
-    for c in others[:MAX_OPTIONS]:
+    seen = set()
+    for _, c in sorted(ranked, key=lambda t: t[0]):
+        if (c.family, c.type, c.path) in seen or len(options) >= MAX_OPTIONS:
+            continue
+        seen.add((c.family, c.type, c.path))
         option = {"family": c.family, "type": c.type, "source": c.source}
         if c.path:
             option["path"] = c.path
         options.append(option)
+    if not need.mep:
+        box: dict[str, Any] = {"create": "box"}
+        if need.width_mm and need.depth_mm and need.height_mm:
+            box["size_mm"] = [need.width_mm, need.depth_mm, need.height_mm]
+        options.append(box)
     options.append("skip")
     size = f" ({_size(need.width_mm, need.depth_mm)} mm)" if need.width_mm and need.depth_mm else ""
+    looked = ", ".join(k for k in need.keywords if not k.startswith("-"))
     text = why or (f"No family type for {need.label}{size} was found in the project or in Revit's installed templates "
-                   f"(looked for {', '.join(need.keywords)} in {need.category}). Choose a type to use (it may be "
-                   f"copied to the size), load a family into the project and plan again, or leave it out.")
+                   f"(looked for {looked} in {need.category}). " + _choose_text(need))
     return Question(id=question_id(need), topic="families", text=text, options=options, instances=need.keys)
 
 
@@ -939,7 +1122,7 @@ def resolve_items(model: Any, rules: Any, revit: Revit, answers: dict[str, Any] 
                   measurements: list[Measurement] | None = None, document: str | None = None, level: str | None = None,
                   cache: dict[tuple[str, int], Measurement] | None = None, year: int | str | None = None,
                   language: str | None = None, templates: list[str] | None = None,
-                  search: "_Search | None" = None) -> ItemFamilies:
+                  search: "_Search | None" = None, as_built: AsBuilt | None = None) -> ItemFamilies:
     """Families first: a family type per rule item (the answer ``fitout:family:<item>``, else the best match), each
     project type measured (``measurements`` given, else the add-in's measure_family_types), so the layout uses the
     chosen family's real footprint. An answer may be {"family", "type"} (the family's smaller types are tried when it
@@ -949,9 +1132,9 @@ def resolve_items(model: Any, rules: Any, revit: Revit, answers: dict[str, Any] 
     "skip", or {"create": "box"} (``box_choice``: a box family Plinth creates, laid out at its own size, never measured).
     Types are used as they are, never edited."""
     answers = answers or {}
-    search = search or _Search(revit, year, language, templates)
+    search = search or _Search(revit, year, language, templates, (as_built or AsBuilt()).hidden)
     needs = item_needs(model, rules)
-    found = resolve(needs, revit, answers, search=search)
+    found = resolve(needs, revit, answers, search=search, as_built=as_built)
     left_out: dict[str, str] = {}
     no_sides: set[str] = set()
     by_item = {n.item: n for n in needs}
