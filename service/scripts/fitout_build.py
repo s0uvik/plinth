@@ -21,7 +21,7 @@ the differences are listed.
 --answers: a JSON file (or inline JSON) of fit-out answers, e.g. {"fitout:family:sofa": {"family": "...", "type":
 "..."}, "fitout:family:side_table": "skip"}; an answer may add "types" (preferred first), "front" (-y, +y, -x, +x:
 which way the family's front faces in its own coordinates) and "includes" (items the family already has). The answer
-{"create": "box"} (optionally "name", "size_mm": [w, d, h], "material") is the user's OK for Plinth to create a plain box
+{"create": "box"} (optionally "name", "type", "size_mm": [w, d, h], "material") is the user's OK for Plinth to create a plain box
 family for the item (default "Plinth <Label>" at the rule's first size, type "<w> x <d> x <h>mm (Plinth)"): the plan gets a
 family_create pre-step (the add-in's create_box_family, with the connectors the plan joins to it: electrical, and a pipe
 connector per system and size; a family of that name already in the project is used as it is), the item is laid out at

@@ -17,8 +17,11 @@ run on top of the building's run, so it is approved, built, read back and remove
     found.mep                   # the MEP layout made on that furniture layout (mep=True)
 
     # on an earlier fit-out run: its records are not placed again, runs and circuits join what it built
-    found = to_plan.plan_furniture(..., mep=True, built_fitout=earlier_run_created)
+    found = to_plan.plan_furniture(..., mep=True, built_fitout=earlier_run_created,
+                                   saved=its_saved_layout,       # SavedLayout: its layout, not laid out again
+                                   as_built=what_it_brought_in)  # families.AsBuilt (a run that saved no layout)
     found.already_built         # the family op each of its records would get now (to check the layout is the same)
+    found.saved_layout()        # what a run of this plan saves (``fitout_layout``) for the runs built on it
     to_plan.prune(found.plan, drop=keys)   # a plan without some records and whatever joins them
 
 A measured family is inserted so its box lands on the layout's footprint (``measured_point``): the layout gives the
@@ -110,6 +113,24 @@ class FitoutPlan(_Model):
     items: ItemFamilies | None = None  # plan_furniture: the family chosen (and measured) per rule item
     mep: MepLayout | None = None  # plan_furniture(mep=True): the MEP layout made on that furniture layout
     already_built: dict[str, FamilyOp] = {}  # built_fitout: the op each record an earlier run built would get now
+    chosen: dict[str, Choice] = {}  # placed record key -> the family type it is placed with
+
+    def saved_layout(self) -> SavedLayout | None:
+        """The layout and the furniture records' family types, for a run of this plan to save."""
+        if self.layout is None:
+            return None
+        keys = {p.key for p in self.layout.placed}
+        return SavedLayout(layout=self.layout, choices={k: c for k, c in self.chosen.items() if k in keys})
+
+
+class SavedLayout(_Model):
+    """What a fit-out run laid out and placed, saved on its run (``fitout_layout``): the furniture layout and the family
+    type each record was placed with. A later run on it (the MEP on a furniture run, the rest after a pilot) takes them
+    as they are instead of laying the furniture out again: whatever measures differently now (the template types that
+    run copied in are project types now, and measured), what it built is what the later run joins."""
+
+    layout: FurnitureLayout
+    choices: dict[str, Choice] = {}  # furniture record key -> its family type, as placed
 
 
 class Pruned(_Model):
@@ -169,7 +190,8 @@ def plan_furniture(revit: families.Revit, building: BuildPlan, built: dict[str, 
                    answers: dict[str, Any] | None = None, measurements: list[Measurement] | None = None,
                    mep: bool = False, shaft_kinds: Mapping[str, str] | None = None, document: str | None = None,
                    measure_level: str | None = None, cache: dict | None = None, templates: list[str] | None = None,
-                   year: int | str | None = None, built_fitout: Mapping[str, int] | None = None) -> FitoutPlan:
+                   year: int | str | None = None, built_fitout: Mapping[str, int] | None = None,
+                   saved: SavedLayout | None = None, as_built: families.AsBuilt | None = None) -> FitoutPlan:
     """Families first, then the layout, then the plan:
 
     1. a family type per rule item (``families.resolve_items``: answers ``fitout:family:<item>``, else the best match),
@@ -180,13 +202,21 @@ def plan_furniture(revit: families.Revit, building: BuildPlan, built: dict[str, 
        furniture layout (``mep.layout``: its runs end at the fixtures where they really stand; ``shaft_kinds`` as it
        takes them), its questions and assumptions joining the plan's;
     3. the plan: measured items placed with the type the layout used, their insertion worked out from the measured box
-       (``measured_point``); the rest (a counter's legs, template types, MEP) matched per size as ``plan_fitout``."""
+       (``measured_point``); the rest (a counter's legs, template types, MEP) matched per size as ``plan_fitout``.
+
+    On an earlier fit-out run (``built_fitout``): its ``saved`` layout is the furniture layout (1 and 2 are not done
+    again; its records keep the family types they were placed with); a run that saved none is laid out again as it
+    was (``as_built``: the types it brought in hidden from the project, its copies' and boxes' names kept)."""
     answers = answers or {}
-    search = families._Search(revit, year, None, templates)
-    items = families.resolve_items(model, rules, revit, answers, measurements=measurements, document=document,
-                                   level=measure_level, cache=cache, search=search)
-    layout = furniture_solver.solve(model, furniture_solver.with_sizes(rules, items.sizes(), items.no_sides),
-                                    leave_out=items.left_out)
+    as_built = as_built or families.AsBuilt()
+    search = families._Search(revit, year, None, templates, as_built.hidden)
+    if saved is not None:
+        items, layout = None, saved.layout
+    else:
+        items = families.resolve_items(model, rules, revit, answers, measurements=measurements, document=document,
+                                       level=measure_level, cache=cache, search=search, as_built=as_built)
+        layout = furniture_solver.solve(model, furniture_solver.with_sizes(rules, items.sizes(), items.no_sides),
+                                        leave_out=items.left_out)
     mep_layout = mep_solver.layout(building, model, layout, rules, answers, shaft_kinds) if mep else None
     mep = mep_plan.records(mep_layout, levels_of(building)) if mep_layout is not None else None
     records = {p.key: p for p in layout.placed}
@@ -196,22 +226,29 @@ def plan_furniture(revit: families.Revit, building: BuildPlan, built: dict[str, 
     asked: dict[str, list[str]] = {}
     rest: list[Need] = []
     for need in needs:
-        fam = items.items.get(need.item) if not need.mep else None
+        fam = items.items.get(need.item) if items is not None and not need.mep else None
         record = records.get(need.keys[0]) if need.keys else None
-        if fam is not None and fam.options and record is not None:
+        kept = saved.choices.get(need.keys[0]) if saved is not None and need.keys and not need.mep else None
+        if kept is not None:  # placed by the earlier run with this type: the same again
+            pinned[need.id] = kept.model_copy(update={"need": need.id})
+        elif fam is not None and fam.options and record is not None:
             option = fam.options[min(record.size_index, len(fam.options) - 1)]
             pinned[need.id] = option.model_copy(update={"need": need.id})
-        elif record is not None and need.item in items.asked:
+        elif record is not None and items is not None and need.item in items.asked:
             asked.setdefault(items.asked[need.item], []).extend(need.keys)
         else:
             rest.append(need)
-    found = families.resolve(rest, revit, answers, search=search)
-    questions = [q.model_copy(update={"instances": asked[q.id]}) for q in items.questions if q.id in asked]
+    found = families.resolve(rest, revit, answers, search=search, as_built=as_built)
+    questions = [q.model_copy(update={"instances": asked[q.id]}) for q in items.questions if q.id in asked] if items else []
+    assumptions = [*items.assumptions] if items else [Assumption(
+        id="fitout:furniture-as-built", text=f"The furniture layout and its family types are the ones the earlier "
+        f"fit-out run saved ({len(layout.placed)} items): not laid out again", value=len(layout.placed),
+        source="earlier fit-out run", instances=[])]
     resolution = Resolution(choices={**found.choices, **pinned}, questions=questions + found.questions,
-                            assumptions=[*items.assumptions, *found.assumptions], skipped=found.skipped,
-                            searched=list(dict.fromkeys(items.searched + found.searched)))
+                            assumptions=[*assumptions, *found.assumptions], skipped=found.skipped,
+                            searched=list(dict.fromkeys((items.searched if items else []) + found.searched)))
     result = make(resolution, needs, building, built, furniture=layout, mep=mep, built_fitout=built_fitout,
-                  voltage_v=supply_voltage(rules))
+                  voltage_v=supply_voltage(rules), as_built=as_built)
     update: dict[str, Any] = {"layout": layout, "items": items}
     if mep_layout is not None:
         update.update(mep=mep_layout, questions=[*result.questions, *mep_layout.questions],
@@ -286,9 +323,10 @@ def device_offset(record: Any, m: Measurement | None) -> tuple[float, str | None
 
 def make(resolution: Resolution, needs: list[Need], building: BuildPlan, built: dict[str, int], *,
          furniture: Any = None, mep: Any = None, built_fitout: Mapping[str, int] | None = None,
-         voltage_v: float | None = None) -> FitoutPlan:
+         voltage_v: float | None = None, as_built: families.AsBuilt | None = None) -> FitoutPlan:
     """The build plan for the layout with the families resolved (see the module docstring). ``mep``: the MEP layout or
-    its records; ``voltage_v``: the supply voltage of box families' electrical connectors."""
+    its records; ``voltage_v``: the supply voltage of box families' electrical connectors; ``as_built``: the box
+    families earlier runs created (``_earlier_boxes``)."""
     mep = mep_records(mep, building)
     built_fitout = dict(built_fitout or {})
     levels = levels_of(building)
@@ -413,6 +451,9 @@ def make(resolution: Resolution, needs: list[Need], building: BuildPlan, built: 
     connectors, capped = _box_connectors(ops, chosen, records, voltage_v)
     notes += capped
     type_ops = _type_ops(used.values(), connectors)
+    type_ops, made_before, box_notes = _earlier_boxes(type_ops, (as_built or families.AsBuilt()).boxes, ops, chosen)
+    notes += box_notes
+    existing.update(made_before)
     all_ops = type_ops + ops
     op_keys = {op["key"] for op in ops}
     for op in ops:  # an earlier run's record a run or circuit joins: looked up, as the building's walls
@@ -431,7 +472,55 @@ def make(resolution: Resolution, needs: list[Need], building: BuildPlan, built: 
     questions = [q for q in resolution.questions if not q.instances or not set(q.instances) <= set(built_fitout)]
     return FitoutPlan(plan=plan, ready=not questions, questions=questions,
                       assumptions=[*resolution.assumptions, *notes], left_out=left, families=resolution.choices,
-                      needs=needs, already_built=again)
+                      needs=needs, already_built=again, chosen=chosen)
+
+
+def _spec(connectors: Iterable[Any]) -> set[tuple]:
+    """A box family's connectors as what a join needs of them: domain, classification and size."""
+    out = set()
+    for c in connectors:
+        c = c if isinstance(c, dict) else c.model_dump()
+        out.add((c.get("domain"), c.get("classification"), float(c["diameter_mm"]) if c.get("diameter_mm") else None))
+    return out
+
+
+def _earlier_boxes(type_ops: list[dict[str, Any]], boxes: Iterable[families.EarlierBox], ops: list[dict[str, Any]],
+                   chosen: Mapping[str, Choice]) -> tuple[list[dict[str, Any]], dict[str, int], list[Assumption]]:
+    """The box families an earlier run created, against what this plan joins to their instances. A family is never
+    edited in place, so one made without a connector the plan's runs or circuits need is said up front: joins to its
+    instances will not connect, and how to have them (remove that run, build furniture and MEP together). One made
+    with every connector needed is used as it is: its family_create op is dropped (it would only find the family
+    already there, with "0 of N connectors made") and the family is an existing element of the plan, so that run is
+    not removed before this one. Returns the type ops, the existing entries and the notes."""
+    by_family = {b.family.casefold(): b for b in boxes}
+    joined: dict[str, set[str]] = {}
+    for op in ops:
+        for ref in (op.get("start_key"), op.get("end_key"), op.get("panel_key"), *(op.get("device_keys") or [])):
+            c = chosen.get(ref) if ref else None
+            if c is not None and c.source == "create" and c.family and c.family.casefold() in by_family:
+                joined.setdefault(c.family.casefold(), set()).add(ref)
+    wanted = {op["family"].casefold(): op.get("connectors") or [] for op in type_ops if op["op"] == "family_create"}
+    kept, existing, notes = [], {}, []
+    for op in type_ops:
+        box = by_family.get(op["family"].casefold()) if op["op"] == "family_create" else None
+        if box is not None and box.element_id is not None and _spec(wanted[op["family"].casefold()]) <= _spec(box.connectors):
+            existing[box.key] = box.element_id
+            continue
+        kept.append(op)
+    for family, box in sorted(by_family.items()):
+        missing = _spec(wanted.get(family, [])) - _spec(box.connectors)
+        if family not in joined or (box.element_id is not None and not missing):
+            continue
+        what = (f"without the connectors {sorted(missing, key=str)}" if box.element_id is not None
+                else "before (it was already in the project then; its connectors are not known)")
+        notes.append(Assumption(
+            id=f"fitout:box-connectors-before:{_slug(box.family)}",
+            text=f"box family {box.family!r} was created by run {box.run} {what}; Plinth never edits a family in "
+                 f"place, so the joins to its {len(joined[family])} instance(s) this plan joins will not connect "
+                 f"(issues of the build). To connect them, remove run {box.run} (and the runs built on it) and build "
+                 f"the furniture and the MEP together", value=sorted(joined[family]), source="earlier fit-out run",
+            instances=sorted(joined[family])))
+    return kept, existing, notes
 
 
 def _box_connectors(ops: list[dict[str, Any]], chosen: dict[str, Choice], records: dict[str, Any],
@@ -531,7 +620,8 @@ def prune(plan: BuildPlan, drop: Iterable[str] = (), existing: Mapping[str, int]
             types.append(op)
         elif op in copies:
             types.append(op)
-    refs = {k for op in elements for k in references(op)}
+    # what elements refer to, and the box families an earlier run made that they are placed with (``_earlier_boxes``)
+    refs = {k for op in elements for k in references(op)} | {FAMILY_KEY + _slug(f) for f in families_used}
     used_levels = {getattr(op, "level", None) for op in elements}
     joined = {k: v for k, v in {**plan.existing, **existing}.items() if k in refs}
     pruned = BuildPlan.model_validate({
@@ -638,6 +728,8 @@ def _type_ops(choices: Iterable[Choice], connectors: Mapping[str, list[dict[str,
             item: dict[str, Any] = {"kind": c.kind, "name": name}
             if c.kind == "family_type":
                 item.update(family=c.family, category=c.category)
+            if c.source_id is not None:  # the name is not enough in that file: copied by its id
+                item["source_id"] = c.source_id
             by_file.setdefault(c.path, {})[(c.kind, c.family or "", name)] = item
         if c.base_type:
             copies[(c.family, c.type)] = {"op": "family_type_copy", "key": TYPE_COPY_KEY + _slug(f"{c.family}-{c.type}"),

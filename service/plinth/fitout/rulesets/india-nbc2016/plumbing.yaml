@@ -156,7 +156,7 @@ plumbing:
     roof_outlet:
       label: Roof rainwater outlet
       category: Plumbing Fixtures
-      keywords: [roof drain, rainwater outlet, drain]
+      keywords: [roof drain, rainwater outlet, drain, "-floor"]
       size: {width_mm: 200, depth_mm: 200, height_mm: 100}
       source: "Typical practice (khurra with grating)"
       verified: false

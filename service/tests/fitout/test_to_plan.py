@@ -289,6 +289,40 @@ def test_level_based_wall_and_ceiling_devices_are_placed_by_their_box_not_their_
     assert "offset_mm" not in to_plan._family_op(sofa, plain, set(), {})[0]
 
 
+def test_a_box_family_an_earlier_run_made_is_used_as_it_is_and_one_without_connectors_is_said(building, wb_rules):
+    from plinth.fitout import families
+    revit = FitoutRevit(templates=MEP_TEMPLATES)
+    built = {op.key: 70000 + i for i, op in enumerate(building.ops)}
+    full = plan_toilet(revit, building, built, wb_rules).plan
+    wc_box = next(op for op in full.ops if op.op == "family_create" and op.family == "Plinth Water closet")
+    furniture = {op.key: 80000 + i for i, op in enumerate(full.ops) if op.op == "family" and op.key.startswith("FIT-")}
+
+    def box(connectors):
+        return families.EarlierBox(run="R-FURN", key=wc_box.key, element_id=555, family=wc_box.family, type=wc_box.type,
+                                   category=wc_box.category, width_mm=wc_box.width_mm, depth_mm=wc_box.depth_mm,
+                                   height_mm=wc_box.height_mm, connectors=connectors)
+    # a furniture-only run made the WC box with no connectors: said up front, how to have them joined
+    found = plan_toilet(revit, building, built, wb_rules, built_fitout=furniture)
+    plain = to_plan.make(families.Resolution(choices=found.families), found.needs, building, built,
+                         furniture=furniture_layout(building, wb_rules), mep=toilet_mep(), built_fitout=furniture,
+                         as_built=families.AsBuilt(boxes=[box([])]))
+    (note,) = [a for a in plain.assumptions if a.id.startswith("fitout:box-connectors-before:")]
+    assert "created by run R-FURN without the connectors" in note.text and "remove run R-FURN" in note.text
+    assert note.instances == ["FIT-TLT-wc-1"]
+    # made with the connectors this plan joins, by a run this plan builds on (a pilot): used as it is, no second
+    # family_create (it would only find it there, "0 of 1 connectors made"), and that run is not removed first
+    same = to_plan.make(families.Resolution(choices=found.families), found.needs, building, built,
+                        furniture=furniture_layout(building, wb_rules), mep=toilet_mep(),
+                        as_built=families.AsBuilt(boxes=[box([c.model_dump(exclude_none=True) for c in wc_box.connectors])]))
+    assert not [op for op in same.plan.ops if op.op == "family_create" and op.family == wc_box.family]
+    assert same.plan.existing[wc_box.key] == 555 and "FIT-TLT-wc-1" in same.plan.by_key()
+    assert not [a for a in same.assumptions if a.id.startswith("fitout:box-connectors-before:")]
+
+
+def furniture_layout(building, wb_rules):
+    return furniture.solve(rooms.build(building, wb_rules), wb_rules)
+
+
 def test_prune_drops_what_joins_a_record_that_is_gone_and_the_types_nobody_uses(building, wb_rules):
     revit = FitoutRevit(templates=MEP_TEMPLATES)
     built = {op.key: 70000 + i for i, op in enumerate(building.ops)}

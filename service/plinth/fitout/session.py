@@ -16,12 +16,15 @@ What it does, in order:
    flat or system stops before Revit is asked anything. ``furniture_run``: an earlier fit-out run of the same building
    whose furniture is already in the model; its answers are the defaults (the answers given win), its built
    furniture is joined, never placed again. ``exclude_runs``: earlier fit-out runs (a pilot) whose elements are
-   joined, not built again.
+   joined, not built again. The furniture layout of the furniture run (else of the last excluded run) is taken as it
+   saved it (``fitout_layout``: the layout and each item's family type), never laid out again; a run that saved none
+   is laid out again as it was then (``as_built``: the types it brought in are hidden from the project, so they are
+   matched and sized as they were, unmeasured; its size copies and box families keep the names it gave them).
 2. ``plan``: the families (measured), the furniture layout on their real footprints, the MEP layout on that layout
-   (when an MEP system is asked for) and the plan (``to_plan.plan_furniture``). On a furniture run, the furniture
-   laid out now must be what that run built (same key: same level, family type, point within 1 mm and turn within
-   0.1 degree); else the plan stops with the list (``Drift``): different answers or measurements give another
-   layout, and runs would end where nothing stands. Then the systems not asked for, and outside a flat pilot
+   (when an MEP system is asked for) and the plan (``to_plan.plan_furniture``). What the earlier runs built must still
+   be in the model, and on a furniture run the furniture planned now must be what that run built (same key: same
+   level, category, family type, point within 1 mm, turn within 0.1 degree, height, host and side); else the plan
+   stops with the list (``Drift``): runs would end where nothing stands. Then the systems not asked for, and outside a flat pilot
    (``flat``, on ``level``), are left out (``to_plan.prune``: whatever joins them goes too). A pilot keeps the flat's
    rooms' records and the MEP records of the flat, with what they join (the branches, stacks and mains their pipes
    tee into, so the joins are tried), nothing else.
@@ -51,7 +54,7 @@ from plinth.fitout.families import Measurement
 from plinth.fitout.mepcore import NOTICE
 from plinth.fitout.rooms import RoomModel
 from plinth.fitout.rules import FitoutRules
-from plinth.plan import BuildPlan, FamilyOp
+from plinth.plan import BuildPlan, FamilyCreateOp, FamilyOp, FamilyTypeCopyOp, TypesFromFileOp
 from plinth.revit import RevitClient
 from plinth.revit.commands import REQUIRED_COMMANDS, fitout_commands
 from plinth.revit.types import TypeMap
@@ -61,7 +64,8 @@ SYSTEMS = mep_plan.SYSTEMS
 MEP_SYSTEMS = SYSTEMS[1:]
 BUILT = ("built", "built_with_issues")
 # What planning reads in the document (measure_family_types is used when the add-in has it).
-PLAN_COMMANDS = ["get_available_family_types", "get_type_parameters", "list_template_files", "list_types_in_file"]
+PLAN_COMMANDS = ["get_available_family_types", "get_type_parameters", "list_template_files", "list_types_in_file",
+                 "analyze_model_statistics"]
 # A question of the MEP layout that only one system's layout needs (by its topic); the rest shape every system.
 QUESTION_SYSTEM = {"fitout_ac": "hvac", "fitout_fire": "fire", "fitout_tank": "plumbing", "fitout_stack": "plumbing",
                    "fitout_meter_room": "electrical"}
@@ -100,7 +104,9 @@ class Inputs(_Model):
     furniture_document: str | None = None
     furniture_ops: dict[str, FamilyOp] = {}  # what the furniture run built, as its plan placed it
     earlier: dict[str, int] = {}  # key -> id of what the furniture run and the excluded runs built
-    earlier_runs: dict[str, str] = {}  # key -> the run of ``earlier`` that built it
+    earlier_runs: dict[str, str] = {}  # key -> the run of ``earlier`` that built it (and the box families they made)
+    saved_layout: to_plan.SavedLayout | None = None  # the furniture run's (else the last excluded run's) layout
+    as_built: families.AsBuilt = families.AsBuilt()  # what the earlier runs brought in (see prepare)
     exclude_runs: list[str] = []
     flat: str | None = None
     level: str | None = None
@@ -112,6 +118,7 @@ class Planned(_Model):
     ready: bool = False
     answers: dict[str, Any] = {}
     owners: dict[str, str] = {}  # the plan's existing element key -> the run that built it
+    layout: to_plan.SavedLayout | None = None  # what a run of this plan saves for the runs built on it
 
 
 # ------------------------------------------------------------------------------------------------ prepare
@@ -162,6 +169,7 @@ def prepare(store: RunStore, building_run: str, rules: str | FitoutRules, *, ans
     given = {k: v for k, v in (answers or {}).items() if not k.startswith("_")}
 
     merged, furniture_ops, earlier, earlier_runs, furniture_document = dict(given), {}, {}, {}, None
+    built_before: list[tuple[str, BuildPlan, dict[str, int]]] = []  # (run id, its plan, what it created)
     if furniture_run:
         frun, frecord = _built_run(store, furniture_run, "the furniture")
         saved = frun.load("fitout_report") or {}
@@ -172,13 +180,21 @@ def prepare(store: RunStore, building_run: str, rules: str | FitoutRules, *, ans
         furniture_ops = {op.key: op for op in fplan.ops if isinstance(op, FamilyOp) and op.key in created}
         earlier = {k: created[k] for k in furniture_ops}
         earlier_runs = {k: furniture_run for k in earlier}
+        built_before.append((furniture_run, fplan, created))
         merged = {**(saved.get("answers") or {}), **given}
         furniture_document = frecord.get("document_title")
     for rid in exclude_runs:
-        _, xrecord = _built_run(store, rid, "the excluded")
+        xrun, xrecord = _built_run(store, rid, "the excluded")
+        built_before.append((rid, BuildPlan.model_validate(xrun.load("plan")), xrecord.get("created") or {}))
         mine = {k: v for k, v in (xrecord.get("created") or {}).items() if "#" not in k}
         earlier.update(mine)
         earlier_runs.update({k: rid for k in mine})
+
+    layout_run = furniture_run or (list(exclude_runs)[-1] if exclude_runs else None)
+    saved = store.get(layout_run).load("fitout_layout") if layout_run else None
+    saved_layout = to_plan.SavedLayout.model_validate(saved) if saved else None
+    found_before = as_built(built_before, hide=saved_layout is None)
+    earlier_runs.update({b.key: b.run for b in found_before.boxes if b.element_id is not None})
 
     levels = to_plan.levels_of(building)
     if measured_level and measured_level not in levels:
@@ -201,7 +217,32 @@ def prepare(store: RunStore, building_run: str, rules: str | FitoutRules, *, ans
                   model=model, answers=merged, measurements=given_measurements, measured_level=measured_level,
                   systems=chosen, shaft_kinds=mep.shaft_kinds_from_sources(import_plan.get("sources") or {}),
                   furniture_run=furniture_run, furniture_document=furniture_document, furniture_ops=furniture_ops,
-                  earlier=earlier, earlier_runs=earlier_runs, exclude_runs=list(exclude_runs), flat=flat, level=level)
+                  earlier=earlier, earlier_runs=earlier_runs, exclude_runs=list(exclude_runs), flat=flat, level=level,
+                  saved_layout=saved_layout, as_built=found_before)
+
+
+def as_built(runs: Iterable[tuple[str, BuildPlan, Mapping[str, int]]], hide: bool) -> families.AsBuilt:
+    """What earlier fit-out runs brought into the project, from their plans (``families.AsBuilt``): the box families
+    they created (with the family's id when the run made it) and the names of their size copies; with ``hide`` (no
+    saved layout to take), the types they copied in, copied or created too, to plan as they did."""
+    hidden: list[tuple[str | None, str]] = []
+    copies: list[dict[str, Any]] = []
+    boxes: list[families.EarlierBox] = []
+    for run_id, plan_, created in runs:
+        for op in plan_.ops:
+            if isinstance(op, TypesFromFileOp):
+                hidden += [(i.family, i.name) for i in op.items if i.kind == "family_type"]
+            elif isinstance(op, FamilyTypeCopyOp):
+                copies.append({"family": op.family, "base_type": op.base_type, "values_mm": dict(op.values_mm),
+                               "name": op.name})
+                hidden.append((op.family, op.name))
+            elif isinstance(op, FamilyCreateOp):
+                boxes.append(families.EarlierBox(
+                    run=run_id, key=op.key, element_id=created.get(op.key), family=op.family, type=op.type,
+                    category=op.category, width_mm=op.width_mm, depth_mm=op.depth_mm, height_mm=op.height_mm,
+                    connectors=[c.model_dump(exclude_none=True) for c in op.connectors]))
+                hidden.append((op.family, op.type))
+    return families.AsBuilt(hidden=hidden if hide else [], copies=copies, boxes=boxes)
 
 
 # ------------------------------------------------------------------------------------------------ plan
@@ -212,11 +253,13 @@ def plan(revit: Any, inputs: Inputs, document: str | None) -> Planned:
     if inputs.furniture_document and title != inputs.furniture_document:
         raise SessionError(f"run {inputs.furniture_run} was built in {inputs.furniture_document!r}, not in {title!r}")
     with_mep = any(s in MEP_SYSTEMS for s in inputs.systems)
+    _check_still_built(revit, inputs)
     try:
         found = to_plan.plan_furniture(revit, inputs.building, inputs.built, inputs.model, inputs.rules,
                                        answers=inputs.answers, measurements=inputs.measurements, mep=with_mep,
                                        shaft_kinds=inputs.shaft_kinds, document=title,
-                                       measure_level=inputs.measured_level, built_fitout=inputs.earlier)
+                                       measure_level=inputs.measured_level, built_fitout=inputs.earlier,
+                                       saved=inputs.saved_layout, as_built=inputs.as_built)
     except SessionError:
         raise
     except ValueError as e:  # an answer or a layout the plan cannot take: said, not a traceback
@@ -253,7 +296,23 @@ def plan(revit: Any, inputs: Inputs, document: str | None) -> Planned:
     ready = not questions
     report = _report(inputs, found, built_plan, questions, not_now, left, dropped, trimmed, drift, ready)
     owners = {k: inputs.earlier_runs.get(k, inputs.building_run) for k in (built_plan.existing if built_plan else {})}
-    return Planned(report=report, plan=built_plan, ready=ready, answers=inputs.answers, owners=owners)
+    return Planned(report=report, plan=built_plan, ready=ready, answers=inputs.answers, owners=owners,
+                   layout=found.saved_layout())
+
+
+def _check_still_built(revit: Any, inputs: Inputs) -> None:
+    """What the earlier runs built and this plan joins must still be in the model (one read of their ids); else
+    SessionError naming them: runs and circuits would end where nothing stands."""
+    if not inputs.earlier:
+        return
+    missing = set(revit.call("analyze_model_statistics", {"elementIds": sorted(set(inputs.earlier.values()))})
+                  .get("missingIds") or [])
+    gone = sorted(k for k, i in inputs.earlier.items() if i in missing)
+    if gone:
+        runs = sorted({inputs.earlier_runs.get(k, "?") for k in gone})
+        raise SessionError(f"{len(gone)} elements run(s) {', '.join(runs)} built are no longer in the model (e.g. "
+                           f"{', '.join(gone[:3])}): put them back (undo their deletion), or remove those runs and "
+                           f"build the fit-out again")
 
 
 def plan_fitout(revit: Any, store: RunStore, building_run: str, document: str | None, rules: str | FitoutRules,
@@ -448,5 +507,17 @@ def build(planned: Planned, store: RunStore, document: str | None, *, connect: C
     service = BuildService(store, connect=connect or (lambda: RevitClient.connect(required_commands=needed)),
                            types=types if types is not None else TypeMap.load())
     record = service.build_now(planned.plan, document, owners=planned.owners)
-    store.get(record["run_id"]).save("fitout_report", {**planned.report, "answers": planned.answers})
+    for name, data in attachments(planned).items():
+        store.get(record["run_id"]).save(name, data)
     return record
+
+
+def attachments(planned: Planned, **report: Any) -> dict[str, Any]:
+    """What a run of the planned fit-out keeps beside its plan: the report with the answers (and ``report``'s extra
+    fields) as ``fitout_report``, and the layout it built (``fitout_layout``), which a later run on it takes as it is
+    instead of laying the furniture out again. Pass them as the build's attachments, and ``planned.owners`` as its
+    owners (``BuildService.start``)."""
+    out: dict[str, Any] = {"fitout_report": {**planned.report, "answers": planned.answers, **report}}
+    if planned.layout is not None:
+        out["fitout_layout"] = planned.layout.model_dump(mode="json")
+    return out

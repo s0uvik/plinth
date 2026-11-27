@@ -238,7 +238,11 @@ class FitoutRevit:
         results = []
         for index, item in enumerate(p["items"]):
             row: dict[str, Any] = {"index": index, "kind": item["kind"], "name": item["name"]}
-            if item["kind"] == "family_type":
+            if item.get("source_id") is not None:  # by its id in the file (a name listed twice)
+                found = [r for kind, rows in [("family_type", listing.get("family_types", [])),
+                                              *listing.get("mep_types", {}).items()]
+                         for r in rows if r["id"] == item["source_id"] and kind == item["kind"]]
+            elif item["kind"] == "family_type":
                 found = [r for r in listing.get("family_types", []) if r["type"] == item["name"]
                          and r["family"] == item.get("family") and (not item.get("category") or r["category"] == item["category"])]
             else:

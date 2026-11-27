@@ -134,6 +134,9 @@ def test_mep_on_top_of_a_furniture_run_joins_its_furniture_and_stops_when_it_mov
     frun = build(world, furniture)
     assert frun["status"] == "built"
     furniture_keys = {op.key for op in furniture.plan.ops if op.op == "family"}
+    # the run keeps the layout it built; the template types it copied in are project types now, and measure
+    assert store.get(frun["run_id"]).load("fitout_layout")["layout"]["placed"]
+    measure_copies(revit)
 
     planned = plan(world, fitout_answers, systems=MEP, furniture_run=frun["run_id"])
     assert planned.ready, planned.report["questions"]
@@ -158,6 +161,53 @@ def test_mep_on_top_of_a_furniture_run_joins_its_furniture_and_stops_when_it_mov
     with pytest.raises(session.Drift) as stopped:
         plan(world, fitout_answers, systems=MEP, furniture_run=frun["run_id"])
     assert len(stopped.value.mismatches) == 1 and stopped.value.mismatches[0].startswith(moved["key"] + ": point")
+
+
+def measure_copies(revit):
+    """What a real document answers once a furniture run copied template types in: they measure (the fake measures no
+    type without a box), here 600 x 600 x 900 about the middle of their back, unlike the rule sizes they were laid out
+    at. Planning on that run lays out nothing again (2026-11-27 review: 350 items moved)."""
+    for e in revit.elements.values():
+        if e.get("is_type") and e.get("kind") == "family_type" and e.get("made_by") == "copy" and not e.get("box"):
+            e["box"] = {"min": [-300.0, -600.0, 0.0], "max": [300.0, 0.0, 900.0]}
+
+
+def test_mep_on_a_furniture_run_that_saved_no_layout_is_planned_as_it_was_built(world, fitout_answers):
+    # a run built before fitout_layout was kept, and before the product was renamed: its bed box family is
+    # "B2M Bed" (the user's run 2026-11-16T21-08-19Z-d7b3); its copied types measure now
+    store, run_id, revit = world
+    bed = {"fitout:family:bed": {"create": "box"}}
+    furniture = plan(world, bed, systems=["furniture"])
+    frun = build(world, furniture)
+    assert frun["status"] == "built"
+    fr = store.get(frun["run_id"])
+    (fr.dir / "fitout_layout.json").unlink()
+    saved, record = fr.load("plan"), fr.load("run")
+    renamed = {"Plinth Bed": "B2M Bed", "1500 x 2000 x 450mm (Plinth)": "1500 x 2000 x 450mm (B2M)"}
+    for op in saved["ops"]:
+        for k in ("family", "type"):
+            if op.get(k) in renamed:
+                op[k] = renamed[op[k]]
+        if op["op"] == "family_create":
+            old, op["key"] = op["key"], "FIT-FAMILY-B2M-BED"
+            record["created"] = {k.replace(old, op["key"]): v for k, v in record["created"].items()}
+    fr.save("plan", saved)
+    fr.update(created=record["created"])
+    for e in revit.elements.values():
+        for k in ("family", "type"):
+            if e.get(k) in renamed:
+                e[k] = renamed[e[k]]
+    measure_copies(revit)
+
+    planned = plan(world, {**fitout_answers, **bed}, systems=MEP, furniture_run=frun["run_id"])  # no Drift
+    assert planned.report["furniture_check"]["compared"] == len([op for op in saved["ops"] if op["op"] == "family"])
+    assert not [op for op in planned.plan.ops if op.op == "family_create"]  # B2M Bed is that run's: no Plinth Bed
+    assert build(world, planned)["status"] in ("built", "built_with_issues")
+    # what an earlier run built and the plan joins must still be there
+    gone = next(i for k, i in record["created"].items() if k.startswith("FIT-") and "-wc-" in k)
+    revit.elements.pop(gone)
+    with pytest.raises(session.SessionError, match="no longer in the model"):
+        plan(world, {**fitout_answers, **bed}, systems=MEP, furniture_run=frun["run_id"])
 
 
 def test_the_systems_asked_for_leave_out_the_rest_and_what_joins_it(world, fitout_answers):
