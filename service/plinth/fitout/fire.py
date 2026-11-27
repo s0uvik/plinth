@@ -15,8 +15,10 @@ where they are systems (sprinklers, detection, PA, fire lift, refuge areas, yard
 with no common room (a stilt floor) hangs them on the walls nearest the foot of the stair starting on it, clear of
 the stair's run and headroom, 1.5 m apart (an assumption, listed back), and is asked when it has no stair or no such
 wall: ``fitout:extinguisher_room:<level>`` answers a room key, or a place on a wall (``{"near": "stair"}``, or
-``{"point": [x, y]}``: the walls nearest that point; see ``plinth.fitout.siting``). Exit signs: above each door of a common room that leads outside, and
-facing each stair that starts or ends in it. Every provision gets a record saying what was laid out for it.
+``{"point": [x, y]}``: the walls nearest that point; see ``plinth.fitout.siting``). Exit signs: above each door of a
+common room that leads outside, and facing each stair that starts or ends in it. A wall device whose rule height would
+put its top above the room's ceiling (the stair room on the roof, 2250 mm clear) is lowered to meet the ceiling, said
+in its note. Every provision gets a record saying what was laid out for it.
 """
 
 from __future__ import annotations
@@ -184,14 +186,26 @@ def exit_signs(ctx: Ctx) -> list[str]:
     for room in ctx.fit_rooms:
         if room.flat or not any(c in CIRCULATION for c in ctx.classes(room)):
             continue
+        zr, note = within_ceiling(ctx, room, z, h)
         for target in _exit_targets(ctx, room):
-            spots = wall_spots(ctx, room, w, z - h / 2, z + h / 2, furniture=False)
+            spots = wall_spots(ctx, room, w, zr - h / 2, zr + h / 2, furniture=False)
             sp = nearest_spot(spots, target)
             if sp is None:
                 ctx.unplace("exit_sign", room, room.level, "no wall above the doors for the sign")
                 continue
-            keys.append(ctx.on_wall("exit_sign", "fire", room, sp, z, source=spec.source).key)
+            keys.append(ctx.on_wall("exit_sign", "fire", room, sp, zr, source=spec.source, note=note).key)
     return keys
+
+
+def within_ceiling(ctx: Ctx, room: Room, z: float, h: float) -> tuple[float, str | None]:
+    """A wall device's centre height ``z`` (``h`` tall) kept inside the room's clear height: lowered until its top
+    meets the ceiling (the slab's underside), said in its note."""
+    ceiling = ctx.ceiling(room)
+    if z + h / 2 <= ceiling:
+        return z, None
+    zr = ceiling - h / 2
+    return zr, f"centre at {zr:g} mm, not {z:g}: the ceiling is at {ceiling:g} mm"
+
 
 
 def per_floor(ctx: Ctx, what: str) -> list[str]:
@@ -206,11 +220,12 @@ def per_floor(ctx: Ctx, what: str) -> list[str]:
             continue
         room = rooms[0]
         target = (_exit_targets(ctx, room) or [centre_of(room)])[0]
-        sp = nearest_spot(wall_spots(ctx, room, w, z - h / 2, z + h / 2), target)
+        zr, note = within_ceiling(ctx, room, z, h)
+        sp = nearest_spot(wall_spots(ctx, room, w, zr - h / 2, zr + h / 2), target)
         if sp is None:
             ctx.unplace(what, room, level, "no wall space in the common lobby")
             continue
-        keys.append(ctx.on_wall(what, "fire", room, sp, z, load=False, source=spec.source).key)
+        keys.append(ctx.on_wall(what, "fire", room, sp, zr, load=False, source=spec.source, note=note).key)
     return keys
 
 

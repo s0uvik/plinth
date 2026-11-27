@@ -32,6 +32,10 @@ Answers (``answers``: question id -> value; each question's text says its shapes
 - ``fitout:underground_tank``: a plan point [x, y], or ``{"side": "front" | "north" | ..., "near": "entrance"}``
   (in that setback, 1 m off the footings, clear of the entrance path; the pump beside it; the rising main up the
   nearest duct or stair well); ``fitout:front_side``: which compass side is the front (asked when "front" is used).
+- ``fitout:ac_outdoor:<room key>``: a cooled room with no exterior wall (or none with room for an outdoor unit):
+  a wall key of its outer walls to hang the outdoor unit on anyway, or "none" (``plinth.fitout.hvac``).
+- ``fitout:overhead_tank_slab``: the stair/lift roof the tanks are answered on has no slab in the plan: "slab" (one is
+  added, the tanks stand on it) or "terrace" (``plinth.fitout.plumbing``).
 - ``fitout:overhead_tank_on``: "stair_roof" puts the overhead tanks on the roof of the stair/lift rooms (asked when
   the plan has none), "terrace" (the default) on the roof terraces (``plinth.fitout.plumbing``).
 
@@ -124,7 +128,8 @@ def _tee(main: Run, p) -> tuple[int, float] | None:
 def problems(layout: MepLayout, model: RoomModel, furniture: FurnitureLayout) -> list[str]:
     """An audit of a layout against its rooms, independent of how it was laid out (and for the fit-out self-check):
     devices outside their room, runs through a door or beyond create_mep_run's limits, ends naming nothing, fixtures
-    not drained or fed, electrical loads on no circuit, circuits on no board."""
+    not drained or fed (unless the layout lists that drain or supply as unrouted, with why), electrical loads on no
+    circuit, circuits on no board."""
     out: list[str] = []
     rules = load(layout.rule_set)
     rooms = model.by_key()
@@ -185,12 +190,17 @@ def problems(layout: MepLayout, model: RoomModel, furniture: FurnitureLayout) ->
                    if c in rules.plumbing.classes for f in rules.plumbing.classes[c].fixtures):
                 wet.append((p.key, item_fixture[p.item]))
     wet += [(d.key, rules.plumbing.fixtures["floor_trap"]) for d in layout.devices if d.what == "floor_trap"]
+    listed = {(u.from_key, u.to_key) for u in layout.unrouted}
+    undrained = {f for f, _ in listed}
+    unfed = {t for _, t in listed}
     for key, rule in wet:
-        if not any(r.connect_start == key and r.system == rule.drains_to for r in layout.runs):
+        if not any(r.connect_start == key and r.system == rule.drains_to for r in layout.runs) and key not in undrained:
             out.append(f"{key}: not drained ({rule.drains_to})")
-        if rule.cold and not any(r.connect_end == key and r.system == "cold_water" for r in layout.runs):
+        if rule.cold and not any(r.connect_end == key and r.system == "cold_water" for r in layout.runs) and \
+                key not in unfed:
             out.append(f"{key}: no cold water")
-        if rule.hot and not any(r.connect_end == key and r.system == "hot_water" for r in layout.runs):
+        if rule.hot and not any(r.connect_end == key and r.system == "hot_water" for r in layout.runs) and \
+                key not in unfed:
             out.append(f"{key}: no hot water")
     # every drain reaches a stack, every supply reaches a source
     for r in layout.runs:

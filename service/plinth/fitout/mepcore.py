@@ -57,6 +57,8 @@ LOW_FURNITURE_MM = 600.0  # furniture this low (side table, TV unit, bed) does n
 DEFAULT_DOOR_HEAD_MM = 2100.0
 DEFAULT_SLAB_MM = 150.0
 INSIDE_TOL_MM = 5.0
+OPEN_CLASSES = ("terrace",)  # rooms open to the sky: no ceiling (lights on their walls, no fans)
+OPEN_WALLS_MM = 1800.0  # a room with no slab over it whose walls are lower than this (a parapet) is open too
 
 DeviceSystem = Literal["power", "lighting", "data", "hvac", "plumbing", "fire"]
 RunSystem = Literal["cold_water", "hot_water", "soil", "waste", "vent", "rainwater", "power", "lighting", "fire"]
@@ -422,8 +424,10 @@ class Ctx:
               elevation: float, facing: Point | float, host: Host, *, scope: str | None = None,
               size: Size | None = None, rating: str | None = None, capacity_l: float | None = None,
               panel: bool = False, load: bool = True, note: str | None = None, source: str | None = None,
-              flat: str | None = None) -> Device:
-        s = self.spec(what)
+              flat: str | None = None, kind: str | None = None) -> Device:
+        """``kind``: the catalogue entry whose label, category, keywords and size the device takes (a light's fitting,
+        ``electrical.light_kinds``); the device stays a ``what`` (its load, its circuit)."""
+        s = self.spec(kind or what)
         facing_deg = facing if isinstance(facing, (int, float)) else deg(facing)
         d = Device(key=self.key(scope or (room.key if room else level), what), room_key=room.key if room else None,
                    level=level, flat=flat if flat is not None else (room.flat if room else None), system=system,
@@ -530,6 +534,26 @@ class Ctx:
         else:
             return None
         return top - self.levels[level]
+
+    def outdoors(self, room: Room) -> bool:
+        """The room is open to the sky: a roof terrace (``OPEN_CLASSES``), or a room no slab of a higher level
+        covers whose walls are a parapet (lower than ``OPEN_WALLS_MM``). It has no ceiling for a light or a fan."""
+        if any(c in OPEN_CLASSES for c in self.classes(room)):
+            return True
+        if room.height_mm is not None and room.height_mm >= OPEN_WALLS_MM:
+            return False
+        return not any(self.levels[op.level] > room.elevation_mm + 1 and Polygon(op.points).covers(SPoint(room.point))
+                       for op in self.ops_floor)
+
+    def light_kind(self, room: Room) -> str | None:
+        """The light fitting the room takes (``electrical.light_kinds``): the outdoor kind in an open room, else that
+        of its first class listed; None: the generic light."""
+        lk = self.rules.electrical.light_kinds
+        if lk is None:
+            return None
+        if self.outdoors(room):
+            return lk.outdoor
+        return next((lk.classes[c] for c in self.classes(room) if c in lk.classes), None)
 
     def storey_height(self, level: str) -> float:
         hs = Counter(round(r.height_mm) for r in self.model.on_level(level) if r.height_mm)

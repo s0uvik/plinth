@@ -243,6 +243,15 @@ class Wiring(Sourced):
     riser_above_top_floor_mm: float = Field(ge=0)
 
 
+class LightKinds(Sourced):
+    """Which light fitting each room class takes (an ``electrical.devices`` key: its label, keywords and size are what
+    F1/F5 match a family by; the layout's device stays a "light"); ``outdoor``: the fitting of open rooms (roof
+    terraces), mounted on their walls, never on a ceiling. A class not listed takes the generic ``light``."""
+
+    classes: dict[str, str] = {}
+    outdoor: str | None = None
+
+
 class Electrical(_Model):
     points: dict[str, ElectricalPoints]
     switchboard: Switchboard
@@ -254,6 +263,15 @@ class Electrical(_Model):
     wiring: Wiring
     devices: dict[str, MepDevice]
     supply_authority: SourcedValue | None = None
+    light_kinds: LightKinds | None = None
+
+    @model_validator(mode="after")
+    def _light_kinds(self) -> "Electrical":
+        lk = self.light_kinds
+        for kind in [*(lk.classes.values() if lk else []), *([lk.outdoor] if lk and lk.outdoor else [])]:
+            if kind not in self.devices:
+                raise ValueError(f"light kind {kind!r} is not an electrical device")
+        return self
 
 
 # ------------------------------------------------------------------------------------------------ plumbing
@@ -443,8 +461,9 @@ class FitoutRules(_Model):
             for did, d in devices.items():
                 if d.load is not None and d.load not in self.electrical.loads_w:
                     raise ValueError(f"MEP device {did}: unknown load {d.load!r}")
+        lights = self.electrical.light_kinds
         for cls in [*self.electrical.points, *self.plumbing.classes, *self.hvac.split_ac.classes, *self.hvac.exhaust,
-                    *self.plumbing.geysers.litres]:
+                    *self.plumbing.geysers.litres, *(lights.classes if lights else [])]:
             if cls not in classes:
                 raise ValueError(f"MEP rule for unknown room class {cls!r}")
         for cls, pc in self.plumbing.classes.items():

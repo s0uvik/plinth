@@ -17,7 +17,9 @@ underground a day, plus the fire reserves the height band asks for).
 
 Where the tanks stand (answered, never guessed): an overhead tank per terrace group stands on its roof terrace, or,
 with ``fitout:overhead_tank_on`` = "stair_roof", on the roof of the stair/lift rooms above the terrace (more head for
-the top floor; ``siting.stair_roof``; asked when the plan has no such roof), its down-take crossing that roof and
+the top floor; ``siting.stair_roof``; asked when the plan has no such roof; when it has the rooms but no slab over
+them the tanks would float, so they are not placed and ``fitout:overhead_tank_slab`` is asked: "slab" once one is
+added, or "terrace"), its down-take crossing that roof and
 running down the room's outer wall to the terrace and on to its duct. The underground tank stands at the answered
 plan point, or ``{"side": "front" | "north" | "south" | "east" | "west", "near": "entrance"}``: in the setback on that
 side, nearest the entrance, at least 1 m from the foundations and clear of the entrance path (``siting.outside_box``;
@@ -449,6 +451,7 @@ class _Plumbing:
         oht: dict[str, tuple] = {}  # duct key -> (tank device, terrace)
         overhead: dict[str, float] = {}
         on = ctx.answer("fitout:overhead_tank_on")
+        why_not = None if terraces else "no roof terrace to stand on (the roof level is asked)"
         if on in STAIR_ROOF_ANSWERS:
             self.stair_roof = siting.stair_roof(ctx)
             if self.stair_roof is None:
@@ -456,10 +459,12 @@ class _Plumbing:
                         "answered on the stair/lift roof, but no room on the roof terrace holds the stair, mumty or "
                         "lift with a roof level above it in the plan: answer \"terrace\" (on the roof terrace) or "
                         "add the stair room's roof.", options=["terrace", "stair_roof"])
-        if not terraces or (on in STAIR_ROOF_ANSWERS and self.stair_roof is None):
+                why_not = why_not or "on the stair/lift roof, which the plan does not have (asked)"
+            elif not self.stair_roof.slab:
+                why_not = why_not or self.slab_missing(self.stair_roof)
+        if why_not:
             for dk in by_duct:
-                ctx.unplace("overhead_tank", None, None, "no roof terrace to stand on (the roof level is asked)"
-                            if not terraces else "on the stair/lift roof, which the plan does not have (asked)")
+                ctx.unplace("overhead_tank", None, None, why_not)
         else:
             serve: dict[str, list[Duct]] = defaultdict(list)
             for d in ctx.ducts:
@@ -515,6 +520,24 @@ class _Plumbing:
                 self.cold_tree(d, run.key, level, group, items, z)
         self.underground(ugt_l + fire_u, fire_u, oht)
 
+    def slab_missing(self, roof: siting.StairRoof) -> str | None:
+        """The stair/lift roof the tanks are answered on has no slab in the plan: they would float. Asked
+        (``fitout:overhead_tank_slab``): "slab" (one is being added: the tanks stand on it) or "terrace" (on the roof
+        terrace instead); returns why the tanks are not placed, or None to go on."""
+        ctx = self.ctx
+        given = ctx.answer("fitout:overhead_tank_slab")
+        if given == "slab":
+            return None
+        if given == "terrace":
+            self.stair_roof = None
+            return None
+        where = f"the roof of the {', '.join(sorted({r.name.lower() for r in roof.rooms}))} ({roof.level})"
+        ctx.ask("fitout:overhead_tank_slab", "fitout_tank", f"The overhead tanks are answered on {where}, but the "
+                f"plan has no slab at {roof.level} over those rooms: the tanks would float. Answer \"slab\" when a "
+                "roof slab is added there (the tanks stand on it), or \"terrace\" to put them on the roof terrace.",
+                options=["slab", "terrace"], instances=[r.key for r in roof.rooms])
+        return f"on {where}, where the plan has no slab: they would float (asked)"
+
     def place_tank(self, terrace: Room, what: str, litres: float, near: list[Point], note: str | None = None,
                    roof: siting.StairRoof | None = None):
         """A square tank on the terrace (or on the stair/lift roof, ``roof``) clear of its edge, the ducts and the
@@ -557,7 +580,7 @@ class _Plumbing:
             return None
         c = best[1]
         if roof is not None:
-            slab = "" if roof.slab else f"; the plan has no slab at {level} over them: the tank needs one"
+            slab = "" if roof.slab else f"; on the slab to be added at {level} over them (answer)"
             note = "; ".join(x for x in (note, f"on {where} for pressure on the top floor (answer){slab}") if x)
             return ctx.place(what, "plumbing", None, level, c, 0.0, 270.0, Host(kind="floor"), scope=level,
                              size=Size(width_mm=side, depth_mm=side, height_mm=height), rating=f"{litres:g} L",

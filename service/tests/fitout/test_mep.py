@@ -51,11 +51,11 @@ def drains_to_stack(layout, key: str, system: str) -> str | None:
 def test_sample_counts_per_system(sample_mep):
     _, _, _, layout = sample_mep
     assert Counter(d.what for d in layout.devices) == {
-        "socket_6a": 370, "light": 253, "socket_16a": 145, "fan": 112, "switchboard": 119, "tv_outlet": 64,
+        "socket_6a": 370, "light": 253, "socket_16a": 145, "fan": 112, "switchboard": 121, "tv_outlet": 64,
         "exhaust_fan": 49, "geyser": 49, "ac_indoor": 48, "ac_outdoor": 48, "floor_trap": 33, "exit_sign": 9,
         "distribution_board": 17, "data_outlet": 16, "extinguisher": 17, "roof_outlet": 12, "overhead_tank": 2}
     assert Counter((r.kind, r.system) for r in layout.runs) == {
-        ("conduit", "power"): 639, ("conduit", "lighting"): 533, ("pipe", "cold_water"): 182, ("pipe", "waste"): 133,
+        ("conduit", "power"): 639, ("conduit", "lighting"): 535, ("pipe", "cold_water"): 182, ("pipe", "waste"): 133,
         ("pipe", "hot_water"): 113, ("pipe", "soil"): 51, ("pipe", "rainwater"): 12, ("pipe", "vent"): 2}
     assert Counter(c.kind for c in layout.circuits) == {"dedicated": 113, "lighting": 52, "sockets": 49, "power": 32}
     stacks = sorted(r.key.split("-")[-2] for r in layout.runs if r.key.split("-")[-2].endswith("_stack"))
@@ -184,9 +184,15 @@ def test_switchboards_doors_and_ceiling_points(sample_mep):
     for d in layout.devices:
         if d.what == "switchboard":
             assert d.host.kind == "wall" and d.elevation_mm == 1200
-        if d.what in ("light", "fan"):
+        if d.what in ("light", "fan") and by_key[d.room_key].cls != "terrace":
             room = by_key[d.room_key]
             assert d.host.kind == "ceiling" and d.elevation_mm == room.height_mm - 150
+    # the light's fitting by room class, for the family match: battens in rooms, downlights in toilets
+    kinds = Counter((by_key[d.room_key].cls, d.label) for d in layout.devices if d.what == "light")
+    assert kinds["bedroom", "LED batten light"] == 96 and kinds["toilet", "LED downlight"] == 33
+    assert not [k for k in kinds if k[0] == "toilet" and k[1] != "LED downlight"]
+    toilet_light = next(d for d in layout.devices if d.what == "light" and by_key[d.room_key].cls == "toilet")
+    assert "downlight" in toilet_light.keywords and toilet_light.size.width_mm <= 300
     # a bedroom: two lights (14 m² at one per 8 m²), a fan off the lights, 3 + 1 sockets, a TV point
     bed = next(r for r in model.on_level("Floor 1") if r.cls == "bedroom" and r.area_m2 == 14.0)
     got = Counter(d.what for d in layout.in_room(bed.key))
@@ -235,7 +241,7 @@ def test_sample_asks_what_the_plan_does_not_tell(sample_mep):
         ("electrical riser: meter board end", "the meter room is asked"),
         ("rising main", "from the pump at the underground tank")]
     assert Counter(u.what for u in layout.unplaced) == {
-        "ac_indoor": 16, "switchboard": 2, "shower": 1, "underground_tank": 1, "pump": 1, "meter_board": 1}
+        "ac_indoor": 16, "shower": 1, "underground_tank": 1, "pump": 1, "meter_board": 1}
 
 
 def test_sample_layout_is_deterministic(sample_mep, wb_rules):
@@ -380,12 +386,16 @@ def test_a_shaft_of_unknown_kind_and_a_large_living_room_are_asked(wb_rules):
 SAMPLE_ANSWERS = SAMPLE / "fitout-answers.json"
 
 
+def users_answers() -> dict:
+    return {k: v for k, v in json.loads(SAMPLE_ANSWERS.read_text(encoding="utf-8")).items() if not k.startswith("_")}
+
+
 @pytest.fixture(scope="module")
 def sample_answered(sample_import, wb_rules):
-    """The sample laid out with the user's MEP answers of 2026-11-17 (the file the live build uses)."""
+    """The sample laid out with the user's MEP answers of 2026-11-17 (the file the live build uses), and the slab the
+    plan lacks over the stair/lift rooms answered as added (``fitout:overhead_tank_slab``: the tanks stand on it)."""
     _, result = sample_import
-    answers = {k: v for k, v in json.loads(SAMPLE_ANSWERS.read_text(encoding="utf-8")).items()
-               if not k.startswith("_")}
+    answers = {**users_answers(), "fitout:overhead_tank_slab": "slab"}
     model = rooms.build(result.plan, wb_rules, answers)
     lay = furniture.solve(model, wb_rules)
     kinds = mep.shaft_kinds_from_sources(result.sources)
@@ -397,21 +407,21 @@ def test_the_users_answers_leave_nothing_asked(sample_mep, sample_answered):
     assert answers == {
         "fitout:ac:living": [1.5, 1.5],
         "fitout:meter_room": {"near": "stair"}, "fitout:common_board": "meter_board", "fitout:front_side": "south",
-        "fitout:underground_tank": {"side": "front", "near": "entrance"}, "fitout:overhead_tank_on": "stair_roof"}
+        "fitout:underground_tank": {"side": "front", "near": "entrance"}, "fitout:overhead_tank_on": "stair_roof",
+        "fitout:overhead_tank_slab": "slab"}
     assert {q.id for q in sample_mep[3].questions} <= set(answers)  # every question the plan raises is answered
     assert layout.questions == [] and layout.unrouted == []
     assert mep.problems(layout, model, lay) == []
-    # left: what the rules cannot do (the stilt toilet is too small for a shower; the terraces have no door)
+    # left: what the rules cannot do (the stilt toilet is too small for a shower)
     assert sorted((u.what, u.room_key.split("-", 1)[1] if u.room_key else None) for u in layout.unplaced) == [
-        ("shower", "room-1-0"), ("switchboard", "room-1-roof"), ("switchboard", "room-4-roof")]
-    assert all("no door" in u.reason for u in layout.unplaced if u.what == "switchboard")
+        ("shower", "room-1-0")]
     assert Counter(d.what for d in layout.devices) == {
-        "socket_6a": 370, "light": 253, "socket_16a": 161, "fan": 112, "switchboard": 119, "ac_indoor": 80,
+        "socket_6a": 370, "light": 253, "socket_16a": 161, "fan": 112, "switchboard": 121, "ac_indoor": 80,
         "ac_outdoor": 80, "tv_outlet": 64, "exhaust_fan": 49, "geyser": 49, "floor_trap": 33, "distribution_board": 17,
         "extinguisher": 17, "data_outlet": 16, "roof_outlet": 12, "exit_sign": 9, "overhead_tank": 2,
         "underground_tank": 1, "pump": 1, "meter_board": 1}
     assert Counter((r.kind, r.system) for r in layout.runs) == {
-        ("conduit", "power"): 688, ("conduit", "lighting"): 533, ("pipe", "cold_water"): 184, ("pipe", "waste"): 133,
+        ("conduit", "power"): 688, ("conduit", "lighting"): 535, ("pipe", "cold_water"): 184, ("pipe", "waste"): 133,
         ("pipe", "hot_water"): 113, ("pipe", "soil"): 51, ("pipe", "rainwater"): 12, ("pipe", "vent"): 2}
     assert Counter(c.kind for c in layout.circuits) == {"dedicated": 130, "lighting": 52, "sockets": 49, "power": 32}
     assumed = {a.id: a for a in layout.assumptions}
@@ -517,13 +527,57 @@ def test_overhead_tanks_on_the_stair_roof(sample_answered):
         x, y = t.insertion
         assert roof.buffer(-599, join_style="mitre").covers(  # 600 mm access round it (to the rounding)
             Polygon([(x - half, y - half), (x + half, y - half), (x + half, y + half), (x - half, y + half)]))
-        assert "for pressure on the top floor" in t.note and "no slab at Upper Roof" in t.note
+        assert "for pressure on the top floor" in t.note and "slab to be added at Upper Roof" in t.note
         down = next(r for r in layout.runs if r.connect_start == t.key and r.key.split("-")[-2] == "cold_downtake")
         assert down.points[0][2] == 15900 + 150 and down.points[2][2] == 13500 + 150  # down the mumty's outer wall
         assert not roof.contains(Point(down.points[2][:2]))
     assert math.dist(tanks[0].insertion, tanks[1].insertion) >= 1400 + 600
     downs = {r.key.split("-cold_downtake")[0] for r in layout.runs if r.key.split("-")[-2] == "cold_downtake"}
     assert len(downs) == 2  # one per duct, each from its own tank
+
+
+def test_tanks_are_not_left_floating_where_the_plan_has_no_roof_slab(sample_answered, wb_rules):
+    result, model, lay, _, _ = sample_answered
+    layout = mep.layout(result.plan, model, lay, wb_rules, users_answers(),
+                        shaft_kinds=mep.shaft_kinds_from_sources(result.sources))
+    q = {q.id: q for q in layout.questions}
+    assert list(q) == ["fitout:overhead_tank_slab"] and q["fitout:overhead_tank_slab"].options == ["slab", "terrace"]
+    assert "no slab at Upper Roof" in q["fitout:overhead_tank_slab"].text
+    assert not [d for d in layout.devices if d.what == "overhead_tank"]
+    assert [u.reason.endswith("they would float (asked)") for u in layout.unplaced if u.what == "overhead_tank"] == \
+        [True, True]
+    assert {u.reason for u in layout.unrouted if u.what == "cold water"} == {"no overhead tank to feed the down-take"}
+    assert mep.problems(layout, model, lay) == []  # the fixtures left dry are listed as unrouted, with why
+    # answered "terrace": on the roof terraces instead
+    on_terrace = mep.layout(result.plan, model, lay, wb_rules, {**users_answers(), "fitout:overhead_tank_slab":
+                                                                 "terrace"},
+                            shaft_kinds=mep.shaft_kinds_from_sources(result.sources))
+    assert [d.level for d in on_terrace.devices if d.what == "overhead_tank"] == ["Roof", "Roof"]
+    assert on_terrace.questions == []
+
+
+def test_terraces_are_lit_from_their_walls_and_switched_from_indoors(sample_answered):
+    _, model, _, layout, _ = sample_answered
+    by_key = model.by_key()
+    for t in [r for r in model.rooms if r.cls == "terrace"]:
+        lights = [d for d in layout.in_room(t.key) if d.what == "light"]
+        assert len(lights) == 5 and not [d for d in layout.in_room(t.key) if d.host.kind == "ceiling"]
+        assert all(d.host.kind == "wall" and d.label.startswith("Bulkhead") and "outdoor" in d.keywords
+                   for d in lights)
+        heights = Counter(d.elevation_mm for d in lights)  # on the mumty/lift walls, and on the 900 mm parapet
+        assert set(heights) <= {2100, 600} and heights[600] and heights[2100]
+        for d in lights:  # inside the wall's height
+            assert d.elevation_mm + d.size.height_mm / 2 < 900 or d.host.wall_key.endswith(("63-roof", "64-roof"))
+        # the plan has no door onto the terrace: its lights are switched from the mumty room beside it (assumed)
+        sw = next(d for d in layout.devices if d.what == "switchboard" and d.note and t.key in d.note)
+        assert by_key[sw.room_key].name == "MUMTY ROOM" and "no door onto it" in sw.note
+        assert all(any(r.connect_start == sw.key and r.connect_end == d.key for r in layout.runs) for d in lights)
+        assert f"fitout:outdoor_switch:{t.key}" in {a.id for a in layout.assumptions}
+    # fire devices inside the clear height (the mumty's ceiling at 2250 mm under its assumed slab)
+    for d in layout.devices:
+        if d.system == "fire" and d.host.kind == "wall" and d.room_key:
+            room = by_key[d.room_key]
+            assert d.elevation_mm + d.size.height_mm / 2 <= room.height_mm - 150, d.key
 
 
 def test_the_answered_sample_is_deterministic(sample_answered, wb_rules):

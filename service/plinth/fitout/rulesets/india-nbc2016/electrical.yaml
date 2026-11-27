@@ -149,6 +149,14 @@ electrical:
       value: 1500
       source: "Supply licensee practice: meters readable at eye level, as recalled"
       verified: false
+    bulkhead_light:
+      value: 2100
+      source: "Typical practice: an open terrace's lights are wall bulkheads on the stair/lift room walls facing it, at door-head height (no ceiling there)"
+      verified: false
+    parapet_light:
+      value: 600
+      source: "Typical practice: bulkheads on the inner face of a 900-1000 mm terrace parapet, below its coping"
+      verified: false
 
   distribution_board:
     per_flat: 1
@@ -213,6 +221,32 @@ electrical:
       source: "Typical LED exit sign"
       verified: false
 
+  # The light fitting per room class: what F1/F5 match the light's family by (the kind's keywords and size). Battens
+  # in rooms, downlights in toilets and small rooms (a 600 x 1200 troffer does not belong in a 3 m² toilet), wall
+  # bulkheads on open terraces (outdoors: never a ceiling light there).
+  light_kinds:
+    classes:
+      bedroom: light_batten
+      living: light_batten
+      dining: light_batten
+      kitchen: light_batten
+      study: light_batten
+      servant: light_batten
+      utility: light_batten
+      parking: light_batten
+      lift_machine_room: light_batten
+      toilet: light_downlight
+      dress: light_downlight
+      puja: light_downlight
+      store: light_downlight
+      balcony: light_downlight
+      lobby: light_downlight
+      stair: light_downlight
+      mumty: light_downlight
+    outdoor: light_bulkhead
+    source: "Typical Indian residential practice: 1200 mm LED battens in habitable rooms and kitchens, recessed or surface LED downlights (IP44 in wet areas) in toilets, stores and common passages, IP65 bulkheads on walls outdoors; as recalled"
+    verified: false
+
   meter_room:
     value: "a meter space on the ground floor near the entrance, one meter per flat plus the common meter"
     source: "Typical Indian multi-dwelling practice; the supply authority decides"
@@ -227,6 +261,30 @@ electrical:
       size: {width_mm: 300, depth_mm: 300, height_mm: 100}
       load: light
       source: "Typical residential light point"
+      verified: false
+    light_batten:
+      label: LED batten light
+      category: Lighting Fixtures
+      keywords: [batten, tube light, linear, led batten, light]
+      size: {width_mm: 1200, depth_mm: 75, height_mm: 60}
+      load: light
+      source: "Typical 4 ft (1200 mm) LED batten, 18-22 W, surface mounted on the ceiling"
+      verified: false
+    light_downlight:
+      label: LED downlight
+      category: Lighting Fixtures
+      keywords: [downlight, recessed, round, can light, light]
+      size: {width_mm: 150, depth_mm: 150, height_mm: 80}
+      load: light
+      source: "Typical 150 mm LED downlight, 9-12 W (IP44 in toilets)"
+      verified: false
+    light_bulkhead:
+      label: Bulkhead light (wall, outdoor)
+      category: Lighting Fixtures
+      keywords: [bulkhead, wall light, outdoor, weatherproof, sconce, light]
+      size: {width_mm: 250, depth_mm: 100, height_mm: 150}
+      load: light
+      source: "Typical IP65 LED bulkhead, 10-15 W, wall mounted"
       verified: false
     fan:
       label: Ceiling fan
