@@ -126,14 +126,56 @@ def test_every_bedroom_has_an_ac_on_an_outside_wall(sample_mep):
                     and Point(u.insertion).distance(Polygon([f.start, f.end, f.end]).exterior) < 1)
         assert face.outer and u.host.height_mm == 2100 + 320 / 2 and u.rating in ("1.5 TR", "1 TR", "2 TR")
         out = next(d for d in layout.in_room(room.key) if d.what == "ac_outdoor")
-        assert out.host.kind == "outside_wall" and out.host.wall_key == u.host.wall_key
-        assert out.host.side != u.host.side and not room.shape().covers(Point(out.insertion))
-        assert math.dist(out.insertion, u.insertion) < 1000
+        assert out.host.kind == "outside_wall" and not room.shape().covers(Point(out.insertion))
+        run = float(out.note.split("refrigerant run about ")[1].split(" m")[0])
+        assert run <= 10 and f"about {run:.1f} m" in u.note  # the refrigerant run, stated in both units' notes
         sockets = [d for d in layout.in_room(room.key) if d.what == "socket_16a"]
         assert any(math.dist(s.insertion, u.insertion) < 1500 and s.elevation_mm == 2100 for s in sockets)
     assert sum(1 for d in layout.devices if d.what == "ac_indoor") == 48
     large = [u for u in layout.unplaced if u.what == "ac_indoor"]
     assert len(large) == 16 and all(by_key[u.room_key].classes == ["living", "dining"] for u in large)  # kitchen split off
+
+
+def outdoor_units_misplaced(plan, model, layout) -> list[str]:
+    """Outdoor AC units not on an exterior wall's outer face (the plan's wall type says "exterior"), with their box
+    inside the building (the rooms of their level with 250 mm walls), or in front of a window or door of that
+    wall."""
+    functions = {op.name: op.function for op in plan.ops if getattr(op, "op", None) == "wall_type"}
+    walls = {op.key: op for op in plan.ops if getattr(op, "op", None) == "wall"}
+    out = []
+    for d in layout.devices:
+        if d.what != "ac_outdoor":
+            continue
+        wall = walls[d.host.wall_key]
+        if functions.get(wall.type) != "exterior":
+            out.append(f"{d.key}: on {wall.key}, a {functions.get(wall.type)} wall")
+        a = math.radians(d.facing_deg)
+        n, u = (math.cos(a), math.sin(a)), (-math.sin(a), math.cos(a))
+        hw, hd = d.size.width_mm / 2, d.size.depth_mm / 2
+        x, y = d.insertion
+        box_ = Polygon([(x + su * hw * u[0] + sn * hd * n[0], y + su * hw * u[1] + sn * hd * n[1])
+                        for su, sn in ((-1, -1), (1, -1), (1, 1), (-1, 1))])
+        inside = unary_union([Polygon(r.polygon).buffer(250, join_style="mitre") for r in model.on_level(d.level)
+                              if r.polygon])
+        if inside.intersects(box_):
+            out.append(f"{d.key}: inside the building")
+        for r in model.on_level(d.level):
+            for o in r.openings:
+                if o.wall_key != wall.key:
+                    continue
+                head = o.head_mm if o.kind == "window" else (o.height_mm or 2100)
+                sill = o.sill_mm if o.kind == "window" else 0
+                gap = Polygon([o.left, o.right, (o.right[0] + 600 * n[0], o.right[1] + 600 * n[1]),
+                               (o.left[0] + 600 * n[0], o.left[1] + 600 * n[1])]).buffer(0)  # out from its face
+                if gap.intersects(box_) and sill < d.elevation_mm + d.size.height_mm and head > d.elevation_mm:
+                    out.append(f"{d.key}: in front of {o.kind} {o.key}")
+    return out
+
+
+def test_every_outdoor_unit_hangs_outside_on_an_exterior_wall_clear_of_windows(sample_mep, sample_answered):
+    for (result, model, _, layout, *_) in (sample_mep, sample_answered):
+        assert sum(d.what == "ac_outdoor" for d in layout.devices) in (48, 80)
+        assert outdoor_units_misplaced(result.plan, model, layout) == []
 
 
 def test_switchboards_doors_and_ceiling_points(sample_mep):
@@ -391,14 +433,15 @@ def test_two_split_acs_in_each_large_living_room(sample_answered):
         for u in units:
             face = next(f for f in room.faces if (f.wall_key, f.side) == (u.host.wall_key, u.host.side))
             assert face.outer
-            out = next(o for o in outs if o.note.endswith(f"{u.key}, powered through it"))
-            assert out.host.wall_key == u.host.wall_key and not room.shape().covers(Point(out.insertion))
+            out = next(o for o in outs if f"outdoor unit of {u.key}, powered through it" in o.note)
+            assert not room.shape().covers(Point(out.insertion)) and "clear of its windows and doors" in out.note
             sock = min(sockets, key=lambda s: math.dist(s.insertion, u.insertion))
             assert math.dist(sock.insertion, u.insertion) < 1500 and sock.elevation_mm == 2100
             ckt = next(c for c in layout.circuits if u.key in c.devices)
             assert ckt.kind == "dedicated" and sorted(devices[k].what for k in ckt.devices) == ["ac_indoor",
                                                                                                  "socket_16a"]
-        assert math.dist(outs[0].insertion, outs[1].insertion) >= 850 + 100
+        assert math.dist(outs[0].insertion, outs[1].insertion) >= 850 + 100 or \
+            abs(outs[0].elevation_mm - outs[1].elevation_mm) >= 600 + 100  # side by side, or one under the other
 
 
 def test_meters_and_common_board_by_the_ground_floor_stair(sample_answered):

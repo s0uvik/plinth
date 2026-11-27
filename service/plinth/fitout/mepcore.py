@@ -41,7 +41,7 @@ from shapely.ops import nearest_points, unary_union
 from plinth.fitout.furniture import FurnitureLayout, Placed
 from plinth.fitout.rooms import Assumption, Face, Opening, Question, Room, RoomModel, type_thickness
 from plinth.fitout.rules import FitoutRules, MepDevice, Size
-from plinth.plan import BuildPlan, FloorOp, FloorTypeOp, ShaftOp, StairOp
+from plinth.plan import BuildPlan, FloorOp, FloorTypeOp, ShaftOp, StairOp, WallOp, WallTypeOp
 
 Point = tuple[float, float]
 P3 = tuple[float, float, float]
@@ -356,6 +356,8 @@ class Ctx:
         self.ops_floor = [op for op in plan.ops if isinstance(op, FloorOp)]
         self.floor_types = {op.name: op for op in plan.ops if isinstance(op, FloorTypeOp)}
         self.stairs = [op for op in plan.ops if isinstance(op, StairOp)]
+        self.walls = {op.key: op for op in plan.ops if isinstance(op, WallOp)}
+        self.wall_types = {op.name: op for op in plan.ops if isinstance(op, WallTypeOp)}
         self._footprints: dict[str, Any] = {}
         self._doors: dict[str, list[tuple[Polygon, float, float, str]]] = {}
         self.roof = self._roof()
@@ -497,6 +499,37 @@ class Ctx:
         """Height of the room's ceiling (underside of the slab over it) above its level."""
         h = room.height_mm or 3000.0
         return h - self.slab_above(room)
+
+    def wall_function(self, wall_key: str | None) -> str | None:
+        """"exterior" or "interior": the wall's type's function in the plan (its ``wall_type`` op, else the word in
+        the type's name); None when the plan does not say."""
+        w = self.walls.get(wall_key or "")
+        if w is None:
+            return None
+        t = self.wall_types.get(w.type or "")
+        if t is not None:
+            return t.function
+        name = (w.type or "").lower()
+        return "interior" if "interior" in name else "exterior" if "exterior" in name else None
+
+    def exterior(self, f: Face) -> bool:
+        """A face on the building's outer skin: a wall face with the outside beyond it (``outer``), on a wall the plan
+        does not type as interior. A recess or court between two wings drawn with interior walls is outside the
+        rooms but not the building's face: an outdoor unit or an outside stack does not hang there unless answered."""
+        return f.kind == "wall" and f.outer and self.wall_function(f.wall_key) != "interior"
+
+    def wall_top(self, wall_key: str | None, level: str) -> float | None:
+        """Height of a wall's top above ``level`` (a parapet's 900 mm, a storey wall's storey height)."""
+        w = self.walls.get(wall_key or "")
+        if w is None:
+            return None
+        if w.height_mm is not None:
+            top = self.levels[w.level] + w.base_offset_mm + w.height_mm
+        elif w.top_level in self.levels:
+            top = self.levels[w.top_level] + w.top_offset_mm
+        else:
+            return None
+        return top - self.levels[level]
 
     def storey_height(self, level: str) -> float:
         hs = Counter(round(r.height_mm) for r in self.model.on_level(level) if r.height_mm)
